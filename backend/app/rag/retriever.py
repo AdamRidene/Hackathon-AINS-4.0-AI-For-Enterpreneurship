@@ -69,5 +69,4 @@ class Retriever:
         )[:k]
         return RoutedResult(
             gap_category=gap_category, query=query,
-            chunks=[c for c, _ in scored], scores=[s for _, s in scored],
-        )
+            c

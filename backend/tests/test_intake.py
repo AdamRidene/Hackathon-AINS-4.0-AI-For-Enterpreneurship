@@ -53,5 +53,4 @@ def test_advanced_claim_injects_evidence_probes():
 def test_three_profiles_differ():
     a = _sequence(ProjectProfile(), {"sector": "agri-food", "declared_stage": "6"})
     b = _sequence(ProjectProfile(), {"sector": "digital-saas", "declared_stage": "1"})
-    c = _sequence(ProjectProfile(), {"sector": "services", "declared_stage": "4"})
-    assert a != b and b != c and a != c
+    c = _sequence(ProjectProfile(), {"sector": "services", "declared

@@ -612,14 +612,4 @@
         "general",
         "premature_fundraising"
       ],
-      "stages": [
-        1,
-        2
-      ],
-      "horizon": "short_term",
-      "content": "Des dispositifs régionaux d'appui à l'auto-emploi et aux micro-projets complètent l'offre BTS/ANETI dans les gouvernorats, avec accompagnement de proximité pour les porteurs en phase d'amorçage.",
-      "title_ar": "آليات التشغيل الذاتي الجهوية",
-      "content_ar": "تكمّل آليات جهوية لدعم التشغيل الذاتي والمشاريع الصغرى عرض BTS/ANETI في الولايات، بمواكبة قُربية للباعثين في طور الانطلاق."
-    }
-  ]
-}
+      "stage

@@ -50,15 +50,4 @@ def test_roadmap_is_grounded_and_ordered():
     r = run_audit(agritech_overclaimer())
     assert len(r.roadmap) >= 1
     for m in r.roadmap:
-        assert m.sources, "every milestone must cite a real resource"
-        for s in m.sources:
-            assert s["url"].startswith("http")
-    orders = [m.order for m in r.roadmap]
-    assert orders == sorted(orders)
-
-
-def test_pipeline_handles_empty_profile():
-    from app.schema import ProjectProfile
-    r = run_audit(ProjectProfile())  # nothing collected
-    assert r.diagnostic.classified_stage == 1
-    assert r.to_dict()["intake_complete"] is False
+        assert m.sources, "every milestone must cite a real 

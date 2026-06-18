@@ -119,7 +119,4 @@ def build_roadmap(
         order += 1
 
     # Final ordering: stage already applied; within that, horizon proximity.
-    milestones.sort(key=lambda m: (m.order, _HORIZON_ORDER.get(m.horizon, 9)))
-    for i, m in enumerate(milestones, start=1):
-        m.order = i
-    return milestones
+    milestones.sort(key=lambda m: (m.order, _HOR

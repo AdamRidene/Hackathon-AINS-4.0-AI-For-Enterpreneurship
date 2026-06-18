@@ -12,6 +12,4 @@ export default defineConfig({
         target: process.env.FIRASA_API || "http://localhost:8000",
         changeOrigin: true,
       },
-    },
-  },
-});
+  

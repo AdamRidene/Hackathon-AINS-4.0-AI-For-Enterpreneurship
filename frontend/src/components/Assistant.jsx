@@ -63,9 +63,4 @@ export default function Assistant({ pid }) {
           placeholder="Posez une question sur votre audit…"
         />
         <button className="primary" disabled={busy}>
-          Envoyer
-        </button>
-      </form>
-    </div>
-  );
-}
+   

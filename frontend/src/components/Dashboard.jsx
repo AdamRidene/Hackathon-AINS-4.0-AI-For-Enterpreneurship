@@ -41,20 +41,4 @@ export default function Dashboard({ audit, pid, onRestart }) {
           <div className="sub">
             Couche LLM secondaire — justification en langage naturel, ancrée sur
             les sorties structurées.
-          </div>
-          <p style={{ fontSize: "0.88rem" }}>
-            <b>Indice de cohérence (P_coh) :</b>{" "}
-            {audit.explanations.pcoh_rationale}
-          </p>
-          {audit.explanations.diagnostic_rationale && (
-            <p style={{ fontSize: "0.88rem" }} className="muted">
-              {audit.explanations.diagnostic_rationale}
-            </p>
-          )}
-        </div>
-      )}
-
-      <Assistant pid={pid} />
-    </div>
-  );
-}
+ 

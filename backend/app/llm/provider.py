@@ -201,30 +201,4 @@ class HuggingFaceProvider(LLMProvider):
         body = json.dumps({
             "inputs": prompt,
             "parameters": {"max_new_tokens": max_tokens, "temperature": 0.2,
-                           "return_full_text": False},
-        }).encode()
-        headers = {"Content-Type": "application/json"}
-        if self.token:
-            headers["Authorization"] = f"Bearer {self.token}"
-        req = urllib.request.Request(self.url, data=body, headers=headers)
-        with urllib.request.urlopen(req, timeout=float(os.getenv("FIRASA_LLM_TIMEOUT", "30"))) as r:
-            data = json.loads(r.read().decode())
-            if isinstance(data, list) and data:
-                return data[0].get("generated_text", "")
-            return data.get("generated_text", "") if isinstance(data, dict) else ""
-
-
-_PROVIDERS = {"ollama": OllamaProvider, "huggingface": HuggingFaceProvider, "stub": StubProvider}
-_cache: dict[str, LLMProvider] = {}
-
-
-def get_llm() -> LLMProvider:
-    key = os.getenv("FIRASA_LLM_PROVIDER", "ollama").lower()
-    if key not in _PROVIDERS:
-        key = "stub"
-    if key not in _cache:
-        try:
-            _cache[key] = _PROVIDERS[key]()
-        except Exception:
-            _cache[key] = StubProvider()
-    return _cache[key]
+  

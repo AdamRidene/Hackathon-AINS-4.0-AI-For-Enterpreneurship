@@ -41,8 +41,3 @@ export default function Roadmap({ roadmap }) {
               </div>
             ))}
           </div>
-        </div>
-      ))}
-    </div>
-  );
-}

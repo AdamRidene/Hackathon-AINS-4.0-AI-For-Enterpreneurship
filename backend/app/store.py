@@ -51,5 +51,4 @@ def list_ids() -> list[str]:
 def redact(profile: ProjectProfile) -> dict:
     d = profile.model_dump(mode="json")
     if d.get("commercial", {}).get("value_proposition_narrative"):
-        d["commercial"]["value_proposition_narrative"] = "[redacted]"
-    return d
+        d["commercial"]["value

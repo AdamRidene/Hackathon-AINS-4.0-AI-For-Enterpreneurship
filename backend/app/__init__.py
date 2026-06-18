@@ -5,4 +5,4 @@ ecosystem. Three integrated modules (adaptive diagnostic, GWLC scoring,
 grounded RAG roadmap) reasoning over a single shared ProjectProfile state.
 """
 
-__version__ = "0.1.0"
+__version__ = "
