@@ -1,0 +1,625 @@
+{
+  "_meta": {
+    "description": "Firasa knowledge base — real Tunisian entrepreneurship ecosystem resources. Each record is a retrievable chunk with routing metadata enforcing the diagnostic-gap routing matrix (concept Table 3). URLs should be re-verified before production use.",
+    "version": "0.1.0",
+    "count": 32,
+    "gap_categories": [
+      "missing_legal_form",
+      "tech_hype",
+      "premature_fundraising",
+      "missing_market_validation",
+      "scalability",
+      "green",
+      "general"
+    ],
+    "bilingual": true
+  },
+  "resources": [
+    {
+      "id": "apii-01",
+      "institution": "APII",
+      "title": "Guichet unique APII — création d'entreprise",
+      "url": "https://www.tunisieindustrie.gov.tn",
+      "language": "fr",
+      "gap_categories": [
+        "missing_legal_form"
+      ],
+      "stages": [
+        3
+      ],
+      "horizon": "immediate",
+      "content": "L'Agence de Promotion de l'Industrie et de l'Innovation (APII) opère le guichet unique pour la création d'entreprise en Tunisie. Elle centralise l'enregistrement de la forme juridique (SARL, SUARL, SA), l'immatriculation au registre national des entreprises et les formalités administratives d'implantation industrielle.",
+      "title_ar": "الشباك الموحد لوكالة النهوض بالصناعة — إحداث المؤسسات",
+      "content_ar": "تدير وكالة النهوض بالصناعة والتجديد (APII) الشباك الموحد لإحداث المؤسسات في تونس: تسجيل الشكل القانوني (شركة ذات مسؤولية محدودة، شركة وحيد، شركة خفية الاسم) والترسيم بالسجل الوطني للمؤسسات وإتمام الإجراءات الإدارية للانتصاب الصناعي."
+    },
+    {
+      "id": "apii-02",
+      "institution": "APII",
+      "title": "Registre national des startups & accompagnement",
+      "url": "https://www.tunisieindustrie.gov.tn",
+      "language": "fr",
+      "gap_categories": [
+        "missing_legal_form",
+        "tech_hype"
+      ],
+      "stages": [
+        3,
+        4
+      ],
+      "horizon": "short_term",
+      "content": "L'APII héberge le registre national des startups et pilote la pipeline de labellisation. Elle propose un accompagnement à la structuration juridique et oriente les porteurs de projet vers les pépinières et centres d'affaires régionaux.",
+      "title_ar": "السجل الوطني للشركات الناشئة والمواكبة",
+      "content_ar": "تستضيف الوكالة السجل الوطني للشركات الناشئة وتدير مسار منح العلامة، وتوفر مواكبة للهيكلة القانونية وتوجّه أصحاب المشاريع نحو حاضنات ومراكز الأعمال الجهوية."
+    },
+    {
+      "id": "apii-03",
+      "institution": "APII",
+      "title": "Pépinières d'entreprises et centres d'affaires régionaux",
+      "url": "https://www.tunisieindustrie.gov.tn",
+      "language": "fr",
+      "gap_categories": [
+        "missing_legal_form",
+        "general"
+      ],
+      "stages": [
+        1,
+        2,
+        3
+      ],
+      "horizon": "short_term",
+      "content": "Réseau de pépinières d'entreprises adossées aux établissements universitaires et centres d'affaires régionaux APII offrant hébergement, mentorat et appui à la formalisation pour les projets en phase d'idéation et de structuration.",
+      "title_ar": "حاضنات المؤسسات ومراكز الأعمال الجهوية",
+      "content_ar": "شبكة حاضنات مؤسسات مرتبطة بالمؤسسات الجامعية ومراكز أعمال جهوية تابعة للوكالة توفّر الإيواء والإرشاد والدعم في التسجيل للمشاريع في طور الفكرة والهيكلة."
+    },
+    {
+      "id": "startupact-01",
+      "institution": "Startup Act",
+      "title": "Label Startup — procédures et conditions d'obtention",
+      "url": "https://www.mtc.gov.tn/fileadmin/StartupAct/Startup_Act_-_procedures_conditions_obtention_du_label.pdf",
+      "language": "fr",
+      "gap_categories": [
+        "tech_hype",
+        "missing_legal_form"
+      ],
+      "stages": [
+        3,
+        4
+      ],
+      "horizon": "short_term",
+      "content": "Le label Startup (Loi n°2018-20) est attribué par le collège de labellisation via la plateforme Smart Capital. Conditions: entreprise de moins de 8 ans, indépendance du capital, modèle d'affaires innovant et à fort potentiel de croissance. Le label confère bourse de startup, exonérations fiscales et congé pour création.",
+      "title_ar": "علامة Startup — إجراءات وشروط الحصول عليها",
+      "content_ar": "تُمنح علامة الشركة الناشئة (القانون عدد 20 لسنة 2018) من لجنة المنح عبر منصة Smart Capital. الشروط: مؤسسة أقل من 8 سنوات، استقلالية رأس المال، نموذج أعمال مبتكر وذو إمكانات نمو عالية. تمنح العلامة منحة وإعفاءات جبائية وعطلة لبعث المؤسسة."
+    },
+    {
+      "id": "startupact-02",
+      "institution": "Startup Act",
+      "title": "Loi n°2018-20 — cadre juridique des startups",
+      "url": "https://www.mtc.gov.tn/fileadmin/user_upload/Loi2018_20.pdf",
+      "language": "fr",
+      "gap_categories": [
+        "tech_hype"
+      ],
+      "stages": [
+        3,
+        4,
+        5
+      ],
+      "horizon": "medium_term",
+      "content": "La Loi n°2018-20 du 17 avril 2018 institue le cadre juridique des startups en Tunisie: définition du label, avantages fiscaux, prise en charge des cotisations sociales, protection de la propriété intellectuelle et accès facilité aux marchés publics.",
+      "title_ar": "القانون عدد 20 لسنة 2018 — الإطار القانوني للشركات الناشئة",
+      "content_ar": "يُرسي القانون عدد 20 المؤرخ في 17 أفريل 2018 الإطار القانوني للشركات الناشئة في تونس: تعريف العلامة، الامتيازات الجبائية، تحمّل المساهمات الاجتماعية، حماية الملكية الفكرية وتيسير النفاذ إلى الصفقات العمومية."
+    },
+    {
+      "id": "startupact-03",
+      "institution": "Startup Act",
+      "title": "Avantages fiscaux et propriété intellectuelle",
+      "url": "https://www.mtc.gov.tn/fileadmin/StartupAct/Startup_Act_-_procedures_conditions_obtention_du_label.pdf",
+      "language": "fr",
+      "gap_categories": [
+        "tech_hype"
+      ],
+      "stages": [
+        4,
+        5
+      ],
+      "horizon": "medium_term",
+      "content": "Les startups labellisées bénéficient d'exonération d'impôt sur les sociétés, de prise en charge des frais d'enregistrement des brevets à l'échelle nationale et internationale, et d'un accompagnement à la protection de la propriété intellectuelle — levier clé pour transformer un avantage technologique déclaré en barrière à l'entrée défendable.",
+      "title_ar": "الامتيازات الجبائية والملكية الفكرية",
+      "content_ar": "تنتفع الشركات الناشئة الحاصلة على العلامة بالإعفاء من الضريبة على الشركات وتحمّل مصاريف تسجيل البراءات وطنياً ودولياً ومواكبة لحماية الملكية الفكرية — رافعة لتحويل ميزة تقنية معلنة إلى حاجز دخول قابل للدفاع."
+    },
+    {
+      "id": "smartcapital-01",
+      "institution": "Smart Capital",
+      "title": "Startup Tunisia — plateforme nationale",
+      "url": "https://startup.gov.tn",
+      "language": "fr",
+      "gap_categories": [
+        "tech_hype",
+        "premature_fundraising",
+        "general"
+      ],
+      "stages": [
+        2,
+        3,
+        4
+      ],
+      "horizon": "short_term",
+      "content": "Smart Capital gère le programme Startup Tunisia: dépôt des demandes de label, programmes d'accompagnement, mise en relation avec investisseurs et fonds. Point d'entrée unique pour intégrer l'écosystème national d'innovation.",
+      "title_ar": "Startup Tunisia — المنصة الوطنية",
+      "content_ar": "تدير Smart Capital برنامج Startup Tunisia: إيداع مطالب العلامة وبرامج المواكبة والربط مع المستثمرين والصناديق. نقطة الدخول الموحدة للاندماج في المنظومة الوطنية للابتكار."
+    },
+    {
+      "id": "bfpme-01",
+      "institution": "BFPME",
+      "title": "BFPME — financement des PME",
+      "url": "https://www.bfpme.com.tn",
+      "language": "fr",
+      "gap_categories": [
+        "premature_fundraising"
+      ],
+      "stages": [
+        4
+      ],
+      "horizon": "medium_term",
+      "content": "La Banque de Financement des Petites et Moyennes Entreprises (BFPME) cofinance les projets de création et d'extension de PME via des crédits à moyen et long terme, en partenariat avec les banques commerciales. Elle exige un business plan documenté et un modèle de revenus viable.",
+      "title_ar": "بنك تمويل المؤسسات الصغرى والمتوسطة — تمويل المؤسسات",
+      "content_ar": "يشارك بنك تمويل المؤسسات الصغرى والمتوسطة (BFPME) في تمويل مشاريع البعث والتوسعة عبر قروض متوسطة وطويلة المدى بالشراكة مع البنوك التجارية، ويشترط مخطط أعمال موثّقاً ونموذج إيرادات قابلاً للاستمرار."
+    },
+    {
+      "id": "bfpme-02",
+      "institution": "BFPME",
+      "title": "Critères d'éligibilité et montage du dossier de crédit",
+      "url": "https://www.bfpme.com.tn",
+      "language": "fr",
+      "gap_categories": [
+        "premature_fundraising"
+      ],
+      "stages": [
+        4
+      ],
+      "horizon": "medium_term",
+      "content": "L'éligibilité au financement BFPME requiert: un investissement compris dans les seuils PME, des fonds propres minimaux, un plan d'affaires avec projections financières et au moins plusieurs mois d'unit economics. Le dossier passe par une étude de viabilité avant déblocage.",
+      "title_ar": "شروط الأهلية وتركيب ملف القرض",
+      "content_ar": "تتطلب الأهلية لتمويل البنك: استثماراً ضمن سقوف المؤسسات الصغرى والمتوسطة وأموالاً ذاتية دنيا ومخطط أعمال بإسقاطات مالية وأشهراً عدة من اقتصاديات الوحدة. يمرّ الملف عبر دراسة جدوى قبل صرف التمويل."
+    },
+    {
+      "id": "bts-01",
+      "institution": "BTS",
+      "title": "Banque Tunisienne de Solidarité — micro-crédit",
+      "url": "https://www.bts.com.tn",
+      "language": "fr",
+      "gap_categories": [
+        "premature_fundraising"
+      ],
+      "stages": [
+        1,
+        2,
+        3
+      ],
+      "horizon": "short_term",
+      "content": "La Banque Tunisienne de Solidarité (BTS) octroie des micro-crédits et un accompagnement aux petits porteurs de projets et jeunes promoteurs, notamment dans les régions, avec des conditions allégées par rapport au crédit bancaire classique.",
+      "title_ar": "البنك التونسي للتضامن — القرض الصغير",
+      "content_ar": "يمنح البنك التونسي للتضامن (BTS) قروضاً صغيرة ومواكبة لصغار أصحاب المشاريع والشبان الباعثين، خاصة في الجهات، بشروط ميسّرة مقارنة بالقرض البنكي التقليدي."
+    },
+    {
+      "id": "bts-02",
+      "institution": "BTS",
+      "title": "Accompagnement des jeunes promoteurs",
+      "url": "https://www.bts.com.tn",
+      "language": "fr",
+      "gap_categories": [
+        "premature_fundraising",
+        "general"
+      ],
+      "stages": [
+        1,
+        2
+      ],
+      "horizon": "short_term",
+      "content": "La BTS finance les micro-entreprises et l'auto-emploi via un réseau d'associations de micro-crédit, avec accompagnement à la gestion. Adaptée aux projets en amont de la bancabilité PME.",
+      "title_ar": "مواكبة الشبان الباعثين",
+      "content_ar": "يموّل البنك المؤسسات الصغرى والتشغيل الذاتي عبر شبكة جمعيات القرض الصغير مع مواكبة في التصرف، وهو ملائم للمشاريع في مرحلة سابقة لأهلية تمويل المؤسسات."
+    },
+    {
+      "id": "undp-01",
+      "institution": "UNDP Tunisia",
+      "title": "PNUD Tunisie — entrepreneuriat & emploi des jeunes",
+      "url": "https://www.undp.org/fr/tunisia",
+      "language": "fr",
+      "gap_categories": [
+        "missing_market_validation",
+        "general"
+      ],
+      "stages": [
+        1,
+        2
+      ],
+      "horizon": "short_term",
+      "content": "Le PNUD Tunisie opère des programmes d'accélération centrés sur l'emploi des jeunes et l'entrepreneuriat inclusif, incluant des dispositifs de validation de marché terrain, du mentorat et des subventions d'amorçage pour tester la demande client.",
+      "title_ar": "برنامج الأمم المتحدة الإنمائي بتونس — ريادة الأعمال وتشغيل الشباب",
+      "content_ar": "يدير برنامج الأمم المتحدة الإنمائي بتونس برامج تسريع تتمحور حول تشغيل الشباب وريادة الأعمال الدامجة، تشمل آليات للتثبت الميداني من السوق والإرشاد ومنح انطلاق لاختبار الطلب."
+    },
+    {
+      "id": "undp-02",
+      "institution": "UNDP Tunisia",
+      "title": "Programmes d'accélération et validation terrain",
+      "url": "https://www.undp.org/fr/tunisia",
+      "language": "fr",
+      "gap_categories": [
+        "missing_market_validation"
+      ],
+      "stages": [
+        2
+      ],
+      "horizon": "immediate",
+      "content": "Les programmes PNUD soutiennent la phase de validation de marché: méthodologies d'enquête utilisateur, tests de proposition de valeur et collecte de preuves de demande, directement adressés au déficit de validation client (token V_e).",
+      "title_ar": "برامج التسريع والتثبت الميداني",
+      "content_ar": "تدعم برامج البرنامج الإنمائي مرحلة التثبت من السوق: منهجيات استبيان المستخدمين واختبار عرض القيمة وجمع أدلة الطلب، استجابةً مباشرة لنقص التثبت من العملاء."
+    },
+    {
+      "id": "anpe-01",
+      "institution": "ANETI",
+      "title": "ANETI — appui à la création d'entreprise",
+      "url": "https://www.emploi.nat.tn",
+      "language": "fr",
+      "gap_categories": [
+        "general",
+        "missing_legal_form"
+      ],
+      "stages": [
+        1,
+        2,
+        3
+      ],
+      "horizon": "short_term",
+      "content": "L'Agence Nationale pour l'Emploi et le Travail Indépendant (ANETI) propose le programme d'accompagnement des créateurs d'entreprise, des formations à l'entrepreneuriat et des aides à l'auto-emploi.",
+      "title_ar": "الوكالة الوطنية للتشغيل — دعم إحداث المؤسسات",
+      "content_ar": "تقترح الوكالة الوطنية للتشغيل والعمل المستقل (ANETI) برنامج مواكبة باعثي المؤسسات ودورات تكوين في ريادة الأعمال ومساعدات للتشغيل الذاتي."
+    },
+    {
+      "id": "anpe-02",
+      "institution": "ANETI",
+      "title": "Programmes de formation entrepreneuriale CEFE/MORAINE",
+      "url": "https://www.emploi.nat.tn",
+      "language": "fr",
+      "gap_categories": [
+        "general"
+      ],
+      "stages": [
+        1
+      ],
+      "horizon": "immediate",
+      "content": "ANETI déploie des modules de formation à la création et gestion d'entreprise (approches CEFE) pour structurer l'énoncé de problème, identifier les segments clients et bâtir un premier modèle d'affaires.",
+      "title_ar": "برامج التكوين في ريادة الأعمال CEFE",
+      "content_ar": "تنشر الوكالة وحدات تكوين في بعث المؤسسات والتصرف فيها (مقاربات CEFE) لصياغة المشكلة وتحديد شرائح العملاء وبناء نموذج أعمال أولي."
+    },
+    {
+      "id": "flat6labs-01",
+      "institution": "Flat6Labs Tunis",
+      "title": "Flat6Labs — programme seed & accélération",
+      "url": "https://www.flat6labs.com/tunis",
+      "language": "fr",
+      "gap_categories": [
+        "premature_fundraising",
+        "tech_hype"
+      ],
+      "stages": [
+        2,
+        3,
+        4
+      ],
+      "horizon": "short_term",
+      "content": "Flat6Labs Tunis investit en amorçage dans les startups early-stage et opère un programme d'accélération de plusieurs mois: financement seed, mentorat, mise en relation investisseurs et préparation à la levée de fonds.",
+      "title_ar": "Flat6Labs — برنامج التمويل الأولي والتسريع",
+      "content_ar": "يستثمر Flat6Labs تونس في المراحل الأولى للشركات الناشئة ويدير برنامج تسريع يمتد أشهراً: تمويل أولي وإرشاد وربط بالمستثمرين وإعداد لجولة جمع الأموال."
+    },
+    {
+      "id": "novationcity-01",
+      "institution": "Novation City",
+      "title": "Novation City — technopôle & incubation",
+      "url": "https://www.novationcity.com.tn",
+      "language": "fr",
+      "gap_categories": [
+        "tech_hype",
+        "general"
+      ],
+      "stages": [
+        2,
+        3,
+        5
+      ],
+      "horizon": "medium_term",
+      "content": "Novation City (Sousse) est un technopôle offrant incubation, hébergement, accès à des plateaux techniques et accompagnement à l'industrialisation pour les projets innovants et deeptech.",
+      "title_ar": "Novation City — القطب التكنولوجي والحضانة",
+      "content_ar": "Novation City بسوسة قطب تكنولوجي يوفر الحضانة والإيواء والنفاذ إلى منصات تقنية ومواكبة للتصنيع للمشاريع المبتكرة والتقنيات العميقة."
+    },
+    {
+      "id": "iptic-01",
+      "institution": "Elgazala / IPTIC",
+      "title": "Pôle El Ghazala des technologies de la communication",
+      "url": "https://www.elgazalacom.nat.tn",
+      "language": "fr",
+      "gap_categories": [
+        "tech_hype",
+        "general"
+      ],
+      "stages": [
+        2,
+        3
+      ],
+      "horizon": "medium_term",
+      "content": "Le pôle technologique El Ghazala incube les startups TIC, offre hébergement et accompagnement technique, et héberge une pépinière pour les projets numériques en structuration.",
+      "title_ar": "قطب الغزالة لتكنولوجيات الاتصال",
+      "content_ar": "يحتضن قطب الغزالة التكنولوجي الشركات الناشئة في تكنولوجيات المعلومات والاتصال ويوفر الإيواء والمواكبة التقنية وحاضنة للمشاريع الرقمية في طور الهيكلة."
+    },
+    {
+      "id": "afd-01",
+      "institution": "AFD",
+      "title": "AFD — financements pour le secteur privé en Tunisie",
+      "url": "https://www.afd.fr/fr/page-region-pays/tunisie",
+      "language": "fr",
+      "gap_categories": [
+        "premature_fundraising",
+        "green"
+      ],
+      "stages": [
+        4,
+        5,
+        6
+      ],
+      "horizon": "medium_term",
+      "content": "L'Agence Française de Développement finance le secteur privé tunisien via des lignes de crédit aux banques locales, des garanties et des programmes dédiés à la transition écologique et à la croissance des PME.",
+      "title_ar": "الوكالة الفرنسية للتنمية — تمويلات القطاع الخاص بتونس",
+      "content_ar": "تموّل الوكالة الفرنسية للتنمية القطاع الخاص التونسي عبر خطوط قروض للبنوك المحلية وضمانات وبرامج مخصصة للانتقال البيئي ونمو المؤسسات الصغرى والمتوسطة."
+    },
+    {
+      "id": "eu-01",
+      "institution": "Union Européenne",
+      "title": "Programmes UE — Innov'i & EU4Innovation",
+      "url": "https://www.eeas.europa.eu/delegations/tunisia",
+      "language": "fr",
+      "gap_categories": [
+        "premature_fundraising",
+        "tech_hype"
+      ],
+      "stages": [
+        3,
+        4,
+        5
+      ],
+      "horizon": "medium_term",
+      "content": "Les programmes de l'Union Européenne (dont Innov'i — EU4Innovation) renforcent l'écosystème d'innovation tunisien: subventions, appui aux structures d'accompagnement et financement de l'innovation.",
+      "title_ar": "برامج الاتحاد الأوروبي — Innov'i وEU4Innovation",
+      "content_ar": "تعزز برامج الاتحاد الأوروبي (ومنها Innov'i — EU4Innovation) منظومة الابتكار التونسية عبر المنح ودعم هياكل المواكبة وتمويل الابتكار."
+    },
+    {
+      "id": "bh-01",
+      "institution": "BH Bank / banques commerciales",
+      "title": "Produits de financement bancaire PME",
+      "url": "https://www.bhbank.tn",
+      "language": "fr",
+      "gap_categories": [
+        "premature_fundraising"
+      ],
+      "stages": [
+        4,
+        5
+      ],
+      "horizon": "medium_term",
+      "content": "Les banques commerciales tunisiennes proposent crédits d'investissement, leasing et lignes de trésorerie pour les PME disposant d'un modèle de revenus prouvé et de garanties. À mobiliser une fois l'unit economics consolidé.",
+      "title_ar": "منتجات التمويل البنكي للمؤسسات الصغرى والمتوسطة",
+      "content_ar": "تقترح البنوك التجارية التونسية قروض استثمار وإيجاراً مالياً وخطوط خزينة للمؤسسات ذات نموذج إيرادات مثبت وضمانات، تُعبّأ بعد ترسيخ اقتصاديات الوحدة."
+    },
+    {
+      "id": "sotugar-01",
+      "institution": "SOTUGAR",
+      "title": "SOTUGAR — garantie de financement PME",
+      "url": "https://www.sotugar.com.tn",
+      "language": "fr",
+      "gap_categories": [
+        "premature_fundraising"
+      ],
+      "stages": [
+        4
+      ],
+      "horizon": "medium_term",
+      "content": "La Société Tunisienne de Garantie (SOTUGAR) garantit les crédits accordés aux PME et startups, réduisant le risque bancaire et facilitant l'accès au financement pour les projets viables mais sous-collatéralisés.",
+      "title_ar": "SOTUGAR — ضمان تمويل المؤسسات",
+      "content_ar": "تضمن الشركة التونسية للضمان (SOTUGAR) القروض الممنوحة للمؤسسات والشركات الناشئة، ما يقلّص المخاطرة البنكية وييسّر النفاذ إلى التمويل للمشاريع القابلة للاستمرار لكن ضعيفة الضمانات."
+    },
+    {
+      "id": "cdc-01",
+      "institution": "Caisse des Dépôts (CDC)",
+      "title": "CDC — fonds d'amorçage et capital-risque",
+      "url": "https://www.cdc.tn",
+      "language": "fr",
+      "gap_categories": [
+        "premature_fundraising"
+      ],
+      "stages": [
+        4,
+        5,
+        6
+      ],
+      "horizon": "medium_term",
+      "content": "La Caisse des Dépôts et Consignations cofinance des fonds d'amorçage et de capital-risque tunisiens, irriguant les startups en phase de levée via des véhicules d'investissement gérés par des sociétés de gestion agréées.",
+      "title_ar": "صندوق الودائع والأمانات — صناديق الانطلاق ورأس المال المخاطر",
+      "content_ar": "يشارك صندوق الودائع والأمانات في تمويل صناديق انطلاق ورأس مال مخاطر تونسية، ما يغذّي الشركات الناشئة في طور جمع الأموال عبر أدوات استثمار تديرها شركات تصرّف معتمدة."
+    },
+    {
+      "id": "anme-01",
+      "institution": "ANME",
+      "title": "ANME — maîtrise de l'énergie & subventions vertes",
+      "url": "https://www.anme.tn",
+      "language": "fr",
+      "gap_categories": [
+        "green"
+      ],
+      "stages": [
+        3,
+        4,
+        5,
+        6
+      ],
+      "horizon": "medium_term",
+      "content": "L'Agence Nationale pour la Maîtrise de l'Énergie (ANME) octroie des primes et avantages au titre du Fonds de Transition Énergétique pour les projets d'efficacité énergétique et d'énergies renouvelables.",
+      "title_ar": "الوكالة الوطنية للتحكم في الطاقة — المنح البيئية",
+      "content_ar": "تمنح الوكالة الوطنية للتحكم في الطاقة (ANME) امتيازات في إطار صندوق الانتقال الطاقي لمشاريع النجاعة الطاقية والطاقات المتجددة."
+    },
+    {
+      "id": "apia-01",
+      "institution": "APIA",
+      "title": "APIA — promotion des investissements agricoles",
+      "url": "https://www.apia.com.tn",
+      "language": "fr",
+      "gap_categories": [
+        "green",
+        "general"
+      ],
+      "stages": [
+        3,
+        4,
+        5
+      ],
+      "horizon": "medium_term",
+      "content": "L'Agence de Promotion des Investissements Agricoles (APIA) accompagne et finance les projets agricoles et agro-alimentaires: primes d'investissement, études et appui aux jeunes agriculteurs — pertinent pour les ventures agri-food.",
+      "title_ar": "APIA — النهوض بالاستثمارات الفلاحية",
+      "content_ar": "تواكب وكالة النهوض بالاستثمارات الفلاحية (APIA) وتموّل المشاريع الفلاحية والصناعات الغذائية: منح استثمار ودراسات ودعم للشبان الفلاحين — وثيق الصلة بالمشاريع الفلاحية الغذائية."
+    },
+    {
+      "id": "sdg-01",
+      "institution": "ONU / SDG",
+      "title": "Agenda 2030 — Objectifs de Développement Durable",
+      "url": "https://sdgs.un.org/2030agenda",
+      "language": "fr",
+      "gap_categories": [
+        "green"
+      ],
+      "stages": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "horizon": "medium_term",
+      "content": "Le cadre des 17 Objectifs de Développement Durable (Agenda 2030) sert de référentiel pour aligner l'impact d'un projet. Documenter les ODD ciblés renforce l'éligibilité aux financements à impact et le Score Green.",
+      "title_ar": "أجندة 2030 — أهداف التنمية المستدامة",
+      "content_ar": "يشكّل إطار أهداف التنمية المستدامة السبعة عشر (أجندة 2030) مرجعاً لمواءمة أثر المشروع. توثيق الأهداف المستهدفة يعزّز الأهلية للتمويلات ذات الأثر ونتيجة البُعد البيئي."
+    },
+    {
+      "id": "worldbank-esg-01",
+      "institution": "World Bank",
+      "title": "Cadre environnemental et social de la Banque Mondiale",
+      "url": "https://www.worldbank.org/en/projects-operations/environmental-and-social-framework",
+      "language": "fr",
+      "gap_categories": [
+        "green"
+      ],
+      "stages": [
+        4,
+        5,
+        6
+      ],
+      "horizon": "medium_term",
+      "content": "Le cadre environnemental et social (ESF) de la Banque Mondiale définit les standards de gestion des risques environnementaux et sociaux, référentiel utile pour structurer la viabilité écologique d'un projet en croissance.",
+      "title_ar": "الإطار البيئي والاجتماعي للبنك الدولي",
+      "content_ar": "يحدد الإطار البيئي والاجتماعي للبنك الدولي معايير التصرف في المخاطر البيئية والاجتماعية، وهو مرجع مفيد لهيكلة الاستدامة البيئية لمشروع في طور النمو."
+    },
+    {
+      "id": "ipd-01",
+      "institution": "INNORPI",
+      "title": "INNORPI — propriété industrielle & marques",
+      "url": "https://www.innorpi.tn",
+      "language": "fr",
+      "gap_categories": [
+        "tech_hype"
+      ],
+      "stages": [
+        3,
+        4
+      ],
+      "horizon": "short_term",
+      "content": "L'Institut National de la Normalisation et de la Propriété Industrielle (INNORPI) gère le dépôt des marques, brevets et dessins en Tunisie — étape concrète pour transformer une revendication d'innovation en titre de propriété intellectuelle opposable.",
+      "title_ar": "INNORPI — الملكية الصناعية والعلامات",
+      "content_ar": "يدير المعهد الوطني للمواصفات والملكية الصناعية (INNORPI) إيداع العلامات والبراءات والرسوم في تونس — خطوة ملموسة لتحويل ادعاء الابتكار إلى سند ملكية فكرية قابل للاحتجاج."
+    },
+    {
+      "id": "rne-01",
+      "institution": "RNE",
+      "title": "Registre National des Entreprises",
+      "url": "https://www.registre-entreprises.tn",
+      "language": "fr",
+      "gap_categories": [
+        "missing_legal_form"
+      ],
+      "stages": [
+        3
+      ],
+      "horizon": "immediate",
+      "content": "Le Registre National des Entreprises (RNE) centralise l'immatriculation légale des sociétés. L'inscription au RNE matérialise la forme juridique et constitue la preuve formelle franchissant la porte de Structuration.",
+      "title_ar": "السجل الوطني للمؤسسات",
+      "content_ar": "يركّز السجل الوطني للمؤسسات (RNE) الترسيم القانوني للشركات. الترسيم بالسجل يجسّد الشكل القانوني ويشكّل الدليل الرسمي على تجاوز بوابة الهيكلة."
+    },
+    {
+      "id": "ccis-01",
+      "institution": "CCI Tunisie",
+      "title": "Chambres de Commerce et d'Industrie",
+      "url": "https://www.ccitunis.org.tn",
+      "language": "fr",
+      "gap_categories": [
+        "general",
+        "missing_market_validation"
+      ],
+      "stages": [
+        2,
+        3,
+        5
+      ],
+      "horizon": "short_term",
+      "content": "Les Chambres de Commerce et d'Industrie offrent mise en réseau, études sectorielles, missions commerciales et appui à l'export — utiles pour la validation de marché et la planification du go-to-market.",
+      "title_ar": "غرف التجارة والصناعة",
+      "content_ar": "توفّر غرف التجارة والصناعة الربط الشبكي والدراسات القطاعية والبعثات التجارية ودعم التصدير — مفيدة للتثبت من السوق وتخطيط النفاذ إلى السوق."
+    },
+    {
+      "id": "mentor-01",
+      "institution": "Réseau Entreprendre / mentors",
+      "title": "Réseaux de mentorat entrepreneurial",
+      "url": "https://www.startup.gov.tn",
+      "language": "fr",
+      "gap_categories": [
+        "general"
+      ],
+      "stages": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "horizon": "short_term",
+      "content": "Des réseaux de mentors et associations professionnelles (via Startup Tunisia et incubateurs) accompagnent les fondateurs sur la durée: cadrage stratégique, accès au réseau et préparation aux étapes clés du parcours.",
+      "title_ar": "شبكات الإرشاد في ريادة الأعمال",
+      "content_ar": "ترافق شبكات المرشدين والجمعيات المهنية (عبر Startup Tunisia والحاضنات) الباعثين على المدى الطويل: التأطير الاستراتيجي والنفاذ إلى الشبكة والإعداد للمراحل المفصلية للمسار."
+    },
+    {
+      "id": "tunisanet-01",
+      "institution": "ANETI / Tunisie Compétences",
+      "title": "Dispositifs d'auto-emploi régionaux",
+      "url": "https://www.emploi.nat.tn",
+      "language": "fr",
+      "gap_categories": [
+        "general",
+        "premature_fundraising"
+      ],
+      "stages": [
+        1,
+        2
+      ],
+      "horizon": "short_term",
+      "content": "Des dispositifs régionaux d'appui à l'auto-emploi et aux micro-projets complètent l'offre BTS/ANETI dans les gouvernorats, avec accompagnement de proximité pour les porteurs en phase d'amorçage.",
+      "title_ar": "آليات التشغيل الذاتي الجهوية",
+      "content_ar": "تكمّل آليات جهوية لدعم التشغيل الذاتي والمشاريع الصغرى عرض BTS/ANETI في الولايات، بمواكبة قُربية للباعثين في طور الانطلاق."
+    }
+  ]
+}
