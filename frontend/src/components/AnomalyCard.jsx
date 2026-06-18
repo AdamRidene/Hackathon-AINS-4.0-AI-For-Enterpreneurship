@@ -61,4 +61,10 @@ export default function AnomalyCard({ anomalies }) {
                   ))}
                 </div>
               )}
-            
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

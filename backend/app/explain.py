@@ -59,4 +59,6 @@ def explain_all_scores(scores: CompositeScores) -> dict:
         "market": explain_score(scores.market),
         "commercial": explain_score(scores.commercial),
         "innovation": explain_score(scores.innovation),
-        "scalability": explain_score(scores.scala
+        "scalability": explain_score(scores.scalability),
+        "green": explain_score(scores.green),
+    }

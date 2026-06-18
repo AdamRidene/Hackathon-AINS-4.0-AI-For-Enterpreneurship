@@ -32,4 +32,13 @@ GATES = {
     "human_dependency_threshold": 7,  # Eq. 9
 }
 
-# Categorical -> numeric
+# Categorical -> numeric mappings (Eqs. 3, 5, 6, 10).
+MVP_MAP = {"Concept": 0.25, "Mockup": 0.50, "Prototype": 0.75, "Production": 1.00}
+GEO_MAP = {"Reproduction": 10, "Local-Opt": 40, "Tunisian First-Mover": 80, "Global": 100}
+IP_MAP = {"None": 0, "Copyright": 40, "Patent Pending": 70, "Registered": 100}
+FOOTPRINT_MAP = {"Digital Native": 90, "Paper Use": 40, "Compute Intensive": 50, "Agri Waste": 70}
+
+TAM_BASELINE = 10_000_000.0  # 1e7 TND log-normalisation baseline
+OPEX_BASELINE = 20_000.0     # monthly-overhead baseline for opex decoupling:
+                             # C_month >= 20k TND/month => decoupling score 0
+                             # (labour/asset-heavy), C_month ~ 0 => 100 (scales).

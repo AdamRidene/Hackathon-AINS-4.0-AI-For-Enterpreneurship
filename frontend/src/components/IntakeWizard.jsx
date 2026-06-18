@@ -122,4 +122,26 @@ export default function IntakeWizard({ pid, lang = "fr", firstQuestion, firstPro
             />
           )}
 
-          {question.qtype === "t
+          {question.qtype === "text" && (
+            <input value={value} onChange={(e) => setValue(e.target.value)} />
+          )}
+
+          {(question.qtype === "tags" || question.qtype === "sdg") && (
+            <input
+              value={value}
+              placeholder={t("Séparez par des virgules", "افصل بفواصل")}
+              onChange={(e) => setValue(e.target.value)}
+            />
+          )}
+        </div>
+      )}
+
+      <div className="wizard-actions">
+        <span className="muted">{pct}% {t("collecté", "تم جمعه")}</span>
+        <button className="primary" onClick={submit} disabled={busy}>
+          {busy ? <span className="spinner" /> : t("Valider et continuer", "تأكيد ومتابعة")}
+        </button>
+      </div>
+    </div>
+  );
+}

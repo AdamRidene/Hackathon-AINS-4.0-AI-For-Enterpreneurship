@@ -29,4 +29,8 @@ export default function GateLadder({ diagnostic }) {
             <div className="greq">{g.requirement_fr}</div>
             <div className="gev">{g.evidence}</div>
           </div>
-        </di
+        </div>
+      ))}
+    </div>
+  );
+}

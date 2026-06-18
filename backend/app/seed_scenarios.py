@@ -95,4 +95,46 @@ def services_underclaimer() -> ProjectProfile:
         green=GreenMatrices(footprint_category=FootprintCategory.DIGITAL_NATIVE,
                             circular_recycling=False, sdg_targets=[4, 8]),
         legal_form=LegalForm.SUARL, has_revenue_model=False, months_unit_economics=1,
-        repeatable_sales=False
+        repeatable_sales=False, intake_complete=True,
+        answered_questions=["name", "sector", "declared_stage", "problem_statement",
+                            "user_segment", "tam", "competitors", "validation"],
+    )
+
+
+def greentech_prelabel() -> ProjectProfile:
+    return ProjectProfile(
+        name="EcoLoop", sector=Sector.GREENTECH,
+        self_assessment=SelfAssessment(declared_stage=MaturityStage.LAUNCH_PLANNING,
+                                       declared_revenue=True,
+                                       declared_legal_form=LegalForm.STARTUP_ACT_PRELABEL),
+        has_problem_statement=True, user_segment_identified=True,
+        market=MarketMetrics(estimated_tam_tnd=2_500_000, competitor_headcount=4,
+                             customer_validation_evidence=True),
+        commercial=CommercialOffer(
+            value_proposition_narrative=(
+                "Plateforme de suivi des déchets industriels pour réduire les pertes "
+                "et piloter la conformité environnementale."),
+            mvp_stage=MVPStage.PRODUCTION, pricing_framework=PricingFramework.B2B_SAAS,
+            pricing_coherence=78),
+        innovation=InnovationScope(geo_novelty=GeoNovelty.LOCAL_OPT,
+                                   tech_stack=["fastapi", "react", "iot"],
+                                   ip_status=IPStatus.REGISTERED),
+        scalability=ScalabilityIndex(human_dependency=4, equipment_cost=20_000,
+                                     monthly_overhead=6_000, cross_border_zones=["DZ", "MA"]),
+        green=GreenMatrices(footprint_category=FootprintCategory.AGRI_WASTE,
+                            circular_recycling=True,
+                            sdg_targets=[7, 9, 11, 12, 13, 15]),
+        legal_form=LegalForm.STARTUP_ACT_PRELABEL, has_revenue_model=True,
+        months_unit_economics=6, repeatable_sales=False, intake_complete=True,
+        answered_questions=["name", "sector", "declared_stage", "declared_legal_form",
+                            "problem_statement", "user_segment", "tam", "competitors",
+                            "validation", "revenue", "unit_economics", "mvp"],
+    )
+
+
+SCENARIOS = {
+    "agritech_overclaimer": agritech_overclaimer,
+    "saas_validated": saas_validated,
+    "services_underclaimer": services_underclaimer,
+    "greentech_prelabel": greentech_prelabel,
+}

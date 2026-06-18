@@ -37,4 +37,8 @@ export default function ScoreDeltas({ scoreDeltas }) {
               </div>
             </div>
           );
-    
+        })}
+      </div>
+    </div>
+  );
+}

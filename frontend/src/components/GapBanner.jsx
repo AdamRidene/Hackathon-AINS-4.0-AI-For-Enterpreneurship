@@ -53,4 +53,9 @@ export default function GapBanner({ gap }) {
       {gap.diverging_dimensions?.length > 0 && (
         <div className="gap-msg muted">
           Dimensions divergentes :{" "}
-          {gap.diverging_dimensions.map((d) => d.name)
+          {gap.diverging_dimensions.map((d) => d.name).join(", ")}
+        </div>
+      )}
+    </div>
+  );
+}

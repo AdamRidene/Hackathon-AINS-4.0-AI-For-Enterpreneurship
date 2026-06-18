@@ -83,4 +83,9 @@ export default function ScorePanel({ scores }) {
       </div>
       <div className="scoregrid">
         {DIMS.map(([key, label, code]) => (
-          <ScoreRow key={key} res={
+          <ScoreRow key={key} res={scores[key]} label={label} code={code} />
+        ))}
+      </div>
+    </div>
+  );
+}

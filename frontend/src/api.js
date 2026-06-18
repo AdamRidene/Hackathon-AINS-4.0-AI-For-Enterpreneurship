@@ -43,4 +43,8 @@ export const api = {
   audit: (pid) => req(`/api/projects/${pid}/audit`, { method: "POST" }),
 
   assistant: (pid, question) =>
-    req(`/
+    req(`/api/projects/${pid}/assistant`, {
+      method: "POST",
+      body: JSON.stringify({ question }),
+    }),
+};

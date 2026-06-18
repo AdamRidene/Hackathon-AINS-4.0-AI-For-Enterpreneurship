@@ -164,4 +164,11 @@ class ProjectProfile(BaseModel):
     repeatable_sales: Optional[bool] = None
 
     # Bookkeeping
-    answered_qu
+    answered_questions: list[str] = Field(default_factory=list)
+    intake_complete: bool = False
+    # Score vector (M,C,I,S,G) of the last persisted audit, for score-evolution
+    # deltas across successive audits of the same project.
+    last_score_vector: Optional[list[float]] = None
+
+    def touch(self) -> None:
+        self.updated_at = datetime.now(timezone.utc)

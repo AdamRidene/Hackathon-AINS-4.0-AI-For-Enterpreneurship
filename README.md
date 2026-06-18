@@ -74,4 +74,4 @@ firasa/
   SCORING_METHODOLOGY.md   formulas, weights, gates, and the documented S_M discrepancy
 ```
 
-See `ARCHITECTURE.md` for the design rationale an
+See `ARCHITECTURE.md` for the design rationale and `SCORING_METHODOLOGY.md` for the exact formulas and weight justification.

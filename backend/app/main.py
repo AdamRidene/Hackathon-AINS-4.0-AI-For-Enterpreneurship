@@ -127,4 +127,13 @@ def audit(pid: str) -> dict:
 
 
 @app.post("/api/projects/{pid}/assistant")
-def assistant(pid: str
+def assistant(pid: str, body: AssistantBody) -> dict:
+    profile = _require(pid)
+    return grounded_assistant_reply(profile, body.question)
+
+
+# Convenience: audit an ad-hoc profile without the intake flow (for demos/tests).
+@app.post("/api/audit")
+def audit_adhoc(profile: ProjectProfile) -> dict:
+    store.save(profile)
+    return run_audit(profile).to_dict()

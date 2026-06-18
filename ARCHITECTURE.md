@@ -44,4 +44,4 @@ The roadmap's credibility rests on never citing an irrelevant or invented progra
 
 ## Frontend
 
-The React app mirrors the backend's priority ordering. The audit view leads with the perception–reality gap banner (the differentiator), then the evidence ladder of six gates, then the five expandable score traces, then the grounded roadmap, then the grounded assistant. Components are presentational and stateless beyond local UI state; all domain logic lives in the backend, which keeps the single source of truth on the s
+The React app mirrors the backend's priority ordering. The audit view leads with the perception–reality gap banner (the differentiator), then the evidence ladder of six gates, then the five expandable score traces, then the grounded roadmap, then the grounded assistant. Components are presentational and stateless beyond local UI state; all domain logic lives in the backend, which keeps the single source of truth on the server side where the audit can be reproduced.

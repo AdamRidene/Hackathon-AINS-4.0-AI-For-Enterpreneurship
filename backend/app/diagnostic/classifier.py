@@ -199,4 +199,10 @@ def classify(p: ProjectProfile) -> DiagnosticResult:
 
     return DiagnosticResult(
         classified_stage=classified,
-        classified_stage_name
+        classified_stage_name=STAGE_NAMES[classified],
+        gates=gates,
+        next_blocking_gate=next_blocking,
+        confidence=confidence,
+        rationale_fr=rationale,
+        blockers=_rank_blockers(p, gates),
+    )

@@ -101,4 +101,24 @@ def run_audit(profile: ProjectProfile) -> AuditResult:
     )
 
 
-def grounded_assistant_reply(profile: ProjectProfile, question: str)
+def grounded_assistant_reply(profile: ProjectProfile, question: str) -> dict:
+    """Secondary conversational layer — grounded ONLY in structured outputs.
+
+    The assistant never answers from general knowledge: its context is the
+    audit (diagnostic, scores, roadmap). This satisfies the 'assistant is a
+    layer, not the product' requirement.
+    """
+    audit = run_audit(profile)
+    ctx = (
+        f"Stade objectif: {audit.diagnostic.classified_stage_name}. "
+        f"Écart perception-réalité: {audit.gap.message_fr}. "
+        f"Scores (M,C,I,S,G): {audit.scores.vector()}. "
+        "Feuille de route: "
+        + " | ".join(f"{m.order}. {m.title} ({m.horizon_fr}) — "
+                     f"{', '.join(s['institution'] for s in m.sources)}"
+                     for m in audit.roadmap[:5])
+    )
+    reply = get_llm().chat(question, ctx)
+    return {"reply": reply, "grounding": ctx, "sources_used": [
+        s for m in audit.roadmap[:5] for s in m.sources
+    ]}

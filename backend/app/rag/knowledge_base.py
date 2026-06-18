@@ -94,4 +94,41 @@ class KnowledgeBase:
             toks = _tokenise(bilingual)
             docs.append((r, toks))
             for t in set(toks):
-     
+                df[t] += 1
+        n = len(docs)
+        self._idf = {t: math.log((n + 1) / (c + 1)) + 1 for t, c in df.items()}
+        for r, toks in docs:
+            vec = Counter()
+            tf = Counter(toks)
+            for t, f in tf.items():
+                vec[t] = f * self._idf.get(t, 1.0)
+            self.chunks.append(Chunk(
+                id=r["id"], institution=r["institution"], title=r["title"],
+                url=r["url"], language=r["language"],
+                gap_categories=r["gap_categories"], stages=r["stages"],
+                horizon=r["horizon"], content=r["content"], vector=vec,
+                title_ar=r.get("title_ar", ""), content_ar=r.get("content_ar", "")))
+
+    def __len__(self) -> int:
+        return len(self.chunks)
+
+    def query_vector(self, text: str) -> Counter:
+        vec = Counter()
+        for t, f in Counter(_tokenise(text)).items():
+            vec[t] = f * self._idf.get(t, 1.0)
+        return vec
+
+    @staticmethod
+    def cosine(a: Counter, b: Counter) -> float:
+        if not a or not b:
+            return 0.0
+        common = set(a) & set(b)
+        dot = sum(a[t] * b[t] for t in common)
+        na = math.sqrt(sum(v * v for v in a.values()))
+        nb = math.sqrt(sum(v * v for v in b.values()))
+        return dot / (na * nb) if na and nb else 0.0
+
+
+@lru_cache(maxsize=1)
+def get_kb() -> KnowledgeBase:
+    return KnowledgeBase()

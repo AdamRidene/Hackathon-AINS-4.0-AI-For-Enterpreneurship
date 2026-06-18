@@ -109,4 +109,35 @@ def eval_rag() -> dict:
 
 def eval_scoring_consistency() -> dict:
     """Adversarial gate checks: confident claims with no evidence must be capped."""
-    from .scoring.gwlc import score_all
+    from .scoring.gwlc import score_all
+    from .schema import ProjectProfile, MarketMetrics, ScalabilityIndex
+    cases = []
+    # Huge TAM but no validation -> market capped at 30.
+    p1 = ProjectProfile(market=MarketMetrics(estimated_tam_tnd=9_000_000,
+                        competitor_headcount=0, customer_validation_evidence=False))
+    s1 = score_all(p1, pcoh=90)
+    cases.append({"case": "huge_TAM_no_validation", "market_final": s1.market.final_score,
+                  "expected_cap": 30, "passes": s1.market.final_score <= 30})
+    # Strong base scalability but Dman=10 -> 50% penalty.
+    p2 = ProjectProfile(scalability=ScalabilityIndex(human_dependency=10,
+                        equipment_cost=90_000, monthly_overhead=1_000,
+                        cross_border_zones=["a", "b", "c"]))
+    s2 = score_all(p2)
+    cases.append({"case": "high_base_high_dependency", "scal_base": round(s2.scalability.base_score, 1),
+                  "scal_final": round(s2.scalability.final_score, 1),
+                  "passes": s2.scalability.gate_triggered and
+                            abs(s2.scalability.final_score - 0.5 * s2.scalability.base_score) < 0.1})
+    return {"cases": cases, "passes": all(c["passes"] for c in cases)}
+
+
+def main() -> None:
+    report = {
+        "diagnostic": eval_diagnostic(),
+        "rag_retrieval": eval_rag(),
+        "scoring_consistency": eval_scoring_consistency(),
+    }
+    print(json.dumps(report, indent=2, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

@@ -76,4 +76,52 @@ def test_scalability_three_subdims_and_gate():
     assert len(s.scalability.contributions) == 3
     assert {c.criterion for c in s.scalability.contributions} == {
         "cost_decoupling", "geo_reach", "deployment"}
-    assert round(s.scalabi
+    assert round(s.scalability.base_score, 1) == 26.0
+    assert s.scalability.gate_triggered is True
+    assert round(s.scalability.final_score, 1) == 13.0
+
+
+def test_green_matches_note():
+    s = score_all(_agritech(), pcoh=72)
+    assert round(s.green.final_score, 1) == 69.8
+
+
+def test_market_three_subdims_and_formula():
+    """S_M now carries a 3rd sub-dimension (revenue-model viability) alongside
+    TAM and competition, rebalanced to weights 0.40/0.30/0.30. Agri-tech does
+    not declare a revenue model, so revenue_viability raw = 0. Base =
+    0.40*94.3 + 0.30*70 + 0.30*0 = 58.7, with the validation gate not triggered
+    (V_e = 1)."""
+    s = score_all(_agritech(), pcoh=72)
+    assert len(s.market.contributions) == 3
+    assert {c.criterion for c in s.market.contributions} == {
+        "tam", "competition", "revenue_viability"}
+    tam = min(math.log(4e6) / math.log(1e7), 1) * 100
+    expected = 0.40 * tam + 0.30 * max(0, 100 - 5 * 6) + 0.30 * 0
+    assert round(s.market.final_score, 1) == round(expected, 1) == 58.7
+    assert s.market.gate_triggered is False  # V_e = 1 passes the gate
+
+
+def test_market_revenue_viability_lifts_score():
+    """Declaring a revenue model raises the 3rd sub-dimension from 0 to 100."""
+    p = _agritech()
+    p.has_revenue_model = True
+    s = score_all(p, pcoh=72)
+    rev = next(c for c in s.market.contributions if c.criterion == "revenue_viability")
+    assert rev.raw == 100.0
+    assert round(s.market.final_score, 1) == 88.7  # 58.7 + 0.30*100
+
+
+def test_market_gate_caps_without_validation():
+    p = _agritech()
+    p.market.customer_validation_evidence = False
+    s = score_all(p, pcoh=72)
+    assert s.market.gate_triggered is True
+    assert s.market.final_score == 30.0  # hard cap regardless of large TAM
+
+
+def test_engine_never_crashes_on_empty_profile():
+    s = score_all(ProjectProfile(), pcoh=None)
+    for r in (s.market, s.commercial, s.innovation, s.scalability, s.green):
+        assert 0.0 <= r.final_score <= 100.0
+        assert r.missing_inputs  # gaps surfaced, not hidden
