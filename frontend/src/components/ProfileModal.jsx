@@ -91,9 +91,11 @@ const PLAN_LIMITS = {
   pro: 5,
 };
 
-export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout, plan, onUpgrade, history, lang, onResume }) {
+export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout, plan, onUpgrade, history, lang, onResume, api }) {
   const [activeTab, setActiveTab] = useState("profile"); // profile | pricing
   const [isRegister, setIsRegister] = useState(false);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState(null);
   
   // Auth Form State
   const [email, setEmail] = useState("");
@@ -114,18 +116,24 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
   const ar = lang === "ar";
   const limit = PLAN_LIMITS[plan] || 1;
 
-  function handleSubmitAuth(e) {
+  async function handleSubmitAuth(e) {
     e.preventDefault();
     if (!email.trim() || !password.trim()) return;
-    
-    // Simulate login / register
-    const displayName = isRegister ? name.trim() || email.split("@")[0] : email.split("@")[0];
-    onLogin({ email: email.trim(), name: displayName });
-    
-    // Reset fields
-    setEmail("");
-    setPassword("");
-    setName("");
+    setAuthBusy(true);
+    setAuthError(null);
+    try {
+      const nextUser = isRegister
+        ? await api.register({ email: email.trim(), password, name: name.trim() })
+        : await api.login({ email: email.trim(), password });
+      onLogin(nextUser);
+      setEmail("");
+      setPassword("");
+      setName("");
+    } catch (err) {
+      setAuthError(err.message);
+    } finally {
+      setAuthBusy(false);
+    }
   }
 
   function handleStartCheckout(planName) {
@@ -140,12 +148,14 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
     e.preventDefault();
     setCheckoutBusy(true);
     setTimeout(() => {
-      setCheckoutBusy(false);
-      setCheckoutSuccess(true);
-      setTimeout(() => {
-        onUpgrade(checkoutPlan);
-        setCheckoutPlan(null);
-      }, 1500);
+      api.updatePlan(checkoutPlan)
+        .then((nextUser) => {
+          setCheckoutSuccess(true);
+          onUpgrade(nextUser);
+          setTimeout(() => setCheckoutPlan(null), 1500);
+        })
+        .catch((err) => setAuthError(err.message))
+        .finally(() => setCheckoutBusy(false));
     }, 1200);
   }
 
@@ -230,6 +240,7 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                   </h3>
                   
                   <form className="auth-form" onSubmit={handleSubmitAuth}>
+                    {authError && <div className="error-banner">{authError}</div>}
                     {isRegister && (
                       <div className="form-group">
                         <label>{t.name}</label>
@@ -262,8 +273,8 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                         required 
                       />
                     </div>
-                    <button type="submit" className="primary" style={{ marginTop: 8 }}>
-                      {isRegister ? t.submitRegister : t.submitLogin}
+                    <button type="submit" className="primary" style={{ marginTop: 8 }} disabled={authBusy}>
+                      {authBusy ? t.loadingPay : (isRegister ? t.submitRegister : t.submitLogin)}
                     </button>
                   </form>
 

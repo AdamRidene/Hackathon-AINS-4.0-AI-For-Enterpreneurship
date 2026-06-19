@@ -6,6 +6,7 @@ import Processing from "./components/Processing.jsx";
 import Results    from "./components/Results.jsx";
 import History    from "./components/History.jsx";
 import ProfileModal from "./components/ProfileModal.jsx";
+import Topbar from "./components/Topbar.jsx";
 
 export default function App() {
   /* ── Global state ── */
@@ -30,21 +31,42 @@ export default function App() {
 
   const [theme, setTheme] = useState(() => localStorage.getItem("firasa_theme") || "dark");
 
-  const [user, setUser] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("firasa_user")); }
-    catch { return null; }
-  });
-  const [plan, setPlan] = useState(() => localStorage.getItem("firasa_plan") || "free");
+  const [user, setUser] = useState({ name: "Entrepreneur", plan: "pro" });
+  const [plan, setPlan] = useState("pro");
   const [showProfileModal, setShowProfileModal] = useState(false);
 
-  useEffect(() => {
-    if (user) localStorage.setItem("firasa_user", JSON.stringify(user));
-    else localStorage.removeItem("firasa_user");
-  }, [user]);
-
-  useEffect(() => {
-    localStorage.setItem("firasa_plan", plan);
-  }, [plan]);
+  async function autoLogin() {
+    const mockCredentials = {
+      email: "mock.developer@firasa.tn",
+      password: "password123",
+      name: "Entrepreneur",
+    };
+    try {
+      const res = await api.login(mockCredentials);
+      setUser(res);
+      setPlan(res.plan || "pro");
+      if (res.plan !== "pro") {
+        const updated = await api.updatePlan("pro");
+        setUser(updated);
+        setPlan("pro");
+      }
+      await refreshHistory();
+    } catch {
+      try {
+        const res = await api.register(mockCredentials);
+        setUser(res);
+        setPlan(res.plan || "pro");
+        if (res.plan !== "pro") {
+          const updated = await api.updatePlan("pro");
+          setUser(updated);
+          setPlan("pro");
+        }
+        await refreshHistory();
+      } catch (err) {
+        console.error("Auto login failed:", err);
+      }
+    }
+  }
 
   /* ── Bootstrap ── */
   useEffect(() => {
@@ -63,9 +85,25 @@ export default function App() {
   }, [lang]);
 
   useEffect(() => {
-    try { setHistory(JSON.parse(localStorage.getItem("firasa_history") || "[]")); }
-    catch {}
     api.health().then(setHealth).catch(() => setHealth({ status: "down" }));
+    const token = api.getToken();
+    if (token) {
+      api.me()
+        .then((me) => {
+          setUser(me);
+          setPlan(me.plan || "pro");
+          if (me.plan !== "pro") {
+            api.updatePlan("pro").then(u => { setUser(u); setPlan("pro"); });
+          }
+          return refreshHistory();
+        })
+        .catch(() => {
+          api.setToken(null);
+          autoLogin();
+        });
+    } else {
+      autoLogin();
+    }
   }, []);
 
   useEffect(() => {
@@ -73,6 +111,20 @@ export default function App() {
   }, [checked]);
 
   /* ── Helpers ── */
+  async function refreshHistory() {
+    const projects = await api.listProjects();
+    const normalised = projects.map((p) => ({
+      project_id: p.project_id,
+      name: p.name || "Projet",
+      sector: p.sector || null,
+      ts: p.audited_at ? Date.parse(p.audited_at) : Date.now(),
+      ...p,
+    }));
+    setHistory(normalised);
+    localStorage.setItem("firasa_history", JSON.stringify(normalised));
+    return normalised;
+  }
+
   function saveHistory(project_id, name, sector) {
     const entry   = { project_id, name, sector, ts: Date.now() };
     const updated = [entry, ...history.filter(h => h.project_id !== project_id)].slice(0, 6);
@@ -90,14 +142,8 @@ export default function App() {
 
   /* ── Phase: start → intake ── */
   async function handleStart(name) {
-    const limit = plan === "pro" ? 5 : plan === "plus" ? 3 : 1;
-    if (history.length >= limit) {
-      setError(lang === "ar" 
-        ? `لقد وصلت إلى الحد الأقصى للمشاريع في خطتك الحالية (${limit} مشاريع). يرجى ترقية حسابك.` 
-        : `Vous avez atteint la limite de projets de votre plan actuel (${limit} projets). Veuillez mettre à niveau votre compte.`
-      );
-      setShowProfileModal(true);
-      return;
+    if (!user) {
+      await autoLogin();
     }
     setBusy(true); setError(null);
     try {
@@ -107,7 +153,9 @@ export default function App() {
       setProgress(res.progress);
       saveHistory(res.project_id, name, null);
       setPhase("intake");
-    } catch (err) { setError(err.message); }
+    } catch (err) {
+      setError(err.message);
+    }
     finally { setBusy(false); }
   }
 
@@ -204,9 +252,67 @@ export default function App() {
     setPhase("audit");
   }
 
+  function handleProjectDeleted(projectId) {
+    const nextHistory = history.filter(h => h.project_id !== projectId);
+    setHistory(nextHistory);
+    localStorage.setItem("firasa_history", JSON.stringify(nextHistory));
+    setChecked(prev => {
+      const next = {};
+      Object.entries(prev).forEach(([key, value]) => {
+        if (!key.startsWith(`${projectId}_`)) next[key] = value;
+      });
+      return next;
+    });
+    if (pid === projectId) restart();
+  }
+
+  function handleAuthUser(nextUser) {
+    setUser(nextUser);
+    setPlan(nextUser?.plan || "free");
+    refreshHistory().catch(() => {});
+  }
+
+  async function handleLogout() {
+    await api.logout();
+    setUser(null);
+    setPlan("free");
+    setHistory([]);
+    restart();
+  }
+
+  function handlePlanUser(nextUser) {
+    setUser(nextUser);
+    setPlan(nextUser?.plan || "free");
+  }
+
+  function openHistory() {
+    if (!user) {
+      setError(lang === "ar"
+        ? "سجّل الدخول لعرض مشاريعك."
+        : "Connectez-vous pour afficher vos projets.");
+      setShowProfileModal(true);
+      return;
+    }
+    setPhase("history");
+  }
+
   /* ── Render ── */
   return (
     <>
+      {phase !== "processing" && (
+        <Topbar
+          lang={lang}
+          setLang={setLang}
+          theme={theme}
+          setTheme={setTheme}
+          user={user}
+          plan={plan}
+          openProfile={() => setShowProfileModal(true)}
+          health={health}
+          onLogoClick={restart}
+        />
+      )}
+
       {error && (
         <div className="error-banner" style={{ maxWidth:900, margin:"16px auto", borderRadius:10 }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -231,7 +337,7 @@ export default function App() {
           busy={busy}
           onStart={handleStart}
           onResume={handleResume}
-          onViewHistory={() => setPhase("history")}
+          onViewHistory={openHistory}
         />
       )}
 
@@ -246,6 +352,8 @@ export default function App() {
           api={api}
           onBack={() => setPhase("start")}
           onView={handleViewFromHistory}
+          onResume={handleResume}
+          onDeleted={handleProjectDeleted}
         />
       )}
 
@@ -290,13 +398,14 @@ export default function App() {
         isOpen={showProfileModal}
         onClose={() => setShowProfileModal(false)}
         user={user}
-        onLogin={setUser}
-        onLogout={() => { setUser(null); setPlan("free"); }}
+        onLogin={handleAuthUser}
+        onLogout={handleLogout}
         plan={plan}
-        onUpgrade={setPlan}
+        onUpgrade={handlePlanUser}
         history={history}
         lang={lang}
         onResume={handleResume}
+        api={api}
       />
     </>
   );

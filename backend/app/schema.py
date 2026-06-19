@@ -144,6 +144,7 @@ class ProjectProfile(BaseModel):
     name: Optional[str] = None
     sector: Optional[Sector] = None
     language: str = "fr"  # fr | ar | en
+    owner_user_id: Optional[str] = None
 
     # Self-assessment (what the founder claims)
     self_assessment: SelfAssessment = Field(default_factory=SelfAssessment)

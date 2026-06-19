@@ -1,74 +1,78 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import logoSvg from "../../assets/logo_first.svg";
 
 /* ── label maps ── */
 const SECTOR_L = {
-  fr:{"agri-food":"Agri-food","digital-saas":"SaaS & Numérique","industry":"Industrie","health":"Santé","greentech":"CleanTech","services":"Services","other":"Autre"},
-  ar:{"agri-food":"الصناعات الغذائية","digital-saas":"البرمجيات الرقمية","industry":"الصناعة","health":"الصحة","greentech":"التكنولوجيا الخضراء","services":"الخدمات","other":"قطاع آخر"},
+  fr: { "agri-food": "Agri-food", "digital-saas": "SaaS & Numérique", "industry": "Industrie", "health": "Santé", "greentech": "CleanTech", "services": "Services", "other": "Autre" },
+  ar: { "agri-food": "الصناعات الغذائية", "digital-saas": "البرمجيات الرقمية", "industry": "الصناعة", "health": "الصحة", "greentech": "التكنولوجيا الخضراء", "services": "الخدمات", "other": "قطاع آخر" },
 };
 const STAGE_L = {
-  fr:{1:"Idéation",2:"Validation Marché",3:"Structuration",4:"Levée de fonds",5:"Lancement",6:"Croissance"},
-  ar:{1:"مرحلة الفكرة",2:"التحقق من السوق",3:"الهيكلة",4:"التمويل",5:"الإطلاق",6:"النمو"},
+  fr: { 1: "Idéation", 2: "Validation Marché", 3: "Structuration", 4: "Levée de fonds", 5: "Lancement", 6: "Croissance" },
+  ar: { 1: "مرحلة الفكرة", 2: "التحقق من السوق", 3: "الهيكلة", 4: "التمويل", 5: "الإطلاق", 6: "النمو" },
 };
 const DIMS = [
-  ["market",      "Marché",      "سوق",   "S_M"],
-  ["commercial",  "Commercial",  "تجاري", "S_C"],
-  ["innovation",  "Innovation",  "ابتكار","S_I"],
-  ["scalability", "Scalabilité", "توسع",  "S_S"],
-  ["green",       "Green / ESG", "بيئة",  "S_G"],
+  ["market", "Marché", "سوق"],
+  ["commercial", "Commercial", "تجاري"],
+  ["innovation", "Innovation", "ابتكار"],
+  ["scalability", "Scalabilité", "توسع"],
+  ["green", "Green / ESG", "بيئة"],
 ];
 
 function barColor(v, gated) {
-  if (gated)   return "var(--red)";
+  if (gated) return "var(--red)";
   if (v >= 66) return "var(--green)";
   if (v >= 40) return "var(--amber)";
   return "var(--red)";
 }
 
 const COPY = {
-  fr:{
-    newAudit:"Nouvel audit",
-    tabs:["Diagnostic","Scores","Feuille de route"],
-    confidence:"Confiance",
-    activeGate:"PORTE ACTIVE",
-    declared:"Stade déclaré",
-    classified:"Stade classifié (preuves)",
-    realloc:"Réallocation auto",
-    gap:{severe:"Écart sévère",mild:"Écart modéré",aligned:"Aligné"},
-    gapMsg:"Message d'analyse",
-    anomalyTitle:"Incohérences structurelles",
-    anchor:"Cadre de référence",
-    gateRule:"Règle de gate",
-    missing:"Données manquantes",
-    vector:"Vecteur GWLC",
-    checkDone:"Étape terminée",
-    assistantTitle:"Conseiller ancré",
-    assistantSub:"Posez des questions sur votre diagnostic. Réponses sourcées uniquement sur vos résultats.",
-    send:"Envoyer",
-    placeholder:"Ex. Quels financements s'offrent à moi ?",
-    grounding:"Contexte de grounding",
+  fr: {
+    newAudit: "Nouvel audit",
+    tabs: ["Diagnostic", "Scores", "Feuille de route"],
+    confidence: "Confiance",
+    activeGate: "PORTE ACTIVE",
+    declared: "Stade déclaré",
+    classified: "Stade classifié (preuves)",
+    realloc: "Réallocation auto",
+    gap: { severe: "Écart sévère", mild: "Écart modéré", aligned: "Aligné" },
+    gapMsg: "Message d'analyse",
+    anomalyTitle: "Incohérences structurelles",
+    anchor: "Cadre de référence",
+    gateRule: "Règle de gate",
+    missing: "Données manquantes",
+    vector: "Profil de maturité",
+    checkDone: "Étape terminée",
+    roadmapTitle: "Priorités recommandées",
+    roadmapSub: "Actions classées par urgence, avec sources utiles pour avancer concrètement.",
+    assistantTitle: "Conseiller ancré",
+    assistantSub: "Posez des questions sur votre diagnostic. Réponses sourcées uniquement sur vos résultats.",
+    send: "Envoyer",
+    placeholder: "Ex. Quels financements s'offrent à moi ?",
+    grounding: "Contexte de grounding",
   },
-  ar:{
-    newAudit:"تدقيق جديد",
-    tabs:["التشخيص","المؤشرات","خارطة الطريق"],
-    confidence:"الثقة",
-    activeGate:"البوابة النشطة",
-    declared:"المرحلة المعلنة",
-    classified:"المرحلة بالأدلة",
-    realloc:"إعادة تخصيص تلقائية",
-    gap:{severe:"فجوة حادة",mild:"فجوة معتدلة",aligned:"متوافق"},
-    gapMsg:"رسالة التحليل",
-    anomalyTitle:"تناقضات هيكلية",
-    anchor:"الإطار المرجعي",
-    gateRule:"قاعدة البوابة",
-    missing:"بيانات ناقصة",
-    vector:"متجه التقييم",
-    checkDone:"خطوة مكتملة",
-    assistantTitle:"المستشار الموثق",
-    assistantSub:"اطرح أي سؤال حول تقييمك. إجابات موثقة من مخرجات تدقيقك فقط.",
-    send:"إرسال",
-    placeholder:"مثال: ما مصادر التمويل المتاحة لي؟",
-    grounding:"السياق التوثيقي",
+  ar: {
+    newAudit: "تدقيق جديد",
+    tabs: ["التشخيص", "المؤشرات", "خارطة الطريق"],
+    confidence: "الثقة",
+    activeGate: "البوابة النشطة",
+    declared: "المرحلة المعلنة",
+    classified: "المرحلة بالأدلة",
+    realloc: "إعادة تخصيص تلقائية",
+    gap: { severe: "فجوة حادة", mild: "فجوة معتدلة", aligned: "متوافق" },
+    gapMsg: "رسالة التحليل",
+    anomalyTitle: "تناقضات هيكلية",
+    anchor: "الإطار المرجعي",
+    gateRule: "قاعدة البوابة",
+    missing: "بيانات ناقصة",
+    vector: "متجه التقييم",
+    checkDone: "خطوة مكتملة",
+    roadmapTitle: "الأولويات المقترحة",
+    roadmapSub: "إجراءات مرتبة حسب الأولوية مع مصادر تساعدك على التقدم عمليًا.",
+    assistantTitle: "المستشار الموثق",
+    assistantSub: "اطرح أي سؤال حول تقييمك. إجابات موثقة من مخرجات تدقيقك فقط.",
+    send: "إرسال",
+    placeholder: "مثال: ما مصادر التمويل المتاحة لي؟",
+    grounding: "السياق التوثيقي",
   },
 };
 
@@ -76,15 +80,15 @@ const COPY = {
    DIAGNOSTIC TAB
 ══════════════════════════════════════════════════════════════ */
 function DiagnosticTab({ audit, lang, T }) {
-  const ar  = lang === "ar";
+  const ar = lang === "ar";
   const gap = audit.perception_reality_gap;
   const diag = audit.diagnostic;
 
   const classifiedName = STAGE_L[lang][gap?.classified_stage] || "—";
-  const declaredName   = STAGE_L[lang][gap?.declared_stage]   || "—";
-  const severity       = gap?.severity || "aligned";
-  const gapLabel       = T.gap[severity] || severity;
-  const gapMsg         = ar ? gap?.message_ar || gap?.message_fr : gap?.message_fr;
+  const declaredName = STAGE_L[lang][gap?.declared_stage] || "—";
+  const severity = gap?.severity || "aligned";
+  const gapLabel = T.gap[severity] || severity;
+  const gapMsg = ar ? gap?.message_ar || gap?.message_fr : gap?.message_fr;
 
   return (
     <div>
@@ -119,7 +123,7 @@ function DiagnosticTab({ audit, lang, T }) {
         <div className="confidence-row">
           <span>{T.confidence}</span>
           <div className="confidence-track">
-            <div className="confidence-fill" style={{ width:`${diag.confidence * 100}%` }} />
+            <div className="confidence-fill" style={{ width: `${diag.confidence * 100}%` }} />
           </div>
           <span className="mono">{(diag.confidence * 100).toFixed(0)}%</span>
         </div>
@@ -151,17 +155,17 @@ function DiagnosticTab({ audit, lang, T }) {
       {/* Anomalies */}
       {audit.anomalies?.length > 0 && (
         <div className="anomaly-section">
-          <div className="tab-section-title" style={{ marginTop:32 }}>{T.anomalyTitle}</div>
+          <div className="tab-section-title" style={{ marginTop: 32 }}>{T.anomalyTitle}</div>
           {audit.anomalies.map((a, i) => (
             <div key={i} className={`anomaly-item ${a.severity}`}>
               <div className="anomaly-sev" />
               <div className="anomaly-body">
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, marginBottom:4 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
                   <span className="anomaly-title">{ar ? a.title_ar || a.title_fr : a.title_fr}</span>
                   <span className={`anom-badge ${a.severity}`}>{a.severity}</span>
                 </div>
                 <div className="anomaly-detail">{ar ? a.detail_ar || a.detail_fr : a.detail_fr}</div>
-                <div className="anomaly-tags">{a.signals.map((s,si)=><span key={si} className="anomaly-tag mono">{s}</span>)}</div>
+                <div className="anomaly-tags">{a.signals.map((s, si) => <span key={si} className="anomaly-tag mono">{s}</span>)}</div>
               </div>
             </div>
           ))}
@@ -194,8 +198,8 @@ function ScoresTab({ audit, lang, T, plan, openProfile }) {
           </div>
           <h3 className="lock-title">{ar ? "تحليل المؤشرات" : "Analyse des scores"}</h3>
           <p className="lock-msg">
-            {ar 
-              ? "تحليل المؤشرات التفصيلية لكل بعد من أبعاد مشروعك يتطلب الاشتراك في خطة بلس أو برو." 
+            {ar
+              ? "تحليل المؤشرات التفصيلية لكل بعد من أبعاد مشروعك يتطلب الاشتراك في خطة بلس أو برو."
               : "L'accès aux scores détaillés et à l'analyse de chaque dimension nécessite un plan Plus ou Pro."}
           </p>
           <button className="primary" onClick={openProfile} style={{ marginTop: 8 }}>
@@ -204,12 +208,12 @@ function ScoresTab({ audit, lang, T, plan, openProfile }) {
         </div>
       )}
 
-      <div style={{ filter: isLocked ? "blur(4px)" : "none", pointerEvents: isLocked ? "none" : "auto", opacity: isLocked ? 0.35 : 1 }}>
+      <div style={{ pointerEvents: isLocked ? "none" : "auto", opacity: isLocked ? 0.22 : 1 }}>
         <div className="score-rows">
-          {DIMS.map(([key, labelFr, labelAr, code]) => {
+          {DIMS.map(([key, labelFr, labelAr]) => {
             const res = scores[key];
             if (!res) return null;
-            const open  = expanded === key;
+            const open = expanded === key;
             const label = ar ? labelAr : labelFr;
             const color = barColor(res.final_score, res.gate_triggered);
             const delta = audit.score_deltas?.deltas?.[key];
@@ -219,10 +223,9 @@ function ScoresTab({ audit, lang, T, plan, openProfile }) {
                 <div className="score-head" onClick={() => setExpanded(open ? null : key)}>
                   <div className="score-dim">
                     <span className="score-dim-name">{label}</span>
-                    <span className="score-dim-code">{code}</span>
                   </div>
                   <div className="score-bar-track">
-                    <div className="score-bar-fill" style={{ width:`${res.final_score}%`, background: color }} />
+                    <div className="score-bar-fill" style={{ width: `${res.final_score}%`, background: color }} />
                   </div>
                   <div className="score-val">
                     <span className="score-final" style={{ color }}>{res.final_score}</span>
@@ -288,8 +291,8 @@ function RoadmapTab({ audit, pid, lang, T, checked, onToggle, plan, openProfile 
           </div>
           <h3 className="lock-title">{ar ? "خارطة الطريق" : "Feuille de route"}</h3>
           <p className="lock-msg">
-            {ar 
-              ? "خارطة الطريق المخصصة مع التمويل والموارد الملائمة لهيكل مشروعك تتطلب الاشتراك في الخطة الاحترافية (برو)." 
+            {ar
+              ? "خارطة الطريق المخصصة مع التمويل والموارد الملائمة لهيكل مشروعك تتطلب الاشتراك في الخطة الاحترافية (برو)."
               : "La feuille de route personnalisée avec financements et ressources adaptées nécessite le plan Pro."}
           </p>
           <button className="primary" onClick={openProfile} style={{ marginTop: 8 }}>
@@ -298,26 +301,36 @@ function RoadmapTab({ audit, pid, lang, T, checked, onToggle, plan, openProfile 
         </div>
       )}
 
-      <div style={{ filter: isLocked ? "blur(4px)" : "none", pointerEvents: isLocked ? "none" : "auto", opacity: isLocked ? 0.35 : 1 }}>
+      <div style={{ pointerEvents: isLocked ? "none" : "auto", opacity: isLocked ? 0.22 : 1 }}>
+        <div className="roadmap-summary">
+          <div>
+            <div className="tab-section-title">{T.roadmapTitle}</div>
+            <div className="tab-section-sub">{T.roadmapSub}</div>
+          </div>
+          <span className="roadmap-count">{audit.roadmap.length}</span>
+        </div>
         <div className="roadmap-items">
           {audit.roadmap.map((m, i) => {
-            const key     = `${pid}_${m.order}`;
-            const done    = !!checked[key];
+            const key = `${pid}_${m.order}`;
+            const done = !!checked[key];
             const horizon = ar ? m.horizon_ar || m.horizon_fr : m.horizon_fr;
-            const rat     = ar ? m.rationale_ar || m.rationale_fr : m.rationale_fr;
-            const action  = ar ? m.action_ar    || m.action_fr    : m.action_fr;
+            const rat = ar ? m.rationale_ar || m.rationale_fr : m.rationale_fr;
+            const action = ar ? m.action_ar || m.action_fr : m.action_fr;
 
             return (
               <div key={i} className={`milestone${done ? " done" : ""}`}>
-                <div className={`ms-check${done ? " done" : ""}`} onClick={() => onToggle(m.order)} title={T.checkDone}>
-                  {done && "✓"}
+                <div className="ms-side">
+                  <div className={`ms-check${done ? " done" : ""}`} onClick={() => onToggle(m.order)} title={T.checkDone}>
+                    {done && "✓"}
+                  </div>
+                  <span className="ms-order">{m.order}</span>
                 </div>
                 <div className="ms-body">
                   <div className="ms-head">
                     <span className="ms-title">{m.title}</span>
                     {horizon && <span className="ms-horizon">{horizon}</span>}
                   </div>
-                  {rat    && <div className="ms-rationale">{rat}</div>}
+                  {rat && <div className="ms-rationale">{rat}</div>}
                   {action && <div className="ms-action">{action}</div>}
                   {m.sources?.length > 0 && (
                     <div className="ms-sources">
@@ -345,95 +358,140 @@ function RoadmapTab({ audit, pid, lang, T, checked, onToggle, plan, openProfile 
 export default function Results({ audit, pid, lang, theme, setTheme, onNewAudit, checkedMilestones, onToggleMilestone, api, user, plan, openProfile }) {
   const [activeTab, setActiveTab] = useState(0);
   const ar = lang === "ar";
-  const T  = COPY[lang];
+  const T = COPY[lang];
 
   const anomalyCount = audit.anomalies?.length || 0;
-  const tabLabels    = T.tabs;
+  const tabLabels = T.tabs;
+
+  const SECTION_IDS = ["diagnostic-sec", "scores-sec", "roadmap-sec"];
+  const isScrollingRef = useRef(false);
+  const scrollTimeoutRef = useRef(null);
+
+  const scrollToSection = (index) => {
+    setActiveTab(index);
+    isScrollingRef.current = true;
+    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+
+    const id = SECTION_IDS[index];
+    const element = document.getElementById(id);
+    if (element) {
+      const offset = 120; // 58px topbar + ~50px tabs + safety margin
+      const bodyRect = document.body.getBoundingClientRect().top;
+      const elementRect = element.getBoundingClientRect().top;
+      const elementPosition = elementRect - bodyRect;
+      const offsetPosition = elementPosition - offset;
+
+      window.scrollTo({
+        top: offsetPosition,
+        behavior: "smooth"
+      });
+    }
+
+    scrollTimeoutRef.current = setTimeout(() => {
+      isScrollingRef.current = false;
+    }, 800);
+  };
+
+  useEffect(() => {
+    const observerOptions = {
+      root: null,
+      rootMargin: "-120px 0px -60% 0px",
+      threshold: 0
+    };
+
+    const handleIntersection = (entries) => {
+      if (isScrollingRef.current) return;
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          const index = SECTION_IDS.indexOf(entry.target.id);
+          if (index !== -1) {
+            setActiveTab(index);
+          }
+        }
+      });
+    };
+
+    const observer = new IntersectionObserver(handleIntersection, observerOptions);
+
+    SECTION_IDS.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    });
+
+    return () => {
+      SECTION_IDS.forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) observer.unobserve(el);
+      });
+      if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    };
+  }, []);
 
   return (
     <div className="results-wrap" dir={ar ? "rtl" : "ltr"}>
-
-      {/* ── Sticky header ── */}
-      <div className="results-header">
-        <div className="results-header-inner">
-          <div className="results-header-top">
-            <div style={{ display: "flex", alignItems: "center", gap: "20px", flexWrap: "wrap" }}>
-              <div className="results-project">
-                <div className="results-project-name">{audit.project_name}</div>
-                <div className="results-project-meta">
-                  {audit.sector && (
-                    <span className="results-meta-chip">{SECTOR_L[lang][audit.sector] || audit.sector}</span>
-                  )}
-                  <span className="results-meta-chip orange mono">{audit.project_id?.slice(0,10)}…</span>
-                </div>
-              </div>
-              <div className="results-header-actions" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <button className="theme-toggle-btn" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} style={{ width: "38px", height: "38px" }} title="Toggle Theme">
-                  {theme === "dark" ? (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="5"></circle>
-                      <line x1="12" y1="1" x2="12" y2="3"></line>
-                      <line x1="12" y1="21" x2="12" y2="23"></line>
-                      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-                      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-                      <line x1="1" y1="12" x2="3" y2="12"></line>
-                      <line x1="21" y1="12" x2="23" y2="12"></line>
-                      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-                      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-                    </svg>
-                  ) : (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-                    </svg>
-                  )}
-                </button>
-                <button className="profile-btn" onClick={openProfile} style={{ padding: "8px 16px", height: "38px" }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                    <circle cx="12" cy="7" r="4"></circle>
-                  </svg>
-                  <span>{user ? user.name : (lang === "ar" ? "الملف الشخصي" : "Profil")}</span>
-                  <span className={`plan-badge ${plan}`}>{plan === "free" ? (lang === "ar" ? "مجاني" : "Gratuit") : plan === "plus" ? (lang === "ar" ? "بلس" : "Plus") : (lang === "ar" ? "برو" : "Pro")}</span>
-                </button>
-                <button onClick={onNewAudit}>{T.newAudit}</button>
-              </div>
-            </div>
-
-            <div className="topbar-brand" onClick={onNewAudit} style={{ cursor: "pointer" }}>
-              <img src={logoSvg} alt="Firasa Logo" className="brand-logo-img" />
-            </div>
-          </div>
-
-          <div className="results-tabs">
-            {tabLabels.map((label, i) => (
-              <button
-                key={i}
-                className={`res-tab${activeTab === i ? " active" : ""}`}
-                onClick={() => setActiveTab(i)}
-              >
-                {label}
-                {i === 0 && anomalyCount > 0 && (
-                  <span className="tab-badge">{anomalyCount}</span>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* ── Tab content ── */}
       <div className="results-content">
-        {activeTab === 0 && <DiagnosticTab audit={audit} lang={lang} T={T} />}
-        {activeTab === 1 && <ScoresTab     audit={audit} lang={lang} T={T} plan={plan} openProfile={openProfile} />}
-        {activeTab === 2 && (
+        {/* Local Page Header */}
+        <div className="results-page-header">
+          <div className="results-project-info">
+            <h1 className="results-project-title">
+              {audit.project_name}
+            </h1>
+            {audit.sector && (
+              <span className="results-meta-chip">
+                {SECTOR_L[lang][audit.sector] || audit.sector}
+              </span>
+            )}
+          </div>
+          <button className="primary" onClick={onNewAudit}>
+            {T.newAudit}
+          </button>
+        </div>
+
+        {/* Local Navigation Sticky Tabs */}
+        <div className="results-local-nav">
+          {tabLabels.map((label, i) => (
+            <button
+              key={i}
+              className={`res-tab${activeTab === i ? " active" : ""}`}
+              onClick={() => scrollToSection(i)}
+            >
+              {label}
+              {i === 0 && anomalyCount > 0 && (
+                <span className="tab-badge">{anomalyCount}</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Section 1: Diagnostic */}
+        <section id="diagnostic-sec" className="results-section">
+          <div className="results-section-header">
+            <h2 className="results-section-title">{T.tabs[0]}</h2>
+          </div>
+          <DiagnosticTab audit={audit} lang={lang} T={T} />
+        </section>
+
+        {/* Section 2: Scores */}
+        <section id="scores-sec" className="results-section">
+          <div className="results-section-header">
+            <h2 className="results-section-title">{T.tabs[1]}</h2>
+          </div>
+          <ScoresTab audit={audit} lang={lang} T={T} plan={plan} openProfile={openProfile} />
+        </section>
+
+        {/* Section 3: Roadmap */}
+        <section id="roadmap-sec" className="results-section">
           <RoadmapTab
-            audit={audit} pid={pid} lang={lang} T={T}
+            audit={audit}
+            pid={pid}
+            lang={lang}
+            T={T}
             checked={checkedMilestones}
             onToggle={onToggleMilestone}
             plan={plan}
             openProfile={openProfile}
           />
-        )}
+        </section>
       </div>
     </div>
   );

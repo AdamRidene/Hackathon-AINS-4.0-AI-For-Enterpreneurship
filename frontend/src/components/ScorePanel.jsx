@@ -75,10 +75,10 @@ export default function ScorePanel({ scores }) {
   if (!scores) return null;
   return (
     <div className="panel">
-      <h2>Scores GWLC explicables</h2>
+      <h2>Scores de maturité détaillés</h2>
       <div className="sub">
         Combinaison linéaire pondérée à portes (gates). Cliquez une dimension pour
-        la trace de calcul critère par critère. Vecteur (M,C,I,S,G) :{" "}
+        la trace de calcul critère par critère. Profil de maturité (M,C,I,S,G) :{" "}
         <span className="mono">[{scores.vector.join(", ")}]</span>
       </div>
       <div className="scoregrid">

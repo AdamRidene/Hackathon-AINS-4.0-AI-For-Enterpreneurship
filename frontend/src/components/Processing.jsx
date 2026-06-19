@@ -5,7 +5,7 @@ import logoRiv from "../../assets/logo_firasa.riv";
 const STEPS = {
   fr: [
     "Classification du stade",
-    "Calcul des scores GWLC",
+    "Calcul des indicateurs de maturité",
     "Construction de la feuille de route",
   ],
   ar: [

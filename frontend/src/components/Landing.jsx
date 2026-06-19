@@ -7,71 +7,15 @@ const SECTOR_LABELS = {
 };
 
 export default function Landing({ lang, setLang, theme, setTheme, health, history, busy, onStart, onResume, onViewHistory, user, plan, openProfile }) {
-  const [name, setName]       = useState("");
-  const [loadId, setLoadId]   = useState("");
+
 
   const ar = lang === "ar";
   const t  = TEXTS[lang];
 
-  const canStart = !busy && name.trim() && health?.status !== "down";
+  const canStart = !busy && health?.status !== "down";
 
   return (
     <div className="landing-wrap" dir={ar ? "rtl" : "ltr"}>
-
-      {/* ── Topbar ── */}
-      <header className="landing-topbar">
-        <div className="topbar-left" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          {health && (
-            <div className="status-pill">
-              <span className={`status-dot${health.status !== "ok" ? " down" : ""}`} />
-              {health.status === "ok"
-                ? <span>API <b>{t.online}</b> · {health.llm_provider}</span>
-                : <span>API <b>{t.offline}</b></span>}
-            </div>
-          )}
-          <button className="hist-link-btn" onClick={onViewHistory}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M3 3h18v4H3z"/><path d="M3 11h18v4H3z"/><path d="M3 19h18v4H3z"/>
-            </svg>
-            {t.historyBtn}
-          </button>
-          <div className="lang-toggle">
-            <button className={`lang-btn${lang === "fr" ? " active" : ""}`} onClick={() => setLang("fr")}>FR</button>
-            <button className={`lang-btn${lang === "ar" ? " active" : ""}`} onClick={() => setLang("ar")}>عربي</button>
-          </div>
-          <button className="theme-toggle-btn" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} title="Toggle Theme">
-            {theme === "dark" ? (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="5"></circle>
-                <line x1="12" y1="1" x2="12" y2="3"></line>
-                <line x1="12" y1="21" x2="12" y2="23"></line>
-                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-                <line x1="1" y1="12" x2="3" y2="12"></line>
-                <line x1="21" y1="12" x2="23" y2="12"></line>
-                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-              </svg>
-            ) : (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-              </svg>
-            )}
-          </button>
-          <button className="profile-btn" onClick={openProfile}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-              <circle cx="12" cy="7" r="4"></circle>
-            </svg>
-            <span>{user ? user.name : (lang === "ar" ? "الملف الشخصي" : "Profil")}</span>
-            <span className={`plan-badge ${plan}`}>{plan === "free" ? (lang === "ar" ? "مجاني" : "Gratuit") : plan === "plus" ? (lang === "ar" ? "بلس" : "Plus") : (lang === "ar" ? "برو" : "Pro")}</span>
-          </button>
-        </div>
-
-        <div className="topbar-brand">
-          <img src={logoSvg} alt="Firasa Logo" className="brand-logo-img brand-logo-large" />
-        </div>
-      </header>
 
       {/* ── Hero ── */}
       <main className="landing-hero">
@@ -89,17 +33,20 @@ export default function Landing({ lang, setLang, theme, setTheme, health, histor
         {/* Project name form */}
         <form
           className="landing-form"
-          onSubmit={e => { e.preventDefault(); if (canStart) onStart(name); }}
+          onSubmit={e => { e.preventDefault(); if (canStart) onStart(ar ? "مشروعي" : "Mon Projet"); }}
+          style={{ maxWidth: "480px", margin: "0 auto" }}
         >
-          <input
-            value={name}
-            placeholder={t.placeholder}
-            onChange={e => setName(e.target.value)}
-            autoFocus
-          />
-          <button type="submit" className="primary" disabled={!canStart}>
-            {busy ? <span className="spinner" /> : t.cta}
-          </button>
+          <div style={{ display: "flex", gap: "10px", width: "100%", flexWrap: "wrap" }}>
+            <button type="submit" className="primary" disabled={!canStart} style={{ flex: 2, height: "46px" }}>
+              {busy ? <span className="spinner" /> : t.cta}
+            </button>
+            <button type="button" className="ghost" onClick={onViewHistory} style={{ flex: 1, border: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "8px", justifyContent: "center", height: "46px" }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 3h18v4H3z"/><path d="M3 11h18v4H3z"/><path d="M3 19h18v4H3z"/>
+              </svg>
+              <span>{t.historyBtn}</span>
+            </button>
+          </div>
         </form>
 
         {/* Recent audits */}
@@ -115,23 +62,6 @@ export default function Landing({ lang, setLang, theme, setTheme, health, histor
                 </button>
               ))}
             </div>
-
-            {/* Load by ID */}
-            <div className="landing-load-row" style={{ margin: "20px auto 0", justifyContent: "center" }}>
-              <input
-                value={loadId}
-                placeholder={t.loadPlaceholder}
-                onChange={e => setLoadId(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && loadId.trim() && onResume(loadId.trim())}
-                style={{ maxWidth: 280 }}
-              />
-              <button
-                onClick={() => loadId.trim() && onResume(loadId.trim())}
-                disabled={busy || !loadId.trim()}
-              >
-                {t.loadBtn}
-              </button>
-            </div>
           </div>
         )}
       </main>
@@ -144,28 +74,22 @@ const TEXTS = {
     brandTitle: "Firasa", brandSub: "Moteur d'orientation entrepreneuriale",
     online: "en ligne", offline: "hors ligne",
     eyebrow: "Auditeur algorithmique · Écosystème tunisien",
-    headline1: "Un auditeur,",
-    headline2: "pas un chatbot.",
-    sub: "Firasa collecte des preuves, confronte votre auto-évaluation aux faits, calcule des scores explicables à portes, et génère une feuille de route ancrée dans l'écosystème tunisien réel.",
-    placeholder: "Nommez votre projet…",
+    headline1: "Diagnostiquez votre projet,",
+    headline2: "avec des preuves.",
+    sub: "Firasa guide l'échange comme un assistant intelligent, collecte les preuves clés, calcule des scores de maturité explicables et génère une feuille de route ancrée dans l'écosystème tunisien.",
     cta: "Démarrer l'audit →",
     recent: "Reprendre un audit",
-    loadPlaceholder: "ID de projet…",
-    loadBtn: "Charger",
     historyBtn: "Historique",
   },
   ar: {
     brandTitle: "فِراسة", brandSub: "محرّك التوجيه الريادي",
     online: "متصل", offline: "غير متصل",
     eyebrow: "مدقق خوارزمي · النظام الريادي التونسي",
-    headline1: "مدقّق هيكلي،",
-    headline2: "لا مجيب آلي.",
-    sub: "يجمع فراسة الأدلة، يقارن تقييمك بالواقع، يحتسب مؤشرات مُفسَّرة، ويبني مسارك بناءً على المؤسسات التونسية الحقيقية.",
-    placeholder: "سمِّ مشروعك…",
+    headline1: "شخّص مشروعك،",
+    headline2: "بالأدلة القاطعة.",
+    sub: "يقوم فراسة بجمع الأدلة الهامة، واحتساب مؤشرات نضج مفسّرة، ويولّد خارطة طريق مخصصة ملائمة لبيئة الأعمال التونسية الحقيقية.",
     cta: "← بدء التدقيق",
     recent: "استئناف تدقيق",
-    loadPlaceholder: "معرّف المشروع…",
-    loadBtn: "تحميل",
     historyBtn: "السجل",
   },
 };
