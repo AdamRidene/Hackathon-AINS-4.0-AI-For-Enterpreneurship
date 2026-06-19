@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import logoSvg from "../../assets/logo_first.svg";
 
 const SECTOR_LABELS = {
   fr: { "agri-food":"Agri-food","digital-saas":"SaaS & Numérique","industry":"Industrie","health":"Santé","greentech":"CleanTech","services":"Services","other":"Autre" },
@@ -32,7 +33,7 @@ function optLabel(q, opt, lang) {
   return opt;
 }
 
-export default function Interview({ lang, question, progress, busy, onSubmit, onSkipToAudit }) {
+export default function Interview({ lang, theme, setTheme, question, progress, busy, onSubmit, onSkipToAudit, user, plan, openProfile }) {
   const [value, setValue]   = useState(() => initial(question));
   const ar = lang === "ar";
 
@@ -87,14 +88,44 @@ export default function Interview({ lang, question, progress, busy, onSubmit, on
 
       {/* Minimal header */}
       <div className="interview-header">
-        <span className="interview-brand">فِراسة</span>
         <div className="interview-meta">
           {progress && (
             <span className="interview-counter">{progress.answered} / {progress.total}</span>
           )}
+          <button className="theme-toggle-btn" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} style={{ width: "32px", height: "32px", borderRadius: "var(--r-sm)" }} title="Toggle Theme">
+            {theme === "dark" ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="5"></circle>
+                <line x1="12" y1="1" x2="12" y2="3"></line>
+                <line x1="12" y1="21" x2="12" y2="23"></line>
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                <line x1="1" y1="12" x2="3" y2="12"></line>
+                <line x1="21" y1="12" x2="23" y2="12"></line>
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+              </svg>
+            )}
+          </button>
+          <button className="profile-btn" onClick={openProfile} style={{ padding: "6px 12px", height: "32px" }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+            <span>{user ? user.name : (lang === "ar" ? "الملف الشخصي" : "Profil")}</span>
+            <span className={`plan-badge ${plan}`}>{plan === "free" ? (lang === "ar" ? "مجاني" : "Gratuit") : plan === "plus" ? (lang === "ar" ? "بلس" : "Plus") : (lang === "ar" ? "برو" : "Pro")}</span>
+          </button>
           <button className="ghost" onClick={onSkipToAudit} disabled={busy} style={{ fontSize:"0.78rem", padding:"6px 14px" }}>
             {T.skip}
           </button>
+        </div>
+
+        <div className="topbar-brand" onClick={onSkipToAudit} style={{ cursor: "pointer" }}>
+          <img src={logoSvg} alt="Firasa Logo" className="brand-logo-img" />
         </div>
       </div>
 

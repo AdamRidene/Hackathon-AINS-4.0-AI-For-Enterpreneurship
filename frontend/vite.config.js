@@ -5,6 +5,7 @@ import react from "@vitejs/plugin-react";
 // so the frontend can call relative URLs with no CORS friction in dev.
 export default defineConfig({
   plugins: [react()],
+  assetsInclude: ["**/*.riv"],
   server: {
     port: 5173,
     proxy: {

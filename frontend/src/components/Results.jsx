@@ -1,4 +1,5 @@
 import { useState } from "react";
+import logoSvg from "../../assets/logo_first.svg";
 
 /* ── label maps ── */
 const SECTOR_L = {
@@ -27,7 +28,7 @@ function barColor(v, gated) {
 const COPY = {
   fr:{
     newAudit:"Nouvel audit",
-    tabs:["Diagnostic","Scores","Feuille de route","Conseiller"],
+    tabs:["Diagnostic","Scores","Feuille de route"],
     confidence:"Confiance",
     activeGate:"PORTE ACTIVE",
     declared:"Stade déclaré",
@@ -49,7 +50,7 @@ const COPY = {
   },
   ar:{
     newAudit:"تدقيق جديد",
-    tabs:["التشخيص","المؤشرات","خارطة الطريق","المستشار"],
+    tabs:["التشخيص","المؤشرات","خارطة الطريق"],
     confidence:"الثقة",
     activeGate:"البوابة النشطة",
     declared:"المرحلة المعلنة",
@@ -173,75 +174,94 @@ function DiagnosticTab({ audit, lang, T }) {
 /* ══════════════════════════════════════════════════════════════
    SCORES TAB
 ══════════════════════════════════════════════════════════════ */
-function ScoresTab({ audit, lang, T }) {
+function ScoresTab({ audit, lang, T, plan, openProfile }) {
   const [expanded, setExpanded] = useState(null);
   const ar = lang === "ar";
   const scores = audit.scores;
   if (!scores) return null;
 
+  const isLocked = plan !== "plus" && plan !== "pro";
+
   return (
-    <div>
-      <div className="scores-vector-bar">
-        <span>{T.vector} :</span>
-        <span className="mono">[{scores.vector.join(", ")}]</span>
-      </div>
+    <div style={{ position: "relative", minHeight: "350px" }}>
+      {isLocked && (
+        <div className="tab-locked-overlay">
+          <div className="lock-icon-container">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+          </div>
+          <h3 className="lock-title">{ar ? "تحليل المؤشرات" : "Analyse des scores"}</h3>
+          <p className="lock-msg">
+            {ar 
+              ? "تحليل المؤشرات التفصيلية لكل بعد من أبعاد مشروعك يتطلب الاشتراك في خطة بلس أو برو." 
+              : "L'accès aux scores détaillés et à l'analyse de chaque dimension nécessite un plan Plus ou Pro."}
+          </p>
+          <button className="primary" onClick={openProfile} style={{ marginTop: 8 }}>
+            {ar ? "ترقية الاشتراك" : "Mettre à niveau mon plan"}
+          </button>
+        </div>
+      )}
 
-      <div className="score-rows">
-        {DIMS.map(([key, labelFr, labelAr, code]) => {
-          const res = scores[key];
-          if (!res) return null;
-          const open  = expanded === key;
-          const label = ar ? labelAr : labelFr;
-          const color = barColor(res.final_score, res.gate_triggered);
-          const delta = audit.score_deltas?.deltas?.[key];
+      <div style={{ filter: isLocked ? "blur(4px)" : "none", pointerEvents: isLocked ? "none" : "auto", opacity: isLocked ? 0.35 : 1 }}>
+        <div className="score-rows">
+          {DIMS.map(([key, labelFr, labelAr, code]) => {
+            const res = scores[key];
+            if (!res) return null;
+            const open  = expanded === key;
+            const label = ar ? labelAr : labelFr;
+            const color = barColor(res.final_score, res.gate_triggered);
+            const delta = audit.score_deltas?.deltas?.[key];
 
-          return (
-            <div key={key} className="score-row">
-              <div className="score-head" onClick={() => setExpanded(open ? null : key)}>
-                <div className="score-dim">
-                  <span className="score-dim-name">{label}</span>
-                  <span className="score-dim-code">{code}</span>
-                </div>
-                <div className="score-bar-track">
-                  <div className="score-bar-fill" style={{ width:`${res.final_score}%`, background: color }} />
-                </div>
-                <div className="score-val">
-                  <span className="score-final" style={{ color }}>{res.final_score}</span>
-                  {res.base_score !== res.final_score && (
-                    <span className="score-base">/ {res.base_score}</span>
+            return (
+              <div key={key} className="score-row">
+                <div className="score-head" onClick={() => setExpanded(open ? null : key)}>
+                  <div className="score-dim">
+                    <span className="score-dim-name">{label}</span>
+                    <span className="score-dim-code">{code}</span>
+                  </div>
+                  <div className="score-bar-track">
+                    <div className="score-bar-fill" style={{ width:`${res.final_score}%`, background: color }} />
+                  </div>
+                  <div className="score-val">
+                    <span className="score-final" style={{ color }}>{res.final_score}</span>
+                    {res.base_score !== res.final_score && (
+                      <span className="score-base">/ {res.base_score}</span>
+                    )}
+                  </div>
+                  {delta !== undefined && delta !== 0 && (
+                    <span className={`delta-badge ${delta > 0 ? "up" : "down"}`}>
+                      {delta > 0 ? `+${delta}` : delta}
+                    </span>
                   )}
+                  {res.gate_triggered && <span className="gate-flag">GATE</span>}
+                  <span className={`score-chevron${open ? " open" : ""}`}>▶</span>
                 </div>
-                {delta !== undefined && delta !== 0 && (
-                  <span className={`delta-badge ${delta > 0 ? "up" : "down"}`}>
-                    {delta > 0 ? `+${delta}` : delta}
-                  </span>
+
+                {open && (
+                  <div className="score-detail">
+                    <div className="score-anchor">{T.anchor} : {res.anchor}</div>
+                    {res.gate_triggered && res.gate_reason && (
+                      <div className="score-gate-msg">⚠ {T.gateRule} : {res.gate_reason}</div>
+                    )}
+                    {res.contributions.map((c, i) => (
+                      <div key={i} className="contrib-row">
+                        <span className="contrib-name">{c.criterion}</span>
+                        <span className="contrib-detail">{c.detail}</span>
+                        <span className="contrib-w mono">w:{c.weight}</span>
+                        <span className="contrib-score mono">{c.weighted}</span>
+                      </div>
+                    ))}
+                    {res.missing_inputs?.length > 0 && (
+                      <div className="score-missing muted">⚠ {T.missing} : {res.missing_inputs.join(", ")}</div>
+                    )}
+                  </div>
                 )}
-                {res.gate_triggered && <span className="gate-flag">GATE</span>}
-                <span className={`score-chevron${open ? " open" : ""}`}>▶</span>
               </div>
-
-              {open && (
-                <div className="score-detail">
-                  <div className="score-anchor">{T.anchor} : {res.anchor}</div>
-                  {res.gate_triggered && res.gate_reason && (
-                    <div className="score-gate-msg">⚠ {T.gateRule} : {res.gate_reason}</div>
-                  )}
-                  {res.contributions.map((c, i) => (
-                    <div key={i} className="contrib-row">
-                      <span className="contrib-name">{c.criterion}</span>
-                      <span className="contrib-detail">{c.detail}</span>
-                      <span className="contrib-w mono">w:{c.weight}</span>
-                      <span className="contrib-score mono">{c.weighted}</span>
-                    </div>
-                  ))}
-                  {res.missing_inputs?.length > 0 && (
-                    <div className="score-missing muted">⚠ {T.missing} : {res.missing_inputs.join(", ")}</div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -250,118 +270,79 @@ function ScoresTab({ audit, lang, T }) {
 /* ══════════════════════════════════════════════════════════════
    ROADMAP TAB
 ══════════════════════════════════════════════════════════════ */
-function RoadmapTab({ audit, pid, lang, T, checked, onToggle }) {
+function RoadmapTab({ audit, pid, lang, T, checked, onToggle, plan, openProfile }) {
   const ar = lang === "ar";
   if (!audit.roadmap) return null;
 
-  return (
-    <div className="roadmap-items">
-      {audit.roadmap.map((m, i) => {
-        const key     = `${pid}_${m.order}`;
-        const done    = !!checked[key];
-        const horizon = ar ? m.horizon_ar || m.horizon_fr : m.horizon_fr;
-        const rat     = ar ? m.rationale_ar || m.rationale_fr : m.rationale_fr;
-        const action  = ar ? m.action_ar    || m.action_fr    : m.action_fr;
-
-        return (
-          <div key={i} className={`milestone${done ? " done" : ""}`}>
-            <div className={`ms-check${done ? " done" : ""}`} onClick={() => onToggle(m.order)} title={T.checkDone}>
-              {done && "✓"}
-            </div>
-            <div className="ms-body">
-              <div className="ms-head">
-                <span className="ms-title">{m.title}</span>
-                {horizon && <span className="ms-horizon">{horizon}</span>}
-              </div>
-              {rat    && <div className="ms-rationale">{rat}</div>}
-              {action && <div className="ms-action">{action}</div>}
-              {m.sources?.length > 0 && (
-                <div className="ms-sources">
-                  {m.sources.map((src, si) => (
-                    <span key={si} className="ms-source">
-                      <span className="ms-inst">{src.institution}</span>
-                      <a href={src.url} target="_blank" rel="noopener noreferrer">{src.title}</a>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/* ══════════════════════════════════════════════════════════════
-   ADVISOR TAB
-══════════════════════════════════════════════════════════════ */
-function AdvisorTab({ pid, lang, T, api }) {
-  const [msgs,   setMsgs]   = useState([]);
-  const [input,  setInput]  = useState("");
-  const [loading,setLoading]= useState(false);
-  const [grounding, setGrounding] = useState("");
-  const [showG,  setShowG]  = useState(false);
-  const ar = lang === "ar";
-
-  async function send(e) {
-    e.preventDefault();
-    if (!input.trim() || loading) return;
-    const text = input;
-    setInput("");
-    setMsgs(p => [...p, { role:"user", text }]);
-    setLoading(true);
-    try {
-      const res = await api.assistant(pid, text);
-      setMsgs(p => [...p, { role:"bot", text: res.reply }]);
-      if (res.grounding) setGrounding(res.grounding);
-    } catch (err) {
-      setMsgs(p => [...p, { role:"bot", text:`Erreur: ${err.message}` }]);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const isLocked = plan !== "pro";
 
   return (
-    <div className="advisor-wrap" dir={ar ? "rtl" : "ltr"}>
-      <div className="tab-section-title">{T.assistantTitle}</div>
-      <div className="tab-section-sub">{T.assistantSub}</div>
-
-      <div className="advisor-log">
-        {msgs.map((m, i) => (
-          <div key={i} className={`chat-msg ${m.role}`}>{m.text}</div>
-        ))}
-        {loading && <div className="chat-msg bot"><span className="spinner" /></div>}
-      </div>
-
-      <form className="advisor-form" onSubmit={send}>
-        <input
-          value={input}
-          placeholder={T.placeholder}
-          onChange={e => setInput(e.target.value)}
-          disabled={loading}
-        />
-        <button type="submit" className="primary" disabled={loading || !input.trim()}>
-          {T.send}
-        </button>
-      </form>
-
-      {grounding && (
-        <div>
-          <div className="grounding-toggle" onClick={() => setShowG(v => !v)}>
-            {showG ? "▾" : "▸"} {T.grounding}
+    <div style={{ position: "relative", minHeight: "350px" }}>
+      {isLocked && (
+        <div className="tab-locked-overlay">
+          <div className="lock-icon-container">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
           </div>
-          {showG && <div className="grounding-box mono">{grounding}</div>}
+          <h3 className="lock-title">{ar ? "خارطة الطريق" : "Feuille de route"}</h3>
+          <p className="lock-msg">
+            {ar 
+              ? "خارطة الطريق المخصصة مع التمويل والموارد الملائمة لهيكل مشروعك تتطلب الاشتراك في الخطة الاحترافية (برو)." 
+              : "La feuille de route personnalisée avec financements et ressources adaptées nécessite le plan Pro."}
+          </p>
+          <button className="primary" onClick={openProfile} style={{ marginTop: 8 }}>
+            {ar ? "ترقية الاشتراك" : "Mettre à niveau mon plan"}
+          </button>
         </div>
       )}
+
+      <div style={{ filter: isLocked ? "blur(4px)" : "none", pointerEvents: isLocked ? "none" : "auto", opacity: isLocked ? 0.35 : 1 }}>
+        <div className="roadmap-items">
+          {audit.roadmap.map((m, i) => {
+            const key     = `${pid}_${m.order}`;
+            const done    = !!checked[key];
+            const horizon = ar ? m.horizon_ar || m.horizon_fr : m.horizon_fr;
+            const rat     = ar ? m.rationale_ar || m.rationale_fr : m.rationale_fr;
+            const action  = ar ? m.action_ar    || m.action_fr    : m.action_fr;
+
+            return (
+              <div key={i} className={`milestone${done ? " done" : ""}`}>
+                <div className={`ms-check${done ? " done" : ""}`} onClick={() => onToggle(m.order)} title={T.checkDone}>
+                  {done && "✓"}
+                </div>
+                <div className="ms-body">
+                  <div className="ms-head">
+                    <span className="ms-title">{m.title}</span>
+                    {horizon && <span className="ms-horizon">{horizon}</span>}
+                  </div>
+                  {rat    && <div className="ms-rationale">{rat}</div>}
+                  {action && <div className="ms-action">{action}</div>}
+                  {m.sources?.length > 0 && (
+                    <div className="ms-sources">
+                      {m.sources.map((src, si) => (
+                        <span key={si} className="ms-source">
+                          <span className="ms-inst">{src.institution}</span>
+                          <a href={src.url} target="_blank" rel="noopener noreferrer">{src.title}</a>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
 
 /* ══════════════════════════════════════════════════════════════
    RESULTS ROOT
-══════════════════════════════════════════════════════════════ */
-export default function Results({ audit, pid, lang, onNewAudit, checkedMilestones, onToggleMilestone, api }) {
+ ══════════════════════════════════════════════════════════════ */
+export default function Results({ audit, pid, lang, theme, setTheme, onNewAudit, checkedMilestones, onToggleMilestone, api, user, plan, openProfile }) {
   const [activeTab, setActiveTab] = useState(0);
   const ar = lang === "ar";
   const T  = COPY[lang];
@@ -376,17 +357,50 @@ export default function Results({ audit, pid, lang, onNewAudit, checkedMilestone
       <div className="results-header">
         <div className="results-header-inner">
           <div className="results-header-top">
-            <div className="results-project">
-              <div className="results-project-name">{audit.project_name}</div>
-              <div className="results-project-meta">
-                {audit.sector && (
-                  <span className="results-meta-chip">{SECTOR_L[lang][audit.sector] || audit.sector}</span>
-                )}
-                <span className="results-meta-chip orange mono">{audit.project_id?.slice(0,10)}…</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "20px", flexWrap: "wrap" }}>
+              <div className="results-project">
+                <div className="results-project-name">{audit.project_name}</div>
+                <div className="results-project-meta">
+                  {audit.sector && (
+                    <span className="results-meta-chip">{SECTOR_L[lang][audit.sector] || audit.sector}</span>
+                  )}
+                  <span className="results-meta-chip orange mono">{audit.project_id?.slice(0,10)}…</span>
+                </div>
+              </div>
+              <div className="results-header-actions" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <button className="theme-toggle-btn" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} style={{ width: "38px", height: "38px" }} title="Toggle Theme">
+                  {theme === "dark" ? (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="5"></circle>
+                      <line x1="12" y1="1" x2="12" y2="3"></line>
+                      <line x1="12" y1="21" x2="12" y2="23"></line>
+                      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                      <line x1="1" y1="12" x2="3" y2="12"></line>
+                      <line x1="21" y1="12" x2="23" y2="12"></line>
+                      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                  )}
+                </button>
+                <button className="profile-btn" onClick={openProfile} style={{ padding: "8px 16px", height: "38px" }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                  </svg>
+                  <span>{user ? user.name : (lang === "ar" ? "الملف الشخصي" : "Profil")}</span>
+                  <span className={`plan-badge ${plan}`}>{plan === "free" ? (lang === "ar" ? "مجاني" : "Gratuit") : plan === "plus" ? (lang === "ar" ? "بلس" : "Plus") : (lang === "ar" ? "برو" : "Pro")}</span>
+                </button>
+                <button onClick={onNewAudit}>{T.newAudit}</button>
               </div>
             </div>
-            <div className="results-header-actions">
-              <button onClick={onNewAudit}>{T.newAudit}</button>
+
+            <div className="topbar-brand" onClick={onNewAudit} style={{ cursor: "pointer" }}>
+              <img src={logoSvg} alt="Firasa Logo" className="brand-logo-img" />
             </div>
           </div>
 
@@ -410,15 +424,16 @@ export default function Results({ audit, pid, lang, onNewAudit, checkedMilestone
       {/* ── Tab content ── */}
       <div className="results-content">
         {activeTab === 0 && <DiagnosticTab audit={audit} lang={lang} T={T} />}
-        {activeTab === 1 && <ScoresTab     audit={audit} lang={lang} T={T} />}
+        {activeTab === 1 && <ScoresTab     audit={audit} lang={lang} T={T} plan={plan} openProfile={openProfile} />}
         {activeTab === 2 && (
           <RoadmapTab
             audit={audit} pid={pid} lang={lang} T={T}
             checked={checkedMilestones}
             onToggle={onToggleMilestone}
+            plan={plan}
+            openProfile={openProfile}
           />
         )}
-        {activeTab === 3 && <AdvisorTab pid={pid} lang={lang} T={T} api={api} />}
       </div>
     </div>
   );

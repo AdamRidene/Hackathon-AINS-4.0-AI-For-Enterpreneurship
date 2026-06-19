@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import Rive from "@rive-app/react-canvas";
+import logoRiv from "../../assets/logo_firasa.riv";
 
 const STEPS = {
   fr: [
@@ -43,7 +45,9 @@ export default function Processing({ lang }) {
 
   return (
     <div className="processing-wrap" dir={ar ? "rtl" : "ltr"}>
-      <div className="processing-logo">فِراسة</div>
+      <div className="processing-rive-container">
+        <Rive src={logoRiv} />
+      </div>
 
       <p className="processing-title">
         {ar ? "جارٍ تحليل بياناتك…" : "Analyse en cours…"}

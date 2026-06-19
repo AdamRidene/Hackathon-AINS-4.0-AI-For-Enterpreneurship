@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import logoSvg from "../../assets/logo_first.svg";
 
 const SECTOR_LABELS = {
   fr: { "agri-food":"Agri-food","digital-saas":"SaaS & Numérique","industry":"Industrie","health":"Santé","greentech":"CleanTech","services":"Services","other":"Autre" },
@@ -78,7 +79,7 @@ const TEXTS = {
 
 const SECTORS = ["agri-food","digital-saas","industry","health","greentech","services","other"];
 
-export default function History({ lang, api, onBack, onView }) {
+export default function History({ lang, theme, setTheme, api, onBack, onView, user, plan, openProfile }) {
   const [audits,  setAudits]  = useState([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState(null);
@@ -135,12 +136,47 @@ export default function History({ lang, api, onBack, onView }) {
       <header className="hist-header">
         <div className="hist-header-inner">
           <div className="hist-header-top">
-            <div>
-              <button className="ghost-btn" onClick={onBack}>{t.back}</button>
-              <h1 className="hist-title">{t.title}</h1>
-              <p className="hist-sub">{t.sub}</p>
+            <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+              <button className="ghost-btn" onClick={onBack} style={{ padding: "8px 16px" }}>{t.back}</button>
+              <div>
+                <h1 className="hist-title" style={{ margin: 0 }}>{t.title}</h1>
+                <p className="hist-sub">{t.sub}</p>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "10px" }}>
+                <button className="theme-toggle-btn" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} style={{ width: "32px", height: "32px", borderRadius: "var(--r-sm)" }} title="Toggle Theme">
+                  {theme === "dark" ? (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="5"></circle>
+                      <line x1="12" y1="1" x2="12" y2="3"></line>
+                      <line x1="12" y1="21" x2="12" y2="23"></line>
+                      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                      <line x1="1" y1="12" x2="3" y2="12"></line>
+                      <line x1="21" y1="12" x2="23" y2="12"></line>
+                      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                  )}
+                </button>
+                <button className="profile-btn" onClick={openProfile} style={{ padding: "6px 12px", height: "32px" }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                  </svg>
+                  <span>{user ? user.name : (lang === "ar" ? "الملف الشخصي" : "Profil")}</span>
+                  <span className={`plan-badge ${plan}`}>{plan === "free" ? (lang === "ar" ? "مجاني" : "Gratuit") : plan === "plus" ? (lang === "ar" ? "بلس" : "Plus") : (lang === "ar" ? "برو" : "Pro")}</span>
+                </button>
+                <div className="hist-count-pill" style={{ margin: 0, padding: "4px 12px", fontSize: "1rem" }}>{audits.length}</div>
+              </div>
             </div>
-            <div className="hist-count-pill">{audits.length}</div>
+
+            <div className="topbar-brand" onClick={onBack} style={{ cursor: "pointer" }}>
+              <img src={logoSvg} alt="Firasa Logo" className="brand-logo-img" />
+            </div>
           </div>
 
           {/* Sector filter chips */}

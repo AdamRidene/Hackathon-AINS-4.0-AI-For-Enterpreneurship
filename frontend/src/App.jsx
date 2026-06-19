@@ -5,6 +5,7 @@ import Interview  from "./components/Interview.jsx";
 import Processing from "./components/Processing.jsx";
 import Results    from "./components/Results.jsx";
 import History    from "./components/History.jsx";
+import ProfileModal from "./components/ProfileModal.jsx";
 
 export default function App() {
   /* ── Global state ── */
@@ -27,7 +28,34 @@ export default function App() {
     catch { return {}; }
   });
 
+  const [theme, setTheme] = useState(() => localStorage.getItem("firasa_theme") || "dark");
+
+  const [user, setUser] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("firasa_user")); }
+    catch { return null; }
+  });
+  const [plan, setPlan] = useState(() => localStorage.getItem("firasa_plan") || "free");
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
+  useEffect(() => {
+    if (user) localStorage.setItem("firasa_user", JSON.stringify(user));
+    else localStorage.removeItem("firasa_user");
+  }, [user]);
+
+  useEffect(() => {
+    localStorage.setItem("firasa_plan", plan);
+  }, [plan]);
+
   /* ── Bootstrap ── */
+  useEffect(() => {
+    localStorage.setItem("firasa_theme", theme);
+    if (theme === "light") {
+      document.documentElement.classList.add("light-mode");
+    } else {
+      document.documentElement.classList.remove("light-mode");
+    }
+  }, [theme]);
+
   useEffect(() => {
     localStorage.setItem("firasa_lang", lang);
     document.documentElement.dir  = lang === "ar" ? "rtl" : "ltr";
@@ -62,6 +90,15 @@ export default function App() {
 
   /* ── Phase: start → intake ── */
   async function handleStart(name) {
+    const limit = plan === "pro" ? 5 : plan === "plus" ? 3 : 1;
+    if (history.length >= limit) {
+      setError(lang === "ar" 
+        ? `لقد وصلت إلى الحد الأقصى للمشاريع في خطتك الحالية (${limit} مشاريع). يرجى ترقية حسابك.` 
+        : `Vous avez atteint la limite de projets de votre plan actuel (${limit} projets). Veuillez mettre à niveau votre compte.`
+      );
+      setShowProfileModal(true);
+      return;
+    }
     setBusy(true); setError(null);
     try {
       const res = await api.createProject(name, lang);
@@ -184,6 +221,11 @@ export default function App() {
         <Landing
           lang={lang}
           setLang={setLang}
+          theme={theme}
+          setTheme={setTheme}
+          user={user}
+          plan={plan}
+          openProfile={() => setShowProfileModal(true)}
           health={health}
           history={history}
           busy={busy}
@@ -196,6 +238,11 @@ export default function App() {
       {phase === "history" && (
         <History
           lang={lang}
+          theme={theme}
+          setTheme={setTheme}
+          user={user}
+          plan={plan}
+          openProfile={() => setShowProfileModal(true)}
           api={api}
           onBack={() => setPhase("start")}
           onView={handleViewFromHistory}
@@ -205,6 +252,11 @@ export default function App() {
       {phase === "intake" && question && (
         <Interview
           lang={lang}
+          theme={theme}
+          setTheme={setTheme}
+          user={user}
+          plan={plan}
+          openProfile={() => setShowProfileModal(true)}
           question={question}
           progress={progress}
           busy={busy}
@@ -222,12 +274,30 @@ export default function App() {
           audit={audit}
           pid={pid}
           lang={lang}
+          theme={theme}
+          setTheme={setTheme}
+          user={user}
+          plan={plan}
+          openProfile={() => setShowProfileModal(true)}
           onNewAudit={restart}
           checkedMilestones={checked}
           onToggleMilestone={toggleMilestone}
           api={api}
         />
       )}
+
+      <ProfileModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        user={user}
+        onLogin={setUser}
+        onLogout={() => { setUser(null); setPlan("free"); }}
+        plan={plan}
+        onUpgrade={setPlan}
+        history={history}
+        lang={lang}
+        onResume={handleResume}
+      />
     </>
   );
 }
