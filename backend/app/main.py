@@ -118,18 +118,55 @@ def get_project(pid: str) -> dict:
 @app.post("/api/projects/{pid}/audit")
 def audit(pid: str) -> dict:
     profile = _require(pid)
-    result = run_audit(profile)
-    # Persist the new score vector so the NEXT audit can show evolution deltas.
-    # run_audit already read the previous vector for this run's deltas.
+    result  = run_audit(profile)
+    result_dict = result.to_dict()
+
+    # Persist the new score vector for next-run delta comparisons.
     profile.last_score_vector = list(result.scores.vector())
     store.save(profile)
-    return result.to_dict()
+
+    # Persist the full audit snapshot so history can retrieve it instantly.
+    stage = result.gap.classified_stage if result.gap else None
+    store.save_audit(
+        pid        = pid,
+        name       = profile.name,
+        sector     = profile.sector.value if profile.sector else None,
+        stage      = int(stage) if stage else None,
+        vector     = profile.last_score_vector,
+        audit_dict = result_dict,
+    )
+    return result_dict
 
 
 @app.post("/api/projects/{pid}/assistant")
 def assistant(pid: str, body: AssistantBody) -> dict:
     profile = _require(pid)
     return grounded_assistant_reply(profile, body.question)
+
+
+# ── History / management ──────────────────────────────────────────────────── #
+
+@app.get("/api/projects")
+def list_projects() -> list[dict]:
+    """Return all saved audit summaries (newest first)."""
+    return store.list_audits()
+
+
+@app.get("/api/projects/{pid}/last-audit")
+def last_audit(pid: str) -> dict:
+    """Return the last persisted audit result without re-running the pipeline."""
+    _require(pid)                      # 404 if profile missing
+    result = store.get_audit(pid)
+    if result is None:
+        raise HTTPException(404, "No audit result saved yet for this project.")
+    return result
+
+
+@app.delete("/api/projects/{pid}")
+def delete_project(pid: str) -> dict:
+    if not store.delete_project(pid):
+        raise HTTPException(404, f"Project {pid} not found")
+    return {"deleted": pid}
 
 
 # Convenience: audit an ad-hoc profile without the intake flow (for demos/tests).

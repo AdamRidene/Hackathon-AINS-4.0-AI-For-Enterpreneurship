@@ -47,4 +47,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ question }),
     }),
+
+  // History / management
+  listProjects: () => req("/api/projects"),
+  getLastAudit: (pid) => req(`/api/projects/${pid}/last-audit`),
+  deleteProject: (pid) => req(`/api/projects/${pid}`, { method: "DELETE" }),
 };
