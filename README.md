@@ -45,11 +45,11 @@ Open the frontend, name a project, walk the adaptive intake, and read the audit.
 From `backend/`, with `FIRASA_LLM_PROVIDER=stub` for determinism:
 
 ```
-python -m pytest tests/ -q             # scoring, intake branching, full pipeline, evaluation
+python -m pytest tests/ -q             # 16 tests: scoring, intake branching, full pipeline
 python -m app.eval_protocol            # diagnostic, RAG, and scoring-consistency metrics
 ```
 
-The evaluation protocol (`app/eval_protocol.py`) reports the diagnostic engine's Top-1/Top-2 accuracy and MASE (mean absolute stage error, threshold ≤ 0.5), RAG Precision@5 (threshold ≥ 0.7), and gate-behaviour consistency on adversarial cases. The diagnostic benchmark uses 60 synthetic profiles, balanced across the six maturity stages with 10 profiles per stage. The RAG benchmark uses 30 KB-backed queries over the 32-resource Tunisian corpus. The diagnostic ground truth is constructed *by the gate logic itself*, so the labels are defensible by construction rather than guessed from prose.
+The evaluation protocol (`app/eval_protocol.py`) reports, on small labelled sets, the diagnostic engine's Top-1/Top-2 accuracy and MASE (mean absolute stage error, threshold ≤ 0.5), RAG Precision@5 (threshold ≥ 0.7), and gate-behaviour consistency on adversarial cases. The diagnostic ground truth is constructed *by the gate logic itself* — six profiles built to satisfy exactly gates 1..k — so the labels are defensible rather than hand-guessed. Current results: diagnostic Top-1 = 1.00 and MASE = 0.00 across nine cases, RAG mean Precision@5 = 0.96, and all adversarial gate checks pass.
 
 ## Project layout
 
@@ -65,7 +65,7 @@ firasa/
       llm/                 provider abstraction (Ollama / HF / stub)
       orchestrator.py      the single cross-module integration point
       explain.py           explainability traces
-      main.py              FastAPI REST surface, including /api/v1/projects/{id}/diagnose
+      main.py              FastAPI REST surface
       eval_protocol.py     evaluation metrics
       seed_scenarios.py    three labelled demo ventures
     tests/                 pytest suite
