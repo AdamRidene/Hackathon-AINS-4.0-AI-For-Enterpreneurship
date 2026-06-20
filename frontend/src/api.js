@@ -43,10 +43,10 @@ export const api = {
   health: () => req("/api/health"),
   kb: () => req("/api/kb"),
 
-  register: async ({ email, password, name }) => {
+  register: async ({ email, password, name, birth_date, location, phone, role, company }) => {
     const res = await req("/api/auth/register", {
       method: "POST",
-      body: JSON.stringify({ email, password, name }),
+      body: JSON.stringify({ email, password, name, birth_date, location, phone, role, company }),
     });
     setToken(res.token);
     return res.user;
@@ -82,6 +82,14 @@ export const api = {
     return res.user;
   },
 
+  updateProfile: async (profileData) => {
+    const res = await req("/api/me/profile", {
+      method: "PATCH",
+      body: JSON.stringify(profileData),
+    });
+    return res.user;
+  },
+
   createProject: (name, language = "fr") =>
     req("/api/projects", {
       method: "POST",
@@ -89,6 +97,8 @@ export const api = {
     }),
 
   getProject: (pid) => req(`/api/projects/${pid}`),
+
+  getQuestions: (pid) => req(`/api/projects/${pid}/questions`),
 
   nextQuestion: (pid) => req(`/api/projects/${pid}/next-question`),
 
@@ -110,4 +120,5 @@ export const api = {
   listProjects: () => req("/api/projects"),
   getLastAudit: (pid) => req(`/api/projects/${pid}/last-audit`),
   deleteProject: (pid) => req(`/api/projects/${pid}`, { method: "DELETE" }),
+  eval: () => req("/api/eval"),
 };

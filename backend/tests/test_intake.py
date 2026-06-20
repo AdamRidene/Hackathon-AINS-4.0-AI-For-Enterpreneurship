@@ -55,3 +55,12 @@ def test_three_profiles_differ():
     b = _sequence(ProjectProfile(), {"sector": "digital-saas", "declared_stage": "1"})
     c = _sequence(ProjectProfile(), {"sector": "services", "declared_stage": "4"})
     assert a != b and b != c and a != c
+
+
+def test_engine_handles_every_sector():
+    for sector in [s.value for s in Sector]:
+        seq = _sequence(ProjectProfile(), {"sector": sector, "declared_stage": "1"})
+        assert "name" in seq
+        assert "sector" in seq
+        assert "declared_stage" in seq
+        assert len(seq) > 0

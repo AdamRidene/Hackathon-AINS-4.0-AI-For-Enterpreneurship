@@ -1,20 +1,21 @@
 """Contextual project memory (persistence).
 
 Two-layer storage:
-  • JSON files  (_data/<pid>.json)   — ProjectProfile, unchanged from v1.
-  • SQLite DB   (_data/firasa.db)    — Audit results table for instant history
-                                       retrieval without re-running the LLM pipeline.
-
-Swap the SQLite layer for Postgres in production — the interface is minimal.
+  • DB (SQLite/PostgreSQL) — ProjectProfile, stored in projects table (cloud-ready).
+  • DB (SQLite/PostgreSQL) — Audit results table for instant history
+                             retrieval without re-running the LLM pipeline.
 """
 from __future__ import annotations
 
 import hashlib
 import hmac
 import json
+import os
 import secrets
 import sqlite3
+import sys
 import threading
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -24,25 +25,76 @@ from .schema import ProjectProfile
 _STORE_DIR = Path(__file__).parent.parent / "_data"
 _STORE_DIR.mkdir(exist_ok=True)
 
-_lock  = threading.Lock()
+_lock = threading.Lock()
 _cache: dict[str, ProjectProfile] = {}
 
-# ── SQLite setup ─────────────────────────────────────────────────────────────
-
+# ── Database Driver configuration ─────────────────────────────────────────────
 _DB_PATH = _STORE_DIR / "firasa.db"
 PLAN_LIMITS = {"free": 1, "plus": 3, "pro": 5}
 
+_DB_URL = os.getenv("DATABASE_URL", "")
+IS_POSTGRES = _DB_URL.startswith("postgres://") or _DB_URL.startswith("postgresql://")
 
-def _db() -> sqlite3.Connection:
-    """Return a thread-local SQLite connection (check_same_thread=False is safe
-    here because every write is wrapped in _lock)."""
-    conn = sqlite3.connect(str(_DB_PATH), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
+if IS_POSTGRES:
+    try:
+        import psycopg2
+        import psycopg2.extras
+    except ImportError:
+        print(
+            "WARNING: DATABASE_URL is PostgreSQL but 'psycopg2' is not installed. Falling back to SQLite.",
+            file=sys.stderr
+        )
+        IS_POSTGRES = False
+
+
+def _adapt_query(query: str, is_postgres: bool) -> str:
+    if is_postgres:
+        return query.replace("?", "%s")
+    return query
+
+
+@contextmanager
+def db_session():
+    conn = None
+    try:
+        if IS_POSTGRES:
+            # Direct connection to PostgreSQL / Supabase
+            conn = psycopg2.connect(_DB_URL, cursor_factory=psycopg2.extras.DictCursor)
+        else:
+            # Thread-safe SQLite connection
+            conn = sqlite3.connect(str(_DB_PATH), check_same_thread=False, timeout=10.0)
+            conn.row_factory = sqlite3.Row
+            # Enable WAL mode for concurrency
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA synchronous=NORMAL;")
+
+        class SessionWrapper:
+            def __init__(self, c, is_pg):
+                self.conn = c
+                self.is_pg = is_pg
+                self.cursor = c.cursor() if is_pg else None
+
+            def execute(self, query: str, params: tuple = ()):
+                q = _adapt_query(query, self.is_pg)
+                if self.is_pg:
+                    self.cursor.execute(q, params)
+                    return self.cursor
+                else:
+                    return self.conn.execute(q, params)
+
+        yield SessionWrapper(conn, IS_POSTGRES)
+        conn.commit()
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise e
+    finally:
+        if conn:
+            conn.close()
 
 
 def _init_db() -> None:
-    with _db() as conn:
+    with db_session() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id            TEXT PRIMARY KEY,
@@ -50,7 +102,14 @@ def _init_db() -> None:
                 name          TEXT NOT NULL,
                 password_hash TEXT NOT NULL,
                 plan          TEXT NOT NULL DEFAULT 'free',
-                created_at    TEXT NOT NULL
+                created_at    TEXT NOT NULL,
+                bio           TEXT,
+                phone         TEXT,
+                role          TEXT,
+                company       TEXT,
+                photo         TEXT,
+                birth_date    TEXT,
+                location      TEXT
             )
         """)
         conn.execute("""
@@ -59,6 +118,17 @@ def _init_db() -> None:
                 user_id    TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS projects (
+                id            TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL,
+                name          TEXT NOT NULL,
+                language      TEXT NOT NULL DEFAULT 'fr',
+                profile_json  TEXT NOT NULL,
+                created_at    TEXT NOT NULL,
+                FOREIGN KEY(owner_user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         """)
         conn.execute("""
@@ -73,12 +143,33 @@ def _init_db() -> None:
                 audited_at TEXT NOT NULL
             )
         """)
-        columns = {
-            row["name"] for row in conn.execute("PRAGMA table_info(audits)").fetchall()
-        }
+
+        # Dynamically add any missing columns (migration checks)
+        if IS_POSTGRES:
+            columns = {
+                row["column_name"] for row in conn.execute(
+                    "SELECT column_name FROM information_schema.columns WHERE table_name = 'audits'"
+                ).fetchall()
+            }
+            user_columns = {
+                row["column_name"] for row in conn.execute(
+                    "SELECT column_name FROM information_schema.columns WHERE table_name = 'users'"
+                ).fetchall()
+            }
+        else:
+            columns = {
+                row["name"] for row in conn.execute("PRAGMA table_info(audits)").fetchall()
+            }
+            user_columns = {
+                row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()
+            }
+
         if "owner_user_id" not in columns:
             conn.execute("ALTER TABLE audits ADD COLUMN owner_user_id TEXT")
-        conn.commit()
+
+        for col in ("bio", "phone", "role", "company", "photo", "birth_date", "location"):
+            if col not in user_columns:
+                conn.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT")
 
 
 _init_db()
@@ -106,19 +197,36 @@ def _verify_password(password: str, stored: str) -> bool:
     return hmac.compare_digest(candidate, expected)
 
 
-def _user_from_row(row: sqlite3.Row | None) -> dict | None:
+def _user_from_row(row: dict | None) -> dict | None:
     if row is None:
         return None
+    r = dict(row)
     return {
-        "id": row["id"],
-        "email": row["email"],
-        "name": row["name"],
-        "plan": row["plan"],
-        "created_at": row["created_at"],
+        "id": r["id"],
+        "email": r["email"],
+        "name": r["name"],
+        "plan": r["plan"],
+        "created_at": r["created_at"],
+        "bio": r.get("bio"),
+        "phone": r.get("phone"),
+        "role": r.get("role"),
+        "company": r.get("company"),
+        "photo": r.get("photo"),
+        "birth_date": r.get("birth_date"),
+        "location": r.get("location"),
     }
 
 
-def create_user(email: str, password: str, name: str | None = None) -> dict:
+def create_user(
+    email: str,
+    password: str,
+    name: str | None = None,
+    birth_date: str | None = None,
+    location: str | None = None,
+    phone: str | None = None,
+    role: str | None = None,
+    company: str | None = None,
+) -> dict:
     now = datetime.now(timezone.utc).isoformat()
     user = {
         "id": uuid4().hex,
@@ -126,14 +234,22 @@ def create_user(email: str, password: str, name: str | None = None) -> dict:
         "name": (name or email.split("@")[0]).strip(),
         "plan": "free",
         "created_at": now,
+        "birth_date": birth_date,
+        "location": location,
+        "phone": phone,
+        "role": role,
+        "company": company,
     }
     with _lock:
-        with _db() as conn:
+        with db_session() as conn:
             try:
                 conn.execute(
                     """
-                    INSERT INTO users (id, email, name, password_hash, plan, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO users (
+                        id, email, name, password_hash, plan, created_at,
+                        birth_date, location, phone, role, company
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         user["id"],
@@ -142,16 +258,21 @@ def create_user(email: str, password: str, name: str | None = None) -> dict:
                         _hash_password(password),
                         user["plan"],
                         user["created_at"],
+                        user["birth_date"],
+                        user["location"],
+                        user["phone"],
+                        user["role"],
+                        user["company"],
                     ),
                 )
-                conn.commit()
-            except sqlite3.IntegrityError as exc:
+            except (sqlite3.IntegrityError, Exception) as exc:
+                # Standardize database unique constraints violations
                 raise ValueError("Email already registered") from exc
     return user
 
 
 def authenticate_user(email: str, password: str) -> dict | None:
-    with _db() as conn:
+    with db_session() as conn:
         row = conn.execute(
             "SELECT * FROM users WHERE email = ?", (_normalise_email(email),)
         ).fetchone()
@@ -164,17 +285,16 @@ def create_session(user_id: str) -> str:
     token = secrets.token_urlsafe(32)
     now = datetime.now(timezone.utc).isoformat()
     with _lock:
-        with _db() as conn:
+        with db_session() as conn:
             conn.execute(
                 "INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)",
                 (token, user_id, now),
             )
-            conn.commit()
     return token
 
 
 def get_user_by_token(token: str) -> dict | None:
-    with _db() as conn:
+    with db_session() as conn:
         row = conn.execute(
             """
             SELECT users.*
@@ -189,55 +309,100 @@ def get_user_by_token(token: str) -> dict | None:
 
 def delete_session(token: str) -> None:
     with _lock:
-        with _db() as conn:
+        with db_session() as conn:
             conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
-            conn.commit()
 
 
 def update_user_plan(user_id: str, plan: str) -> dict | None:
     if plan not in PLAN_LIMITS:
         raise ValueError("Unknown plan")
     with _lock:
-        with _db() as conn:
+        with db_session() as conn:
             conn.execute("UPDATE users SET plan = ? WHERE id = ?", (plan, user_id))
-            conn.commit()
             row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     return _user_from_row(row)
 
-# ── JSON-file store (ProjectProfile) ─────────────────────────────────────────
 
-def _path(pid: str) -> Path:
-    return _STORE_DIR / f"{pid}.json"
+def update_user_profile(
+    user_id: str,
+    name: str,
+    bio: str | None = None,
+    phone: str | None = None,
+    role: str | None = None,
+    company: str | None = None,
+    photo: str | None = None,
+    birth_date: str | None = None,
+    location: str | None = None,
+) -> dict | None:
+    with _lock:
+        with db_session() as conn:
+            conn.execute(
+                """
+                UPDATE users
+                SET name = ?, bio = ?, phone = ?, role = ?, company = ?, photo = ?,
+                    birth_date = ?, location = ?
+                WHERE id = ?
+                """,
+                (name, bio, phone, role, company, photo, birth_date, location, user_id),
+            )
+            row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    return _user_from_row(row)
 
+
+# ── DB store (ProjectProfile) ─────────────────────────────────────────
 
 def save(profile: ProjectProfile) -> None:
     with _lock:
         _cache[profile.project_id] = profile
-        _path(profile.project_id).write_text(
-            profile.model_dump_json(indent=2), encoding="utf-8"
-        )
+        now = profile.created_at.isoformat()
+        with db_session() as conn:
+            conn.execute(
+                """
+                INSERT INTO projects (id, owner_user_id, name, language, profile_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    language = excluded.language,
+                    profile_json = excluded.profile_json
+                """,
+                (
+                    profile.project_id,
+                    profile.owner_user_id,
+                    profile.name or "Projet",
+                    profile.language,
+                    profile.model_dump_json(),
+                    now,
+                ),
+            )
 
 
 def load(pid: str) -> ProjectProfile | None:
     if pid in _cache:
         return _cache[pid]
-    p = _path(pid)
-    if not p.exists():
+    with db_session() as conn:
+        row = conn.execute(
+            "SELECT profile_json FROM projects WHERE id = ?", (pid,)
+        ).fetchone()
+    if row is None:
         return None
-    profile = ProjectProfile.model_validate_json(p.read_text(encoding="utf-8"))
+    profile = ProjectProfile.model_validate_json(row["profile_json"])
     _cache[pid] = profile
     return profile
 
 
 def list_ids() -> list[str]:
-    return [p.stem for p in _STORE_DIR.glob("*.json")]
+    with db_session() as conn:
+        rows = conn.execute("SELECT id FROM projects").fetchall()
+    return [r["id"] for r in rows]
 
 
 def count_projects_for_owner(owner_user_id: str) -> int:
-    return sum(
-        1 for pid in list_ids()
-        if (profile := load(pid)) and profile.owner_user_id == owner_user_id
-    )
+    with db_session() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) as cnt FROM projects WHERE owner_user_id = ?",
+            (owner_user_id,),
+        ).fetchone()
+    return row["cnt"] if row else 0
 
 
 def redact(profile: ProjectProfile) -> dict:
@@ -247,7 +412,7 @@ def redact(profile: ProjectProfile) -> dict:
     return d
 
 
-# ── SQLite store (AuditResult snapshots) ─────────────────────────────────────
+# ── DB store (AuditResult snapshots) ─────────────────────────────────────
 
 def save_audit(
     pid: str,
@@ -261,7 +426,7 @@ def save_audit(
     """Upsert the latest audit result for a project."""
     now = datetime.now(timezone.utc).isoformat()
     with _lock:
-        with _db() as conn:
+        with db_session() as conn:
             conn.execute(
                 """
                 INSERT INTO audits (pid, owner_user_id, name, sector, stage, vector, audit_json, audited_at)
@@ -286,12 +451,11 @@ def save_audit(
                     now,
                 ),
             )
-            conn.commit()
 
 
 def get_audit(pid: str) -> dict | None:
     """Return the last saved audit result dict, or None if not yet audited."""
-    with _db() as conn:
+    with db_session() as conn:
         row = conn.execute(
             "SELECT audit_json FROM audits WHERE pid = ?", (pid,)
         ).fetchone()
@@ -300,7 +464,7 @@ def get_audit(pid: str) -> dict | None:
 
 def list_audits(owner_user_id: str | None = None) -> list[dict]:
     """Return project summaries, including projects not audited yet."""
-    with _db() as conn:
+    with db_session() as conn:
         where = "WHERE owner_user_id = ?" if owner_user_id else ""
         params = (owner_user_id,) if owner_user_id else ()
         rows = conn.execute(
@@ -324,14 +488,19 @@ def list_audits(owner_user_id: str | None = None) -> list[dict]:
             "vector":     json.loads(r["vector"]) if r["vector"] else None,
             "audited_at": r["audited_at"],
         })
-    for pid in list_ids():
+
+    with db_session() as conn:
+        p_rows = conn.execute(
+            "SELECT id, owner_user_id, name, profile_json, created_at FROM projects"
+        ).fetchall()
+
+    for p_row in p_rows:
+        pid = p_row["id"]
         if pid in seen:
             continue
-        profile = load(pid)
-        if profile is None:
+        if owner_user_id and p_row["owner_user_id"] != owner_user_id:
             continue
-        if owner_user_id and profile.owner_user_id != owner_user_id:
-            continue
+        profile = ProjectProfile.model_validate_json(p_row["profile_json"])
         result.append({
             "project_id": profile.project_id,
             "name": profile.name,
@@ -345,15 +514,14 @@ def list_audits(owner_user_id: str | None = None) -> list[dict]:
 
 
 def delete_project(pid: str) -> bool:
-    """Delete project profile (JSON) and audit snapshot (SQLite). Returns True if found."""
+    """Delete project profile (DB) and audit snapshot (DB). Returns True if found."""
     found = False
     with _lock:
-        p = _path(pid)
-        if p.exists():
-            p.unlink()
-            found = True
         _cache.pop(pid, None)
-        with _db() as conn:
+        with db_session() as conn:
+            row = conn.execute("SELECT id FROM projects WHERE id = ?", (pid,)).fetchone()
+            if row:
+                conn.execute("DELETE FROM projects WHERE id = ?", (pid,))
+                found = True
             conn.execute("DELETE FROM audits WHERE pid = ?", (pid,))
-            conn.commit()
     return found

@@ -1,15 +1,7 @@
 import { useEffect, useState } from "react";
 import logoSvg from "../../assets/logo_first.svg";
 
-const SECTOR_LABELS = {
-  fr: { "agri-food":"Agri-food","digital-saas":"SaaS & Numérique","industry":"Industrie","health":"Santé","greentech":"CleanTech","services":"Services","other":"Autre" },
-  ar: { "agri-food":"الصناعات الغذائية","digital-saas":"البرمجيات الرقمية","industry":"الصناعة","health":"الصحة","greentech":"التكنولوجيا الخضراء","services":"الخدمات","other":"قطاع آخر" },
-};
-
-const STAGE_NAMES = {
-  fr: ["","Idéation","Validation","Développement","Lancement","Croissance","Maturité","Pivot"],
-  ar: ["","فكرة","تحقق","تطوير","إطلاق","نمو","نضج","محور"],
-};
+import { SECTOR_LABELS, STAGE_LABELS as STAGE_NAMES } from "../constants.js";
 
 const DIM_LABELS = ["M","C","I","S","G"];
 

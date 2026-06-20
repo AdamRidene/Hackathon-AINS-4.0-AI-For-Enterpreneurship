@@ -53,15 +53,23 @@ class AuditResult:
         }
 
 
-def run_audit(profile: ProjectProfile) -> AuditResult:
+async def run_audit(profile: ProjectProfile) -> AuditResult:
     """Run the full pipeline over the current shared state. Safe on partial data."""
     # Phase 2a — deterministic classification (rule-based authority).
     diagnostic = classify(profile)
 
     # Phase 2b — LLM-as-a-Judge value-proposition coherence (secondary layer).
-    pcoh, pcoh_rationale = get_llm().judge_value_proposition(
-        profile.commercial.value_proposition_narrative
-    )
+    # Use cached coherence evaluations if the value proposition narrative hasn't changed.
+    narrative = profile.commercial.value_proposition_narrative
+    if (profile.last_pcoh is not None 
+            and profile.last_pcoh_narrative == narrative):
+        pcoh = profile.last_pcoh
+        pcoh_rationale = profile.last_pcoh_rationale
+    else:
+        pcoh, pcoh_rationale = await get_llm().judge_value_proposition(narrative)
+        profile.last_pcoh = pcoh
+        profile.last_pcoh_rationale = pcoh_rationale
+        profile.last_pcoh_narrative = narrative
 
     # Phase 2c — GWLC scoring with gates, fed by P_coh.
     scores = score_all(profile, pcoh=pcoh)
@@ -86,10 +94,10 @@ def run_audit(profile: ProjectProfile) -> AuditResult:
         }
 
     # Phase 3 — grounded roadmap (gaps + scores -> RAG) and explanations.
-    roadmap = build_roadmap(profile, diagnostic, scores, gap)
+    roadmap = await build_roadmap(profile, diagnostic, scores, gap)
     explanations = {
-        "scores": explain.explain_all_scores(scores),
-        "gap": explain.explain_gap(gap),
+        "scores": await explain.explain_all_scores(scores),
+        "gap": await explain.explain_gap(gap),
         "pcoh_rationale": pcoh_rationale,
         "diagnostic_rationale": diagnostic.rationale_fr,
     }
@@ -101,14 +109,14 @@ def run_audit(profile: ProjectProfile) -> AuditResult:
     )
 
 
-def grounded_assistant_reply(profile: ProjectProfile, question: str) -> dict:
+async def grounded_assistant_reply(profile: ProjectProfile, question: str) -> dict:
     """Secondary conversational layer — grounded ONLY in structured outputs.
 
     The assistant never answers from general knowledge: its context is the
     audit (diagnostic, scores, roadmap). This satisfies the 'assistant is a
     layer, not the product' requirement.
     """
-    audit = run_audit(profile)
+    audit = await run_audit(profile)
     ctx = (
         f"Stade objectif: {audit.diagnostic.classified_stage_name}. "
         f"Écart perception-réalité: {audit.gap.message_fr}. "
@@ -118,7 +126,7 @@ def grounded_assistant_reply(profile: ProjectProfile, question: str) -> dict:
                      f"{', '.join(s['institution'] for s in m.sources)}"
                      for m in audit.roadmap[:5])
     )
-    reply = get_llm().chat(question, ctx)
+    reply = await get_llm().chat(question, ctx)
     return {"reply": reply, "grounding": ctx, "sources_used": [
         s for m in audit.roadmap[:5] for s in m.sources
     ]}

@@ -36,11 +36,11 @@ The roadmap's credibility rests on never citing an irrelevant or invented progra
 
 ## The intake state machine
 
-`app/intake/state_machine.py` is a deterministic graph, not a form. `next_question(profile)` returns the first applicable, unanswered question from an ordered bank, where applicability is a predicate over the current profile. This is what produces meaningfully different question sequences for different profiles: sector predicates gate the agri-food and digital paths, and a declared advanced stage injects evidence probes that demand the hard numeric tokens needed to confirm or refute the claim. Each answer is written to a typed field, so the downstream modules consume structured tokens rather than free text.
+`app/intake/state_machine.py` is a deterministic graph, not a form. `next_question(profile)` returns the first applicable, unanswered question from an ordered bank, where applicability is a predicate over the current profile. This is what produces meaningfully different question sequences for different profiles: every sector follows the common diagnostic path, sector-specific predicates add extra probes where useful, and a declared advanced stage injects evidence probes that demand the hard numeric tokens needed to confirm or refute the claim. Each answer is written to a typed field, so the downstream modules consume structured tokens rather than free text.
 
 ## REST surface
 
-`app/main.py` exposes the pipeline over HTTP: project creation, the adaptive next-question / answer loop, the full audit, and the grounded assistant. Profiles persist through a small JSON-file store (`app/store.py`) keyed by project id, with a redaction helper for read responses. The frontend consumes exactly these endpoints through one typed client.
+`app/main.py` exposes the pipeline over HTTP: project creation, the adaptive next-question / answer loop, the full audit, the `/api/v1/projects/{id}/diagnose` handoff endpoint, and the grounded assistant. Profiles persist through a small JSON-file store (`app/store.py`) keyed by project id, with a redaction helper for read responses. The frontend consumes exactly these endpoints through one typed client.
 
 ## Frontend
 

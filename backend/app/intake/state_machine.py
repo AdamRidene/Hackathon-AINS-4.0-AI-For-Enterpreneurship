@@ -3,8 +3,10 @@
 A deterministic state machine, NOT a static form. The next question is a pure
 function of the current ProjectProfile, so branching is fully auditable:
 
-  * Sector-aware: selecting 'agri-food' loads sector compliance/footprint probes
-    and bypasses digital-platform paths entirely.
+  * Sector-aware: every sector follows the same core diagnostic path, while
+    specific sectors can inject extra probes when they need them. agri-food and
+    digital-saas currently add specialized green questions, and all other
+    sectors fall back to the generalized branch.
   * Stage-aware: claiming an advanced stage (e.g. Fundraising) injects mandatory
     evidence-validation blocks requiring hard numeric tokens — the system steers
     data collection toward the evidence needed to confirm or refute the claim.
@@ -64,6 +66,8 @@ def _is_digital(p: ProjectProfile) -> bool:
 
 
 # Ordered question bank. The machine serves the first applicable, unanswered one.
+# Sector specificity is additive, not restrictive: the generalized branch always
+# remains available so the engine can support any sector in the enum.
 QUESTIONS: list[Question] = [
     # --- Universal context ------------------------------------------------- #
     Question("name", "Quel est le nom de votre projet ?", "name", "text",
@@ -165,7 +169,7 @@ QUESTIONS: list[Question] = [
              applies=_is_agri, triggered_by="sector=agri-food",
              prompt_ar="هل تعتمد عملية إعادة تدوير دائري للنفايات الفلاحية ؟"),
 
-    # --- Sector-specific branch: digital (bypasses agri footprint) --------- #
+    # --- Sector-specific branch: digital (specialized footprint probe) ----- #
     Question("digital_footprint", "Empreinte de calcul de votre plateforme ?",
              "green.footprint_category", "enum",
              ["Digital Native", "Compute Intensive"],

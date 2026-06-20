@@ -66,7 +66,7 @@ def _score_triggers(scores: CompositeScores) -> list[tuple[str, str, str]]:
     return out
 
 
-def build_roadmap(
+async def build_roadmap(
     profile: ProjectProfile,
     diagnostic: DiagnosticResult,
     scores: CompositeScores,
@@ -107,7 +107,7 @@ def build_roadmap(
         sources = [{"institution": c.institution, "title": c.title, "url": c.url,
                     "citation": c.cite(), "horizon": c.horizon} for c in fresh]
         horizon = fresh[0].horizon
-        action = llm.generate_roadmap_prose(
+        action = await llm.generate_roadmap_prose(
             gap=f"{label}: {rationale}",
             chunks=[c.content for c in fresh],
         )

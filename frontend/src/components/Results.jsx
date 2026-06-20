@@ -1,15 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import logoSvg from "../../assets/logo_first.svg";
+import Assistant from "./Assistant.jsx";
+import ScoreDeltas from "./ScoreDeltas.jsx";
+import ProfileEditor from "./ProfileEditor.jsx";
+import { SECTOR_LABELS as SECTOR_L, STAGE_LABELS as STAGE_L } from "../constants.js";
 
-/* ── label maps ── */
-const SECTOR_L = {
-  fr: { "agri-food": "Agri-food", "digital-saas": "SaaS & Numérique", "industry": "Industrie", "health": "Santé", "greentech": "CleanTech", "services": "Services", "other": "Autre" },
-  ar: { "agri-food": "الصناعات الغذائية", "digital-saas": "البرمجيات الرقمية", "industry": "الصناعة", "health": "الصحة", "greentech": "التكنولوجيا الخضراء", "services": "الخدمات", "other": "قطاع آخر" },
-};
-const STAGE_L = {
-  fr: { 1: "Idéation", 2: "Validation Marché", 3: "Structuration", 4: "Levée de fonds", 5: "Lancement", 6: "Croissance" },
-  ar: { 1: "مرحلة الفكرة", 2: "التحقق من السوق", 3: "الهيكلة", 4: "التمويل", 5: "الإطلاق", 6: "النمو" },
-};
 const DIMS = [
   ["market", "Marché", "سوق"],
   ["commercial", "Commercial", "تجاري"],
@@ -28,7 +23,8 @@ function barColor(v, gated) {
 const COPY = {
   fr: {
     newAudit: "Nouvel audit",
-    tabs: ["Diagnostic", "Scores", "Feuille de route"],
+    editProfile: "Ajuster les réponses",
+    tabs: ["Diagnostic", "Scores", "Feuille de route", "Assistant"],
     confidence: "Confiance",
     activeGate: "PORTE ACTIVE",
     declared: "Stade déclaré",
@@ -52,7 +48,8 @@ const COPY = {
   },
   ar: {
     newAudit: "تدقيق جديد",
-    tabs: ["التشخيص", "المؤشرات", "خارطة الطريق"],
+    editProfile: "تعديل الإجابات",
+    tabs: ["التشخيص", "المؤشرات", "خارطة الطريق", "المستشار"],
     confidence: "الثقة",
     activeGate: "البوابة النشطة",
     declared: "المرحلة المعلنة",
@@ -79,7 +76,16 @@ const COPY = {
 /* ══════════════════════════════════════════════════════════════
    DIAGNOSTIC TAB
 ══════════════════════════════════════════════════════════════ */
-function DiagnosticTab({ audit, lang, T }) {
+const GATE_QUESTION_MAP = {
+  1: "problem_statement",
+  2: "validation",
+  3: "legal_form",
+  4: "revenue_model",
+  5: "mvp_stage",
+  6: "repeatable_sales"
+};
+
+function DiagnosticTab({ audit, lang, T, onFixGate }) {
   const ar = lang === "ar";
   const gap = audit.perception_reality_gap;
   const diag = audit.diagnostic;
@@ -135,6 +141,9 @@ function DiagnosticTab({ audit, lang, T }) {
           {diag.gates.map(g => {
             const isActive = diag.next_blocking_gate?.stage === g.stage;
             const req = ar ? g.requirement_ar || g.requirement_fr : g.requirement_fr;
+            const ev = ar ? g.evidence_ar || g.evidence : g.evidence;
+            const targetQ = GATE_QUESTION_MAP[g.stage];
+
             return (
               <div key={g.stage} className={`gate${isActive ? " active-gate" : ""}`}>
                 {isActive && <span className="gate-active-label">{T.activeGate}</span>}
@@ -144,7 +153,30 @@ function DiagnosticTab({ audit, lang, T }) {
                 <div className="gate-body">
                   <div className="gate-name">{STAGE_L[lang][g.stage]}</div>
                   <div className="gate-req">{req}</div>
-                  <div className={`gate-ev ${g.passed ? "passed" : "failed"}`}>{g.evidence}</div>
+                  <div className={`gate-ev ${g.passed ? "passed" : "failed"}`}>{ev}</div>
+                  
+                  {/* Deep link button to Profile Editor */}
+                  {!g.passed && targetQ && (
+                    <button
+                      onClick={() => onFixGate(targetQ)}
+                      className="ghost"
+                      style={{
+                        padding: "6px 12px",
+                        fontSize: "0.74rem",
+                        marginTop: 8,
+                        border: "1px solid var(--border)",
+                        borderRadius: "var(--r-sm)",
+                        cursor: "pointer",
+                        color: "var(--orange)",
+                        borderColor: "var(--orange-border)",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4
+                      }}
+                    >
+                      <span>{ar ? "← تعديل البيانات" : "Ajuster la donnée →"}</span>
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -209,7 +241,8 @@ function ScoresTab({ audit, lang, T, plan, openProfile }) {
       )}
 
       <div style={{ pointerEvents: isLocked ? "none" : "auto", opacity: isLocked ? 0.22 : 1 }}>
-        <div className="score-rows">
+        <ScoreDeltas scoreDeltas={audit.score_deltas} />
+        <div className="score-rows" style={{ marginTop: 24 }}>
           {DIMS.map(([key, labelFr, labelAr]) => {
             const res = scores[key];
             if (!res) return null;
@@ -355,15 +388,22 @@ function RoadmapTab({ audit, pid, lang, T, checked, onToggle, plan, openProfile 
 /* ══════════════════════════════════════════════════════════════
    RESULTS ROOT
  ══════════════════════════════════════════════════════════════ */
-export default function Results({ audit, pid, lang, theme, setTheme, onNewAudit, checkedMilestones, onToggleMilestone, api, user, plan, openProfile }) {
+export default function Results({ audit, pid, lang, theme, setTheme, onNewAudit, checkedMilestones, onToggleMilestone, api, user, plan, openProfile, onAuditUpdated }) {
   const [activeTab, setActiveTab] = useState(0);
+  const [showEditor, setShowEditor] = useState(false);
+  const [focusQuestion, setFocusQuestion] = useState(null);
   const ar = lang === "ar";
   const T = COPY[lang];
+
+  const handleFixGate = (questionId) => {
+    setFocusQuestion(questionId);
+    setShowEditor(true);
+  };
 
   const anomalyCount = audit.anomalies?.length || 0;
   const tabLabels = T.tabs;
 
-  const SECTION_IDS = ["diagnostic-sec", "scores-sec", "roadmap-sec"];
+  const SECTION_IDS = ["diagnostic-sec", "scores-sec", "roadmap-sec", "assistant-sec"];
   const isScrollingRef = useRef(false);
   const scrollTimeoutRef = useRef(null);
 
@@ -442,10 +482,30 @@ export default function Results({ audit, pid, lang, theme, setTheme, onNewAudit,
               </span>
             )}
           </div>
-          <button className="primary" onClick={onNewAudit}>
-            {T.newAudit}
-          </button>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button className="ghost" onClick={() => setShowEditor(true)} style={{ border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "10px 16px", cursor: "pointer" }}>
+              {T.editProfile}
+            </button>
+            <button className="primary" onClick={onNewAudit}>
+              {T.newAudit}
+            </button>
+          </div>
         </div>
+
+        {/* Upgrade banner for free users */}
+        {plan === "free" && (
+          <div className="results-upgrade-banner">
+            <div className="upgrade-banner-text">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+              </svg>
+              <span>{ar ? "التشخيص الأساسي مجاني. قم بالترقية لفتح المؤشرات التفصيلية وخارطة الطريق المخصصة." : "Le diagnostic de base est gratuit. Passez au plan Pro pour débloquer les scores détaillés et la feuille de route personnalisée."}</span>
+            </div>
+            <button className="upgrade-banner-btn" onClick={openProfile}>
+              {ar ? "ترقية إلى برو" : "Passer à Pro →"}
+            </button>
+          </div>
+        )}
 
         {/* Local Navigation Sticky Tabs */}
         <div className="results-local-nav">
@@ -468,7 +528,7 @@ export default function Results({ audit, pid, lang, theme, setTheme, onNewAudit,
           <div className="results-section-header">
             <h2 className="results-section-title">{T.tabs[0]}</h2>
           </div>
-          <DiagnosticTab audit={audit} lang={lang} T={T} />
+          <DiagnosticTab audit={audit} lang={lang} T={T} onFixGate={handleFixGate} />
         </section>
 
         {/* Section 2: Scores */}
@@ -492,7 +552,26 @@ export default function Results({ audit, pid, lang, theme, setTheme, onNewAudit,
             openProfile={openProfile}
           />
         </section>
+
+        {/* Section 4: Assistant */}
+        <section id="assistant-sec" className="results-section">
+          <div className="results-section-header">
+            <h2 className="results-section-title">{T.tabs[3]}</h2>
+          </div>
+          <Assistant pid={pid} lang={lang} />
+        </section>
       </div>
+
+      {showEditor && (
+        <ProfileEditor
+          pid={pid}
+          lang={lang}
+          api={api}
+          onClose={() => { setShowEditor(false); setFocusQuestion(null); }}
+          onAuditUpdated={onAuditUpdated}
+          initialFocusQuestion={focusQuestion}
+        />
+      )}
     </div>
   );
 }

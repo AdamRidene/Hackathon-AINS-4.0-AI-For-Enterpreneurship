@@ -1,6 +1,6 @@
 import logoSvg from "../../assets/logo_first.svg";
 
-export default function Topbar({ lang, setLang, theme, setTheme, user, plan, openProfile, health, onLogoClick }) {
+export default function Topbar({ lang, setLang, theme, setTheme, user, plan, openProfile, health, onLogoClick, onEvalClick }) {
   const ar = lang === "ar";
 
   return (
@@ -41,11 +41,31 @@ export default function Topbar({ lang, setLang, theme, setTheme, user, plan, ope
           )}
         </button>
 
+
         <button className="profile-btn" onClick={openProfile}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-            <circle cx="12" cy="7" r="4"></circle>
-          </svg>
+          {user && user.photo ? (
+            user.photo.startsWith("http") || user.photo.startsWith("/") ? (
+              <img 
+                src={user.photo} 
+                alt={user.name} 
+                style={{ 
+                  width: "16px", 
+                  height: "16px", 
+                  borderRadius: "50%", 
+                  objectFit: "cover",
+                  display: "inline-block",
+                  verticalAlign: "middle"
+                }} 
+              />
+            ) : (
+              <span style={{ fontSize: "1.1rem", lineHeight: 1, display: "inline-block", verticalAlign: "middle" }}>{user.photo}</span>
+            )
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+          )}
           <span>{user ? user.name : ar ? "دخول" : "Connexion"}</span>
           {user && (
             <span className={`plan-badge ${plan}`}>

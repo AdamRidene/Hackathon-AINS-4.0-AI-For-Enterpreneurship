@@ -8,7 +8,7 @@ Firasa replaces the passive advisory chatbot with an *auditor*. Instead of answe
 
 Firasa's distinguishing property is not that it has three modules but that they share one state and feed one another. The single integration point is `app/orchestrator.py`, which threads one `ProjectProfile` through the whole pipeline.
 
-The **Adaptive Diagnostic Engine** runs a state-driven intake (not a static form): the next question is a pure function of the current profile, so the sequence branches by sector and by declared stage. A founder who selects *agri-food* is asked footprint and circularity probes and never sees the digital-platform path; a founder who claims *Fundraising* has mandatory evidence probes injected that demand hard numeric tokens. The collected tokens drive a deterministic six-stage classifier (Ideation → Market Validation → Structuration → Fundraising → Launch Planning → Growth), where a venture sits at stage *k* if and only if every evidence gate 1..k is satisfied. The engine then surfaces the **perception–reality gap** between the declared stage and the classified stage as a first-class output, applying an automatic reallocation when overestimation is severe.
+The **Adaptive Diagnostic Engine** runs a state-driven intake (not a static form): the next question is a pure function of the current profile, so the sequence branches by sector and by declared stage. Every sector follows the same core diagnostic path, with additive probes for sectors that need them; for example, *agri-food* gets footprint and circularity questions, while *digital-saas* gets a platform-footprint path. A founder who claims *Fundraising* has mandatory evidence probes injected that demand hard numeric tokens. The collected tokens drive a deterministic six-stage classifier (Ideation → Market Validation → Structuration → Fundraising → Launch Planning → Growth), where a venture sits at stage *k* if and only if every evidence gate 1..k is satisfied. The engine then surfaces the **perception–reality gap** between the declared stage and the classified stage as a first-class output, applying an automatic reallocation when overestimation is severe.
 
 The **Explainable GWLC Scoring** module computes five composite scores — Market, Commercial, Innovation, Scalability, Green — as a Gated Weighted Linear Combination. A *gate* is a non-linear override applied after the linear base score, enforcing that a weak score on a fundamental dimension cannot be masked by strong scores elsewhere (a huge TAM with no customer validation is capped at 30; strong scalability fundamentals with a human-dependency above 7 are halved). Every score carries a full per-criterion contribution trace, so the interface can answer "why was this score given?" down to the individual term.
 
@@ -45,11 +45,11 @@ Open the frontend, name a project, walk the adaptive intake, and read the audit.
 From `backend/`, with `FIRASA_LLM_PROVIDER=stub` for determinism:
 
 ```
-python -m pytest tests/ -q             # 16 tests: scoring, intake branching, full pipeline
+python -m pytest tests/ -q             # scoring, intake branching, full pipeline, evaluation
 python -m app.eval_protocol            # diagnostic, RAG, and scoring-consistency metrics
 ```
 
-The evaluation protocol (`app/eval_protocol.py`) reports, on small labelled sets, the diagnostic engine's Top-1/Top-2 accuracy and MASE (mean absolute stage error, threshold ≤ 0.5), RAG Precision@5 (threshold ≥ 0.7), and gate-behaviour consistency on adversarial cases. The diagnostic ground truth is constructed *by the gate logic itself* — six profiles built to satisfy exactly gates 1..k — so the labels are defensible rather than hand-guessed. Current results: diagnostic Top-1 = 1.00 and MASE = 0.00 across nine cases, RAG mean Precision@5 = 0.96, and all adversarial gate checks pass.
+The evaluation protocol (`app/eval_protocol.py`) reports the diagnostic engine's Top-1/Top-2 accuracy and MASE (mean absolute stage error, threshold ≤ 0.5), RAG Precision@5 (threshold ≥ 0.7), and gate-behaviour consistency on adversarial cases. The diagnostic benchmark uses 60 synthetic profiles, balanced across the six maturity stages with 10 profiles per stage. The RAG benchmark uses 30 KB-backed queries over the 32-resource Tunisian corpus. The diagnostic ground truth is constructed *by the gate logic itself*, so the labels are defensible by construction rather than guessed from prose.
 
 ## Project layout
 
@@ -65,7 +65,7 @@ firasa/
       llm/                 provider abstraction (Ollama / HF / stub)
       orchestrator.py      the single cross-module integration point
       explain.py           explainability traces
-      main.py              FastAPI REST surface
+      main.py              FastAPI REST surface, including /api/v1/projects/{id}/diagnose
       eval_protocol.py     evaluation metrics
       seed_scenarios.py    three labelled demo ventures
     tests/                 pytest suite

@@ -18,7 +18,15 @@ def _register(plan: str = "free") -> tuple[dict, dict]:
     email = f"user-{uuid4().hex}@firasa.test"
     res = client.post(
         "/api/auth/register",
-        json={"email": email, "password": "secret123", "name": "Test User"},
+        json={
+            "email": email,
+            "password": "secret123",
+            "name": "Test User",
+            "birth_date": "1994-03-12",
+            "location": "Tunis, Tunisia",
+            "phone": "+216 99 888 777",
+            "role": "Founder",
+        },
     )
     assert res.status_code == 200, res.text
     body = res.json()
@@ -95,3 +103,42 @@ def test_hard_delete_removes_profile_and_audit_access():
     assert deleted.status_code == 200, deleted.text
     assert client.get(f"/api/projects/{pid}", headers=headers).status_code == 404
     assert client.get(f"/api/projects/{pid}/last-audit", headers=headers).status_code == 404
+
+
+def test_profile_update():
+    _, headers = _register()
+
+    profile_data = {
+        "name": "Updated Name",
+        "bio": "Expert startuper",
+        "phone": "+216 99 888 777",
+        "role": "Chief Executive Officer",
+        "company": "DeepTech Tunisia",
+        "photo": "🚀",
+        "birth_date": "1993-05-01",
+        "location": "Sfax, Tunisia",
+    }
+
+    res = client.patch("/api/me/profile", json=profile_data, headers=headers)
+    assert res.status_code == 200, res.text
+    user = res.json()["user"]
+    assert user["name"] == "Updated Name"
+    assert user["bio"] == "Expert startuper"
+    assert user["phone"] == "+216 99 888 777"
+    assert user["role"] == "Chief Executive Officer"
+    assert user["company"] == "DeepTech Tunisia"
+    assert user["photo"] == "🚀"
+    assert user["birth_date"] == "1993-05-01"
+    assert user["location"] == "Sfax, Tunisia"
+
+    me = client.get("/api/auth/me", headers=headers)
+    assert me.status_code == 200
+    user_me = me.json()["user"]
+    assert user_me["name"] == "Updated Name"
+    assert user_me["bio"] == "Expert startuper"
+    assert user_me["phone"] == "+216 99 888 777"
+    assert user_me["role"] == "Chief Executive Officer"
+    assert user_me["company"] == "DeepTech Tunisia"
+    assert user_me["photo"] == "🚀"
+    assert user_me["birth_date"] == "1993-05-01"
+    assert user_me["location"] == "Sfax, Tunisia"

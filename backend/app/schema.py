@@ -171,5 +171,10 @@ class ProjectProfile(BaseModel):
     # deltas across successive audits of the same project.
     last_score_vector: Optional[list[float]] = None
 
+    # Cached value-proposition evaluations to prevent redundant LLM-as-a-Judge API calls
+    last_pcoh: Optional[float] = None
+    last_pcoh_rationale: Optional[str] = None
+    last_pcoh_narrative: Optional[str] = None
+
     def touch(self) -> None:
         self.updated_at = datetime.now(timezone.utc)

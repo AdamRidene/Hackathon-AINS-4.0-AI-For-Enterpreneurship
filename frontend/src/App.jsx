@@ -6,7 +6,10 @@ import Processing from "./components/Processing.jsx";
 import Results    from "./components/Results.jsx";
 import History    from "./components/History.jsx";
 import ProfileModal from "./components/ProfileModal.jsx";
+import ProfilePage from "./components/ProfilePage.jsx";
 import Topbar from "./components/Topbar.jsx";
+import EvaluationReport from "./components/EvaluationReport.jsx";
+
 
 export default function App() {
   /* ── Global state ── */
@@ -31,9 +34,11 @@ export default function App() {
 
   const [theme, setTheme] = useState(() => localStorage.getItem("firasa_theme") || "dark");
 
-  const [user, setUser] = useState({ name: "Entrepreneur", plan: "pro" });
-  const [plan, setPlan] = useState("pro");
+  const [user, setUser] = useState({ name: "Entrepreneur", plan: "free" });
+  const [plan, setPlan] = useState("free");
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileReturnPhase, setProfileReturnPhase] = useState("start");
+  const [showLimitModal, setShowLimitModal] = useState(false);
 
   async function autoLogin() {
     const mockCredentials = {
@@ -44,23 +49,13 @@ export default function App() {
     try {
       const res = await api.login(mockCredentials);
       setUser(res);
-      setPlan(res.plan || "pro");
-      if (res.plan !== "pro") {
-        const updated = await api.updatePlan("pro");
-        setUser(updated);
-        setPlan("pro");
-      }
+      setPlan(res.plan || "free");
       await refreshHistory();
     } catch {
       try {
         const res = await api.register(mockCredentials);
         setUser(res);
-        setPlan(res.plan || "pro");
-        if (res.plan !== "pro") {
-          const updated = await api.updatePlan("pro");
-          setUser(updated);
-          setPlan("pro");
-        }
+        setPlan(res.plan || "free");
         await refreshHistory();
       } catch (err) {
         console.error("Auto login failed:", err);
@@ -91,10 +86,7 @@ export default function App() {
       api.me()
         .then((me) => {
           setUser(me);
-          setPlan(me.plan || "pro");
-          if (me.plan !== "pro") {
-            api.updatePlan("pro").then(u => { setUser(u); setPlan("pro"); });
-          }
+          setPlan(me.plan || "free");
           return refreshHistory();
         })
         .catch(() => {
@@ -147,14 +139,19 @@ export default function App() {
     }
     setBusy(true); setError(null);
     try {
-      const res = await api.createProject(name, lang);
+      const projectName = name || "";
+      const res = await api.createProject(projectName, lang);
       setPid(res.project_id);
       setQuestion(res.next_question);
       setProgress(res.progress);
-      saveHistory(res.project_id, name, null);
+      saveHistory(res.project_id, projectName || (lang === "ar" ? "مشروع جديد" : "Nouveau Projet"), null);
       setPhase("intake");
     } catch (err) {
-      setError(err.message);
+      if (err.message.includes("limit reached") || err.message.includes("Limit reached") || err.message.includes("limite")) {
+        setShowLimitModal(true);
+      } else {
+        setError(err.message);
+      }
     }
     finally { setBusy(false); }
   }
@@ -263,7 +260,12 @@ export default function App() {
       });
       return next;
     });
-    if (pid === projectId) restart();
+    if (pid === projectId) {
+      setPid(null);
+      setAudit(null);
+      setQuestion(null);
+      setProgress(null);
+    }
   }
 
   function handleAuthUser(nextUser) {
@@ -283,6 +285,19 @@ export default function App() {
   function handlePlanUser(nextUser) {
     setUser(nextUser);
     setPlan(nextUser?.plan || "free");
+  }
+
+  function openProfilePage() {
+    if (!user) {
+      setShowProfileModal(true);
+      return;
+    }
+    setProfileReturnPhase(phase);
+    setPhase("profile");
+  }
+
+  function closeProfilePage() {
+    setPhase(profileReturnPhase || "start");
   }
 
   function openHistory() {
@@ -307,9 +322,10 @@ export default function App() {
           setTheme={setTheme}
           user={user}
           plan={plan}
-          openProfile={() => setShowProfileModal(true)}
+          openProfile={openProfilePage}
           health={health}
           onLogoClick={restart}
+          onEvalClick={() => setPhase("eval")}
         />
       )}
 
@@ -331,7 +347,7 @@ export default function App() {
           setTheme={setTheme}
           user={user}
           plan={plan}
-          openProfile={() => setShowProfileModal(true)}
+          openProfile={openProfilePage}
           health={health}
           history={history}
           busy={busy}
@@ -348,7 +364,7 @@ export default function App() {
           setTheme={setTheme}
           user={user}
           plan={plan}
-          openProfile={() => setShowProfileModal(true)}
+          openProfile={openProfilePage}
           api={api}
           onBack={() => setPhase("start")}
           onView={handleViewFromHistory}
@@ -364,12 +380,14 @@ export default function App() {
           setTheme={setTheme}
           user={user}
           plan={plan}
-          openProfile={() => setShowProfileModal(true)}
+          openProfile={openProfilePage}
           question={question}
           progress={progress}
           busy={busy}
           onSubmit={handleAnswer}
           onSkipToAudit={handleRunAudit}
+          pid={pid}
+          api={api}
         />
       )}
 
@@ -386,11 +404,38 @@ export default function App() {
           setTheme={setTheme}
           user={user}
           plan={plan}
-          openProfile={() => setShowProfileModal(true)}
+          openProfile={openProfilePage}
           onNewAudit={restart}
           checkedMilestones={checked}
           onToggleMilestone={toggleMilestone}
           api={api}
+          onAuditUpdated={setAudit}
+        />
+      )}
+
+      {phase === "profile" && user && (
+        <ProfilePage
+          user={user}
+          plan={plan}
+          history={history}
+          lang={lang}
+          api={api}
+          onBack={closeProfilePage}
+          onLogout={handleLogout}
+          onUserUpdated={handleAuthUser}
+          onProjectDeleted={handleProjectDeleted}
+          onResumeProject={async (projectId) => {
+            closeProfilePage();
+            await handleResume(projectId);
+          }}
+        />
+      )}
+
+      {phase === "eval" && (
+        <EvaluationReport
+          lang={lang}
+          api={api}
+          onBack={restart}
         />
       )}
 
@@ -407,6 +452,41 @@ export default function App() {
         onResume={handleResume}
         api={api}
       />
+
+      {showLimitModal && (
+        <div className="modal-overlay" onClick={() => setShowLimitModal(false)}>
+          <div className="modal-container" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440, padding: 24, textAlign: "center", display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ fontSize: "2.8rem", lineHeight: 1 }}>🔒</div>
+            <h3 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 700 }}>
+              {lang === "ar" ? "تم الوصول إلى الحد الأقصى للمشاريع" : "Limite de projets atteinte"}
+            </h3>
+            <p style={{ fontSize: "0.88rem", color: "var(--text-sub)", lineHeight: 1.4, margin: 0 }}>
+              {lang === "ar"
+                ? `باقة اشتراكك الحالية (${plan === "free" ? "مجاني" : plan === "plus" ? "بلس" : "برو"}) تسمح لك بحد أقصى من المشاريع. يرجى ترقية اشتراكك أو حذف بعض المشاريع السابقة من ملفك الشخصي لإتاحة مساحة.`
+                : `Votre abonnement actuel (${plan === "free" ? "Gratuit" : plan === "plus" ? "Plus" : "Pro"}) a atteint sa limite de projets. Veuillez mettre à niveau votre plan ou supprimer des projets existants depuis votre profil pour continuer.`}
+            </p>
+            <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 8 }}>
+              <button
+                className="ghost"
+                onClick={() => setShowLimitModal(false)}
+                style={{ minWidth: 120 }}
+              >
+                {lang === "ar" ? "إلغاء" : "Fermer"}
+              </button>
+              <button
+                className="primary"
+                onClick={() => {
+                  setShowLimitModal(false);
+                  openProfilePage();
+                }}
+                style={{ minWidth: 120 }}
+              >
+                {lang === "ar" ? "الملف الشخصي" : "Voir mon profil"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -13,7 +13,7 @@ from .scoring.gwlc import ScoreResult, CompositeScores
 from .diagnostic.gap import GapReport
 
 
-def explain_score(s: ScoreResult) -> dict:
+async def explain_score(s: ScoreResult) -> dict:
     contrib_lines = "; ".join(
         f"{c.criterion} (poids {c.weight:.2f}): {c.detail} -> {c.weighted:.1f} pts"
         for c in s.contributions
@@ -29,11 +29,11 @@ def explain_score(s: ScoreResult) -> dict:
         "dimension": s.dimension,
         "final_score": round(s.final_score, 1),
         "structured_trace": context,
-        "natural_language": get_llm().justify(context),
+        "natural_language": await get_llm().justify(context),
     }
 
 
-def explain_gap(gap: GapReport) -> dict:
+async def explain_gap(gap: GapReport) -> dict:
     if not gap.has_gap:
         return {"has_gap": False, "natural_language": gap.message_fr}
     dims = "; ".join(
@@ -50,15 +50,15 @@ def explain_gap(gap: GapReport) -> dict:
         "kind": gap.kind,
         "severity": gap.severity,
         "structured_trace": context,
-        "natural_language": get_llm().justify(context),
+        "natural_language": await get_llm().justify(context),
     }
 
 
-def explain_all_scores(scores: CompositeScores) -> dict:
+async def explain_all_scores(scores: CompositeScores) -> dict:
     return {
-        "market": explain_score(scores.market),
-        "commercial": explain_score(scores.commercial),
-        "innovation": explain_score(scores.innovation),
-        "scalability": explain_score(scores.scalability),
-        "green": explain_score(scores.green),
+        "market": await explain_score(scores.market),
+        "commercial": await explain_score(scores.commercial),
+        "innovation": await explain_score(scores.innovation),
+        "scalability": await explain_score(scores.scalability),
+        "green": await explain_score(scores.green),
     }
