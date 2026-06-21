@@ -306,9 +306,10 @@ async def _run_owned_audit(pid: str, user: dict) -> dict:
     result  = await run_audit(profile)
     result_dict = result.to_dict()
 
-    # Persist the new score vector for next-run delta comparisons.
-    profile.last_score_vector = list(result.scores.vector())
-    store.save(profile)
+    # Persist the new score vector for next-run delta comparisons if intake is complete.
+    if profile.intake_complete:
+        profile.last_score_vector = list(result.scores.vector())
+        store.save(profile)
 
     # Persist the full audit snapshot so history can retrieve it instantly.
     stage = result.gap.classified_stage if result.gap else None
@@ -370,6 +371,8 @@ def delete_project(pid: str, user: dict = Depends(_current_user)) -> dict:
 # Convenience: audit an ad-hoc profile without the intake flow (for demos/tests).
 @app.post("/api/audit")
 async def audit_adhoc(profile: ProjectProfile) -> dict:
+    if os.getenv("FIRASA_DEBUG", "false").lower() != "true":
+        raise HTTPException(403, "Ad-hoc debugging audit endpoint is disabled")
     store.save(profile)
     result = await run_audit(profile)
     return result.to_dict()

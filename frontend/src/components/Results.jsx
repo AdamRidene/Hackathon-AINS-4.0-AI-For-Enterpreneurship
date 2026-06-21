@@ -344,7 +344,7 @@ function RoadmapTab({ audit, pid, lang, T, checked, onToggle, plan, openProfile 
         </div>
         <div className="roadmap-items">
           {audit.roadmap.map((m, i) => {
-            const key = `${pid}_${m.order}`;
+            const key = `${pid}_${m.id}`;
             const done = !!checked[key];
             const horizon = ar ? m.horizon_ar || m.horizon_fr : m.horizon_fr;
             const rat = ar ? m.rationale_ar || m.rationale_fr : m.rationale_fr;
@@ -353,7 +353,7 @@ function RoadmapTab({ audit, pid, lang, T, checked, onToggle, plan, openProfile 
             return (
               <div key={i} className={`milestone${done ? " done" : ""}`}>
                 <div className="ms-side">
-                  <div className={`ms-check${done ? " done" : ""}`} onClick={() => onToggle(m.order)} title={T.checkDone}>
+                  <div className={`ms-check${done ? " done" : ""}`} onClick={() => onToggle(m.id)} title={T.checkDone}>
                     {done && "✓"}
                   </div>
                   <span className="ms-order">{m.order}</span>

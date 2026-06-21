@@ -103,12 +103,18 @@ class LLMProvider(ABC):
             "clarity, segment specificity, differentiation, pain evidence, alignment."
         )
 
-    async def justify(self, context: str) -> str:
-        prompt = (
-            "Explain, in 2-3 plain sentences for a Tunisian entrepreneur (French), "
-            "why the system produced this result. Be specific and reference the "
-            "evidence. Do not invent facts.\n\n" + context
-        )
+    async def justify(self, context: str, lang: str = "fr") -> str:
+        if lang == "ar":
+            prompt = (
+                "وضح في جملتين أو ثلاث جمل بسيطة لمقاول تونسي (باللغة العربية)، "
+                "لماذا أنتج النظام هذه النتيجة. كن محددًا واذكر الأدلة. لا تخترع حقائق.\n\n" + context
+            )
+        else:
+            prompt = (
+                "Explain, in 2-3 plain sentences for a Tunisian entrepreneur (French), "
+                "why the system produced this result. Be specific and reference the "
+                "evidence. Do not invent facts.\n\n" + context
+            )
         try:
             completed_str = await self._complete(prompt, max_tokens=220)
             out = completed_str.strip()
@@ -118,14 +124,22 @@ class LLMProvider(ABC):
             pass
         return context  # the structured context is itself a faithful explanation
 
-    async def chat(self, question: str, context: str) -> str:
+    async def chat(self, question: str, context: str, lang: str = "fr") -> str:
         """Grounded Q&A: answer ONLY from the structured context provided."""
-        prompt = (
-            "Tu es l'assistant Firasa. Réponds à la question du fondateur en "
-            "français, en te basant UNIQUEMENT sur le contexte structuré "
-            "(diagnostic, scores, feuille de route). N'invente aucun programme.\n\n"
-            f"Contexte:\n{context}\n\nQuestion: {question}\n\nRéponse:"
-        )
+        if lang == "ar":
+            prompt = (
+                "Tu es l'assistant Firasa. Réponds à la question du fondateur en arabe "
+                "(arabe tunisien ou arabe standard moderne simple), en te basant UNIQUEMENT sur le contexte "
+                "structuré (diagnostic, scores, feuille de route). N'invente aucun programme.\n\n"
+                f"Contexte:\n{context}\n\nQuestion: {question}\n\nRéponse:"
+            )
+        else:
+            prompt = (
+                "Tu es l'assistant Firasa. Réponds à la question du fondateur en "
+                "français, en te basant UNIQUEMENT sur le contexte structuré "
+                "(diagnostic, scores, feuille de route). N'invente aucun programme.\n\n"
+                f"Contexte:\n{context}\n\nQuestion: {question}\n\nRéponse:"
+            )
         try:
             completed_str = await self._complete(prompt, max_tokens=300)
             out = completed_str.strip()
@@ -134,19 +148,32 @@ class LLMProvider(ABC):
         except Exception:
             pass
         # Deterministic grounded fallback: surface the context directly.
+        if lang == "ar":
+            return (
+                "وفقًا لتشخيصك، إليك العناصر المهيكلة ذات الصلة — "
+                f"{context}"
+            )
         return (
             "D'après votre diagnostic, voici les éléments structurés pertinents — "
             f"{context}"
         )
 
-    async def generate_roadmap_prose(self, gap: str, chunks: list[str]) -> str:
+    async def generate_roadmap_prose(self, gap: str, chunks: list[str], lang: str = "fr") -> str:
         joined = "\n---\n".join(chunks) if chunks else ""
-        prompt = (
-            "Using ONLY the retrieved Tunisian institutional sources below, write a "
-            "short actionable next step (French) for this diagnostic gap. Quote the "
-            "institution. Do not invent programs.\n\n"
-            f"Gap: {gap}\n\nSources:\n{joined}"
-        )
+        if lang == "ar":
+            prompt = (
+                "Using ONLY the retrieved Tunisian institutional sources below, write a "
+                "short actionable next step (Arabic) for this diagnostic gap. Quote the "
+                "institution. Do not invent programs.\n\n"
+                f"Gap: {gap}\n\nSources:\n{joined}"
+            )
+        else:
+            prompt = (
+                "Using ONLY the retrieved Tunisian institutional sources below, write a "
+                "short actionable next step (French) for this diagnostic gap. Quote the "
+                "institution. Do not invent programs.\n\n"
+                f"Gap: {gap}\n\nSources:\n{joined}"
+            )
         try:
             completed_str = await self._complete(prompt, max_tokens=260)
             out = completed_str.strip()
@@ -154,6 +181,8 @@ class LLMProvider(ABC):
                 return _strip_think(out)
         except Exception:
             pass
+        if lang == "ar":
+            return chunks[0] if chunks else "لا توجد مصادر متاحة."
         return chunks[0] if chunks else "Aucune source disponible."
 
 

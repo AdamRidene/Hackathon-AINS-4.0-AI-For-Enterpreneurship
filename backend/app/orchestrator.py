@@ -22,6 +22,7 @@ from .scoring.gwlc import score_all, CompositeScores
 from .rag.roadmap import build_roadmap, Milestone
 from .llm import get_llm
 from . import explain
+from . import store
 
 
 @dataclass
@@ -96,10 +97,10 @@ async def run_audit(profile: ProjectProfile) -> AuditResult:
     # Phase 3 — grounded roadmap (gaps + scores -> RAG) and explanations.
     roadmap = await build_roadmap(profile, diagnostic, scores, gap)
     explanations = {
-        "scores": await explain.explain_all_scores(scores),
-        "gap": await explain.explain_gap(gap),
+        "scores": await explain.explain_all_scores(scores, lang=profile.language),
+        "gap": await explain.explain_gap(gap, lang=profile.language),
         "pcoh_rationale": pcoh_rationale,
-        "diagnostic_rationale": diagnostic.rationale_fr,
+        "diagnostic_rationale": diagnostic.rationale_ar if profile.language == "ar" else diagnostic.rationale_fr,
     }
 
     return AuditResult(
@@ -116,17 +117,49 @@ async def grounded_assistant_reply(profile: ProjectProfile, question: str) -> di
     audit (diagnostic, scores, roadmap). This satisfies the 'assistant is a
     layer, not the product' requirement.
     """
-    audit = await run_audit(profile)
-    ctx = (
-        f"Stade objectif: {audit.diagnostic.classified_stage_name}. "
-        f"Écart perception-réalité: {audit.gap.message_fr}. "
-        f"Scores (M,C,I,S,G): {audit.scores.vector()}. "
-        "Feuille de route: "
-        + " | ".join(f"{m.order}. {m.title} ({m.horizon_fr}) — "
-                     f"{', '.join(s['institution'] for s in m.sources)}"
-                     for m in audit.roadmap[:5])
-    )
-    reply = await get_llm().chat(question, ctx)
-    return {"reply": reply, "grounding": ctx, "sources_used": [
-        s for m in audit.roadmap[:5] for s in m.sources
-    ]}
+    # Try to load the cached audit result snapshot from the database store
+    audit_data = store.get_audit(profile.project_id)
+    
+    if audit_data:
+        # Reconstruct the context from the cached audit dict
+        diag_stage = audit_data.get("diagnostic", {}).get("classified_stage_name", "Inconnu")
+        gap_msg = audit_data.get("perception_reality_gap", {}).get("message_fr", "")
+        if profile.language == "ar":
+            gap_msg = audit_data.get("perception_reality_gap", {}).get("message_ar", gap_msg)
+            
+        vector = audit_data.get("scores", {}).get("vector", [0, 0, 0, 0, 0])
+        
+        roadmap_items = audit_data.get("roadmap", [])
+        roadmap_prose = []
+        for m in roadmap_items[:5]:
+            order = m.get("order")
+            title = m.get("title")
+            horizon = m.get("horizon_fr")
+            if profile.language == "ar":
+                horizon = m.get("horizon_ar") or horizon
+            srcs = ", ".join(s.get("institution", "") for s in m.get("sources", []))
+            roadmap_prose.append(f"{order}. {title} ({horizon}) — {srcs}")
+            
+        ctx = (
+            f"Stade objectif: {diag_stage}. "
+            f"Écart perception-réalité: {gap_msg}. "
+            f"Scores (M,C,I,S,G): {vector}. "
+            "Feuille de route: " + " | ".join(roadmap_prose)
+        )
+        sources_used = [s for m in roadmap_items[:5] for s in m.get("sources", [])]
+    else:
+        # Fallback to running run_audit
+        audit = await run_audit(profile)
+        ctx = (
+            f"Stade objectif: {audit.diagnostic.classified_stage_name}. "
+            f"Écart perception-réalité: {audit.gap.message_fr}. "
+            f"Scores (M,C,I,S,G): {audit.scores.vector()}. "
+            "Feuille de route: "
+            + " | ".join(f"{m.order}. {m.title} ({m.horizon_fr}) — "
+                         f"{', '.join(s['institution'] for s in m.sources)}"
+                         for m in audit.roadmap[:5])
+        )
+        sources_used = [s for m in audit.roadmap[:5] for s in m.sources]
+        
+    reply = await get_llm().chat(question, ctx, lang=profile.language)
+    return {"reply": reply, "grounding": ctx, "sources_used": sources_used}

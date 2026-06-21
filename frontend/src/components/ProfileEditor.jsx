@@ -85,6 +85,16 @@ export default function ProfileEditor({ pid, lang, api, onClose, onAuditUpdated,
     setValues(prev => ({ ...prev, [id]: val }));
   }
 
+  function handleBoolChange(id, val) {
+    handleChange(id, val);
+    saveField(id, val);
+  }
+
+  function handleEnumChange(id, val) {
+    handleChange(id, val);
+    saveField(id, val);
+  }
+
   async function saveField(qid, val) {
     const originalQ = questions.find(q => q.id === qid);
     const originalVal = originalQ?.value !== undefined ? originalQ.value : "";

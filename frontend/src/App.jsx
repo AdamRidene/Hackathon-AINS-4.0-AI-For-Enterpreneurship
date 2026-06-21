@@ -231,8 +231,8 @@ export default function App() {
   }
 
   /* ── Milestone toggle ── */
-  function toggleMilestone(order) {
-    const key = `${pid}_${order}`;
+  function toggleMilestone(milestoneId) {
+    const key = `${pid}_${milestoneId}`;
     setChecked(prev => ({ ...prev, [key]: !prev[key] }));
   }
 

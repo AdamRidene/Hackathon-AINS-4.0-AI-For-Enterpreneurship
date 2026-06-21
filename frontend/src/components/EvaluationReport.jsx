@@ -9,11 +9,14 @@ const TEXTS = {
     pass: "CONFORME",
     fail: "NON CONFORME",
     diagnosticTitle: "1. Moteur de Diagnostic (Classification)",
-    diagnosticDesc: "Vérifie la justesse de classification du moteur par rapport aux briques théoriques (1..6) et aux scénarios de référence.",
+    diagnosticDesc: "Vérifie la justesse de classification du moteur par rapport aux briques théoriques (1..6). Les 60 cas servent de suite de régression automatique. Le jeu hors-ligne indépendant de 12 profils valide la généralisation réelle.",
+    regressionTitle: "Régression / Auto-vérification (60 cas)",
+    regressionAccuracy: "Précision Régression",
+    validationTitle: "Validation Indépendante (12 profils)",
     ragTitle: "2. Moteur de Recherche RAG (Orientation)",
     ragDesc: "Mesure la précision de récupération (Precision@5) des ressources de l'écosystème tunisien.",
-    consistencyTitle: "3. Cohérence & Cas Adversaires",
-    consistencyDesc: "Valide le comportement des portes non-linéaires (plafonds TAM et pénalités de dépendance humaine).",
+    consistencyTitle: "3. Cohérence, Cas Adversaires & Kappa",
+    consistencyDesc: "Valide le comportement des portes non-linéaires et calcule le Kappa pondéré de Cohen pour le cadre de scores (cible >= 0.70).",
     accuracyTop1: "Précision Top-1",
     accuracyTop2: "Précision Top-2",
     mase: "Erreur Moyenne (MASE)",
@@ -27,7 +30,7 @@ const TEXTS = {
     adversarialCase: "Cas Adversaire",
     status: "Statut",
     result: "Résultat",
-    diagnosticPassMsg: "Le modèle satisfait les exigences de rigueur théorique (MASE <= 0.5 & Kappa >= 0.70).",
+    diagnosticPassMsg: "Le modèle satisfait les exigences de rigueur théorique (MASE <= 0.5 sur l'ensemble de validation).",
     ragPassMsg: "Le retriever satisfait les exigences de couverture documentaire (P@5 >= 0.70)."
   },
   ar: {
@@ -38,11 +41,14 @@ const TEXTS = {
     pass: "متوافق",
     fail: "غير متوافق",
     diagnosticTitle: "1. محرك التشخيص والتدقيق",
-    diagnosticDesc: "يتحقق من دقة تصنيف المشاريع وتحديد مستواها الفعلي مقارنة بالمستويات النظرية (1..6) وسيناريوهات المرجع.",
+    diagnosticDesc: "يتحقق من دقة تصنيف المشاريع وتحديد مستواها الفعلي. 60 حالة تُستعمل كفحص تراجع تلقائي. مجموعة 12 ملف مستقلة خارج التصميم تؤكد الدقة الفعلية.",
+    regressionTitle: "فحص التراجع الخوارزمي (60 حالة)",
+    regressionAccuracy: "دقة التراجع",
+    validationTitle: "التحقق المستقل (12 ملف)",
     ragTitle: "2. محرك البحث الذكي (RAG)",
     ragDesc: "يقيس دقة استرجاع مصادر وتوجيهات بيئة الأعمال التونسية (Precision@5).",
-    consistencyTitle: "3. اتساق البوابات والحالات الخاصة",
-    consistencyDesc: "يتحقق من السلوك الفعلي للبوابات غير الخطية (أسقف حجم السوق وعقوبات الاعتماد البشري).",
+    consistencyTitle: "3. اتساق البوابات، الحالات الخاصة ومعامل كوهين",
+    consistencyDesc: "يتحقق من السلوك الفعلي للبوابات غير الخطية ويقيس معامل اتساق كوهين (Kappa) لإطار التقييم الرقمي (المستهدف >= 0.70).",
     accuracyTop1: "دقة التصنيف المباشر (Top-1)",
     accuracyTop2: "دقة التصنيف التقريبي (Top-2)",
     mase: "معدل الخطأ (MASE)",
@@ -56,7 +62,7 @@ const TEXTS = {
     adversarialCase: "حالة معارضة",
     status: "الوضعية",
     result: "النتيجة",
-    diagnosticPassMsg: "محرك التشخيص يستوفي متطلبات الدقة النظرية (MASE <= 0.5 & Kappa >= 0.70).",
+    diagnosticPassMsg: "محرك التشخيص يستوفي متطلبات الدقة النظرية (MASE <= 0.5 على مجموعة التحقق المستقلة).",
     ragPassMsg: "محرك الاسترجاع يستوفي متطلبات التغطية الوثائقية (P@5 >= 0.70)."
   }
 };
@@ -130,8 +136,22 @@ export default function EvaluationReport({ lang, api, onBack }) {
             </span>
           </div>
 
+          <div style={{ fontSize: "0.9rem", fontWeight: 700, marginTop: 24, color: "var(--cyan)", borderBottom: "1px solid var(--border)", paddingBottom: 6 }}>
+            {t.regressionTitle}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, margin: "16px 0" }}>
+            <div style={{ padding: 16, background: "rgba(255,255,255,0.01)", border: "1px solid var(--border)", borderRadius: "var(--r-md)", textAlign: "center" }}>
+              <div style={{ fontSize: "0.74rem", color: "var(--text-dim)", textTransform: "uppercase" }}>{t.regressionAccuracy}</div>
+              <div style={{ fontSize: "2rem", fontWeight: 800, color: "var(--cyan)", marginTop: 8 }}>{(diagnostic.regression_accuracy * 100).toFixed(1)}%</div>
+              <div style={{ fontSize: "0.68rem", color: "var(--text-dim)", marginTop: 4 }}>Sur {diagnostic.regression_n} profils</div>
+            </div>
+          </div>
+
+          <div style={{ fontSize: "0.9rem", fontWeight: 700, marginTop: 24, color: "var(--orange)", borderBottom: "1px solid var(--border)", paddingBottom: 6 }}>
+            {t.validationTitle}
+          </div>
           {/* Metrics Grid */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, margin: "24px 0" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, margin: "16px 0" }}>
             <div style={{ padding: 16, background: "rgba(255,255,255,0.01)", border: "1px solid var(--border)", borderRadius: "var(--r-md)", textAlign: "center" }}>
               <div style={{ fontSize: "0.74rem", color: "var(--text-dim)", textTransform: "uppercase" }}>{t.accuracyTop1}</div>
               <div style={{ fontSize: "2rem", fontWeight: 800, color: "var(--cyan)", marginTop: 8 }}>{(diagnostic.top1_accuracy * 100).toFixed(1)}%</div>
@@ -144,11 +164,6 @@ export default function EvaluationReport({ lang, api, onBack }) {
               <div style={{ fontSize: "0.74rem", color: "var(--text-dim)", textTransform: "uppercase" }}>{t.mase}</div>
               <div style={{ fontSize: "2rem", fontWeight: 800, color: diagnostic.MASE <= diagnostic.MASE_threshold ? "var(--green)" : "var(--red)", marginTop: 8 }}>{diagnostic.MASE}</div>
               <div style={{ fontSize: "0.68rem", color: "var(--text-dim)", marginTop: 4 }}>Seuil &lt;= {diagnostic.MASE_threshold}</div>
-            </div>
-            <div style={{ padding: 16, background: "rgba(255,255,255,0.01)", border: "1px solid var(--border)", borderRadius: "var(--r-md)", textAlign: "center" }}>
-              <div style={{ fontSize: "0.74rem", color: "var(--text-dim)", textTransform: "uppercase" }}>{t.kappa}</div>
-              <div style={{ fontSize: "2rem", fontWeight: 800, color: "var(--orange)", marginTop: 8 }}>{diagnostic.cohens_weighted_kappa}</div>
-              <div style={{ fontSize: "0.68rem", color: "var(--text-dim)", marginTop: 4 }}>Cible &gt;= 0.70</div>
             </div>
           </div>
 
@@ -248,6 +263,15 @@ export default function EvaluationReport({ lang, api, onBack }) {
             <span className={`plan-badge ${scoring_consistency.passes ? "pro" : "free"}`} style={{ padding: "6px 14px", fontSize: "0.78rem" }}>
               {scoring_consistency.passes ? t.pass : t.fail}
             </span>
+          </div>
+
+          {/* Kappa Metric Card */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, margin: "24px 0", maxWidth: 300 }}>
+            <div style={{ padding: 16, background: "rgba(255,255,255,0.01)", border: "1px solid var(--border)", borderRadius: "var(--r-md)", textAlign: "center" }}>
+              <div style={{ fontSize: "0.74rem", color: "var(--text-dim)", textTransform: "uppercase" }}>{t.kappa}</div>
+              <div style={{ fontSize: "2rem", fontWeight: 800, color: "var(--orange)", marginTop: 8 }}>{scoring_consistency.cohens_weighted_kappa}</div>
+              <div style={{ fontSize: "0.68rem", color: "var(--text-dim)", marginTop: 4 }}>Cible &gt;= 0.70</div>
+            </div>
           </div>
 
           <div style={{ overflowX: "auto", marginTop: 24 }}>

@@ -13,52 +13,91 @@ from .scoring.gwlc import ScoreResult, CompositeScores
 from .diagnostic.gap import GapReport
 
 
-async def explain_score(s: ScoreResult) -> dict:
-    contrib_lines = "; ".join(
-        f"{c.criterion} (poids {c.weight:.2f}): {c.detail} -> {c.weighted:.1f} pts"
-        for c in s.contributions
-    )
-    context = (
-        f"Dimension {s.dimension}. Score de base {s.base_score:.1f}, "
-        f"score final {s.final_score:.1f}. Ancrage: {s.anchor}. "
-        f"Contributions: {contrib_lines}. "
-        + (f"PORTE déclenchée: {s.gate_reason}" if s.gate_triggered else "Aucune porte déclenchée.")
-        + (f" Données manquantes: {', '.join(s.missing_inputs)}." if s.missing_inputs else "")
-    )
+async def explain_score(s: ScoreResult, lang: str = "fr") -> dict:
+    if lang == "ar":
+        dim_map_ar = {
+            "Market": "السوق",
+            "Commercial Offer": "العرض التجاري",
+            "Innovation": "الابتكار",
+            "Scalability": "قابلية التوسع",
+            "Green": "المسؤولية البيئية"
+        }
+        dim_ar = dim_map_ar.get(s.dimension, s.dimension)
+        contrib_lines = "؛ ".join(
+            f"{c.criterion} (الوزن {c.weight:.2f}): {c.detail} -> {c.weighted:.1f} نقاط"
+            for c in s.contributions
+        )
+        context = (
+            f"البعد {dim_ar}. النتيجة الأساسية {s.base_score:.1f}، "
+            f"النتيجة النهائية {s.final_score:.1f}. الركيزة: {s.anchor}. "
+            f"المساهمات: {contrib_lines}. "
+            + (f"تم تفعيل البوابة: {s.gate_reason}" if s.gate_triggered else "لم يتم تفعيل أي بوابة.")
+            + (f" البيانات المفقودة: {', '.join(s.missing_inputs)}." if s.missing_inputs else "")
+        )
+    else:
+        contrib_lines = "; ".join(
+            f"{c.criterion} (poids {c.weight:.2f}): {c.detail} -> {c.weighted:.1f} pts"
+            for c in s.contributions
+        )
+        context = (
+            f"Dimension {s.dimension}. Score de base {s.base_score:.1f}, "
+            f"score final {s.final_score:.1f}. Ancrage: {s.anchor}. "
+            f"Contributions: {contrib_lines}. "
+            + (f"PORTE déclenchée: {s.gate_reason}" if s.gate_triggered else "Aucune porte déclenchée.")
+            + (f" Données manquantes: {', '.join(s.missing_inputs)}." if s.missing_inputs else "")
+        )
     return {
         "dimension": s.dimension,
         "final_score": round(s.final_score, 1),
         "structured_trace": context,
-        "natural_language": await get_llm().justify(context),
+        "natural_language": await get_llm().justify(context, lang=lang),
     }
 
 
-async def explain_gap(gap: GapReport) -> dict:
-    if not gap.has_gap:
-        return {"has_gap": False, "natural_language": gap.message_fr}
-    dims = "; ".join(
-        f"{d['name']} (domaine {d['domain']})" for d in gap.diverging_dimensions
-    )
-    context = (
-        f"Type d'écart: {gap.kind}, sévérité {gap.severity}, amplitude {gap.magnitude} stade(s). "
-        f"Déclaré: stade {gap.declared_stage}, classé: stade {gap.classified_stage}. "
-        f"Dimensions divergentes: {dims}. "
-        + ("Réallocation automatique au stade objectif appliquée." if gap.override_applied else "")
-    )
+async def explain_gap(gap: GapReport, lang: str = "fr") -> dict:
+    if lang == "ar":
+        if not gap.has_gap:
+            return {"has_gap": False, "natural_language": gap.message_ar}
+        dims = "؛ ".join(
+            f"{d.get('name_ar', d.get('name'))} (مجال {d.get('domain')})" for d in gap.diverging_dimensions
+        )
+        kind_map = {"overestimation": "مبالغة في التقدير", "underestimation": "تقدير أقل من الواقع", "aligned": "متوافق"}
+        severity_map = {"none": "لا يوجد", "mild": "خفيف", "severe": "شديد"}
+        from .diagnostic.classifier import STAGE_NAMES_AR
+        declared_name = STAGE_NAMES_AR.get(gap.declared_stage) if gap.declared_stage else "غير محدد"
+        classified_name = STAGE_NAMES_AR.get(gap.classified_stage, "غير محدد")
+        context = (
+            f"نوع الفجوة: {kind_map.get(gap.kind, gap.kind)}، الخطورة: {severity_map.get(gap.severity, gap.severity)}، المدى: {gap.magnitude} مرحلة/مراحل. "
+            f"المصرح به: مرحلة {declared_name}، الواقع: مرحلة {classified_name}. "
+            f"الأبعاد المتباعدة: {dims}. "
+            + ("تم تطبيق إعادة التخصيص التلقائي للمرحلة المستهدفة." if gap.override_applied else "")
+        )
+    else:
+        if not gap.has_gap:
+            return {"has_gap": False, "natural_language": gap.message_fr}
+        dims = "; ".join(
+            f"{d['name']} (domaine {d['domain']})" for d in gap.diverging_dimensions
+        )
+        context = (
+            f"Type d'écart: {gap.kind}, sévérité {gap.severity}, amplitude {gap.magnitude} stade(s). "
+            f"Déclaré: stade {gap.declared_stage}, classé: stade {gap.classified_stage}. "
+            f"Dimensions divergentes: {dims}. "
+            + ("Réallocation automatique au stade objectif appliquée." if gap.override_applied else "")
+        )
     return {
         "has_gap": True,
         "kind": gap.kind,
         "severity": gap.severity,
         "structured_trace": context,
-        "natural_language": await get_llm().justify(context),
+        "natural_language": await get_llm().justify(context, lang=lang),
     }
 
 
-async def explain_all_scores(scores: CompositeScores) -> dict:
+async def explain_all_scores(scores: CompositeScores, lang: str = "fr") -> dict:
     return {
-        "market": await explain_score(scores.market),
-        "commercial": await explain_score(scores.commercial),
-        "innovation": await explain_score(scores.innovation),
-        "scalability": await explain_score(scores.scalability),
-        "green": await explain_score(scores.green),
+        "market": await explain_score(scores.market, lang=lang),
+        "commercial": await explain_score(scores.commercial, lang=lang),
+        "innovation": await explain_score(scores.innovation, lang=lang),
+        "scalability": await explain_score(scores.scalability, lang=lang),
+        "green": await explain_score(scores.green, lang=lang),
     }

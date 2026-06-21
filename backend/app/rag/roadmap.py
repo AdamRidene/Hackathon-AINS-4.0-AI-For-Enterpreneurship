@@ -23,46 +23,84 @@ from .retriever import Retriever, DOMAIN_TO_GAP
 
 _HORIZON_ORDER = {"immediate": 0, "short_term": 1, "medium_term": 2}
 _HORIZON_FR = {"immediate": "Immédiat", "short_term": "Court terme", "medium_term": "Moyen terme"}
+_HORIZON_AR = {"immediate": "عاجل", "short_term": "على المدى القصير", "medium_term": "على المدى المتوسط"}
 
 
 @dataclass
 class Milestone:
+    id: str
     order: int
     title: str
+    title_ar: str
     rationale_fr: str            # WHY this step, traceable to a gap/score
+    rationale_ar: str
     horizon: str
     horizon_fr: str
+    horizon_ar: str
     trigger: str                 # what diagnostic gap / score triggered it
     sources: list[dict] = field(default_factory=list)  # grounded citations
     action_fr: str = ""          # grounded prose next-step
+    action_ar: str = ""
 
     def to_dict(self) -> dict:
         return {
-            "order": self.order, "title": self.title,
-            "rationale_fr": self.rationale_fr, "horizon": self.horizon,
-            "horizon_fr": self.horizon_fr, "trigger": self.trigger,
-            "action_fr": self.action_fr, "sources": self.sources,
+            "id": self.id,
+            "order": self.order,
+            "title": self.title,
+            "title_ar": self.title_ar,
+            "rationale_fr": self.rationale_fr,
+            "rationale_ar": self.rationale_ar,
+            "horizon": self.horizon,
+            "horizon_fr": self.horizon_fr,
+            "horizon_ar": self.horizon_ar,
+            "trigger": self.trigger,
+            "action_fr": self.action_fr,
+            "action_ar": self.action_ar,
+            "sources": self.sources,
         }
 
 
-def _score_triggers(scores: CompositeScores) -> list[tuple[str, str, str]]:
-    """Return (gap_category, label, rationale) for low or gated scores."""
-    out: list[tuple[str, str, str]] = []
+def _score_triggers(scores: CompositeScores) -> list[tuple[str, str, str, str, str]]:
+    """Return (gap_category, label_fr, label_ar, rationale_fr, rationale_ar) for low or gated scores."""
+    out: list[tuple[str, str, str, str, str]] = []
     if scores.market.gate_triggered:
-        out.append(("missing_market_validation", "Score Marché plafonné",
-                    "Le Score Marché est plafonné à 30 faute de preuve de validation client."))
+        out.append((
+            "missing_market_validation",
+            "Score Marché plafonné",
+            "وضع سقف لنتيجة السوق",
+            "Le Score Marché est plafonné à 30 faute de preuve de validation client.",
+            "تم وضع سقف لنتيجة السوق عند 30 لعدم تقديم دليل التحقق من العملاء."
+        ))
     if scores.scalability.gate_triggered:
-        out.append(("scalability", "Score Scalabilité pénalisé",
-                    "Le Score Scalabilité est réduit de 50% (dépendance humaine > 7)."))
+        out.append((
+            "scalability",
+            "Score Scalabilité pénalisé",
+            "تطبيق خصم على قابلية التوسع",
+            "Le Score Scalabilité est réduit de 50% (dépendance humaine > 7).",
+            "تم تخفيض نتيجة قابلية التوسع بنسبة 50% (الاعتماد البشري > 7)."
+        ))
     # Low non-gated dimensions (< 50) surface improvement milestones too.
-    for res, gap, label in [
-        (scores.commercial, "tech_hype", "Offre commerciale faible"),
-        (scores.innovation, "tech_hype", "Score Innovation faible"),
-        (scores.green, "green", "Score Green faible"),
+    for res, gap, label_fr, label_ar in [
+        (scores.commercial, "tech_hype", "Offre commerciale faible", "عرض تجاري ضعيف"),
+        (scores.innovation, "tech_hype", "Score Innovation faible", "نتيجة ابتكار ضعيفة"),
+        (scores.green, "green", "Score Green faible", "نتيجة بيئية ضعيفة"),
     ]:
         if res.final_score < 50 and not res.gate_triggered:
-            out.append((gap, label,
-                        f"{res.dimension}: {res.final_score:.0f}/100 — levier d'amélioration prioritaire."))
+            dim_map_ar = {
+                "Market": "السوق",
+                "Commercial Offer": "العرض التجاري",
+                "Innovation": "الابتكار",
+                "Scalability": "قابلية التوسع",
+                "Green": "الأثر البيئي"
+            }
+            dim_ar = dim_map_ar.get(res.dimension, res.dimension)
+            out.append((
+                gap,
+                label_fr,
+                label_ar,
+                f"{res.dimension}: {res.final_score:.0f}/100 — levier d'amélioration prioritaire.",
+                f"{dim_ar}: {res.final_score:.0f}/100 — محور تحسين ذو أولوية."
+            ))
     return out
 
 
@@ -79,23 +117,27 @@ async def build_roadmap(
     seen_resources: set[str] = set()
 
     # 1) Diagnostic blockers (unmet gates) -> remediation milestones.
-    triggers: list[tuple[str, str, str, int]] = []  # gap_cat, label, rationale, stage
+    triggers: list[tuple[str, str, str, str, str, int]] = []  # gap_cat, label_fr, label_ar, rationale_fr, rationale_ar, stage
     for b in diagnostic.blockers:
         gap_cat = DOMAIN_TO_GAP.get(b["domain"], "general")
-        triggers.append((gap_cat, f"Débloquer: {b['stage_name']}",
-                         f"Porte de maturité non franchie ({b['stage_name']}): {b['detail_fr']}",
-                         b["stage"]))
+        label_fr = f"Débloquer: {b['stage_name']}"
+        from ..diagnostic.classifier import STAGE_NAMES_AR
+        label_ar = f"تفعيل: {STAGE_NAMES_AR.get(b['stage'])}"
+        
+        rat_fr = f"Porte de maturité non franchie ({b['stage_name']}): {b['detail_fr']}"
+        rat_ar = f"بوابة النضج غير مستوفاة ({STAGE_NAMES_AR.get(b['stage'])}): {b['detail_ar']}"
+        triggers.append((gap_cat, label_fr, label_ar, rat_fr, rat_ar, b["stage"]))
 
     # 2) Score-driven triggers (cross-module: low/gated scores -> roadmap).
-    for gap_cat, label, rationale in _score_triggers(scores):
-        triggers.append((gap_cat, label, rationale, diagnostic.classified_stage))
+    for gap_cat, label_fr, label_ar, rat_fr, rat_ar in _score_triggers(scores):
+        triggers.append((gap_cat, label_fr, label_ar, rat_fr, rat_ar, diagnostic.classified_stage))
 
     # Order by stage (earliest blocker first); stable for equal stages.
-    triggers.sort(key=lambda t: t[3])
+    triggers.sort(key=lambda t: t[5])
 
     order = 1
-    for gap_cat, label, rationale, _stage in triggers:
-        query = f"{label} {rationale} secteur {profile.sector.value if profile.sector else ''}"
+    for gap_cat, label_fr, label_ar, rat_fr, rat_ar, _stage in triggers:
+        query = f"{label_fr} {rat_fr} secteur {profile.sector.value if profile.sector else ''}"
         routed = retriever.retrieve(gap_cat, query, k=k_per_gap)
         if not routed.chunks:
             continue
@@ -107,15 +149,38 @@ async def build_roadmap(
         sources = [{"institution": c.institution, "title": c.title, "url": c.url,
                     "citation": c.cite(), "horizon": c.horizon} for c in fresh]
         horizon = fresh[0].horizon
+        
+        # Pass language when generating roadmap prose
         action = await llm.generate_roadmap_prose(
-            gap=f"{label}: {rationale}",
+            gap=f"{label_fr}: {rat_fr}",
             chunks=[c.content for c in fresh],
+            lang=profile.language
         )
-        milestones.append(Milestone(
-            order=order, title=label, rationale_fr=rationale,
-            horizon=horizon, horizon_fr=_HORIZON_FR.get(horizon, horizon),
-            trigger=gap_cat, sources=sources, action_fr=action,
-        ))
+        
+        # Stable unique identifier
+        milestone_id = f"{gap_cat}_{fresh[0].id}" if fresh else f"{gap_cat}_{label_fr.replace(' ', '_').lower()}"
+        
+        m = Milestone(
+            id=milestone_id,
+            order=order,
+            title=label_fr,
+            title_ar=label_ar,
+            rationale_fr=rat_fr,
+            rationale_ar=rat_ar,
+            horizon=horizon,
+            horizon_fr=_HORIZON_FR.get(horizon, horizon),
+            horizon_ar=_HORIZON_AR.get(horizon, horizon),
+            trigger=gap_cat,
+            sources=sources,
+        )
+        if profile.language == "ar":
+            m.action_ar = action
+            m.action_fr = ""  # or generate on-demand, but setting correct language prose is sufficient
+        else:
+            m.action_fr = action
+            m.action_ar = ""
+            
+        milestones.append(m)
         order += 1
 
     # Final ordering: stage already applied; within that, horizon proximity.

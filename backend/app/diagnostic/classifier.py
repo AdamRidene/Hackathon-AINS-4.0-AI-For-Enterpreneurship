@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from ..schema import ProjectProfile, MaturityStage, MVPStage, LegalForm
+from ..intake.state_machine import IntakeStateMachine
 
 STAGE_NAMES = {
     1: "Ideation", 2: "Market Validation", 3: "Structuration",
@@ -220,7 +221,6 @@ def classify(p: ProjectProfile) -> DiagnosticResult:
 
     # Confidence: high when the next gate is cleanly unmet and all collected;
     # reduced when key inputs are missing (uncertainty surfaced, not hidden).
-    from ..intake.state_machine import IntakeStateMachine
     sm = IntakeStateMachine(p)
     prog = sm.progress()
     total_applicable = max(1.0, float(prog["total"]))

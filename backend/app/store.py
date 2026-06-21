@@ -407,8 +407,16 @@ def count_projects_for_owner(owner_user_id: str) -> int:
 
 def redact(profile: ProjectProfile) -> dict:
     d = profile.model_dump(mode="json")
+    # Mask project-specific IP / value proposition narrative
     if d.get("commercial", {}).get("value_proposition_narrative"):
         d["commercial"]["value_proposition_narrative"] = "[redacted]"
+    # Mask financial indicators
+    if d.get("market", {}).get("estimated_tam_tnd") is not None:
+        d["market"]["estimated_tam_tnd"] = 0.0
+    if d.get("scalability", {}).get("equipment_cost") is not None:
+        d["scalability"]["equipment_cost"] = 0.0
+    if d.get("scalability", {}).get("monthly_overhead") is not None:
+        d["scalability"]["monthly_overhead"] = 0.0
     return d
 
 

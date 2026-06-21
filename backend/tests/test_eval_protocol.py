@@ -13,8 +13,10 @@ def test_eval_protocol_matches_concept_sizes():
     rag = eval_rag()
     scoring = eval_scoring_consistency()
 
-    assert diagnostic["n"] == 60
-    assert len(diagnostic["rows"]) == 60
+    assert diagnostic["regression_n"] == 60
+    assert len(diagnostic["regression_rows"]) == 60
+    assert diagnostic["n"] == 12
+    assert len(diagnostic["rows"]) == 12
     assert diagnostic["MASE_threshold"] == 0.5
 
     assert rag["queries"] == 30

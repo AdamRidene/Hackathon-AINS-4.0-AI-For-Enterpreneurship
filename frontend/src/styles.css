@@ -38,6 +38,56 @@
   unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF;
 }
 
+/* Alexandria Font Helper Classes */
+.alexandria-thin {
+  font-family: "Alexandria", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 100;
+  font-style: normal;
+}
+
+.alexandria-light {
+  font-family: "Alexandria", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 300;
+  font-style: normal;
+}
+
+.alexandria-regular {
+  font-family: "Alexandria", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 400;
+  font-style: normal;
+}
+
+.alexandria-medium {
+  font-family: "Alexandria", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 500;
+  font-style: normal;
+}
+
+.alexandria-semibold {
+  font-family: "Alexandria", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 600;
+  font-style: normal;
+}
+
+.alexandria-bold {
+  font-family: "Alexandria", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 700;
+  font-style: normal;
+}
+
+.alexandria-black {
+  font-family: "Alexandria", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 900;
+  font-style: normal;
+}
+
 /* ── Variables ─────────────────────────────────────────────── */
 :root {
   --bg: #070810;
@@ -92,8 +142,9 @@
 
   --f-display: "Fraunces", Georgia, serif;
   --f-body: "Sora", system-ui, sans-serif;
-  --f-arabic: "DG Heaven", "Noto Kufi Arabic", "Sora", sans-serif;
+  --f-arabic: "Alexandria", "DG Heaven", "Noto Kufi Arabic", "Sora", sans-serif;
   --f-mono: "JetBrains Mono", ui-monospace, monospace;
+  --f-alexandria: "Alexandria", sans-serif;
 
   /* Asset sizes: edit these to resize logos/animations globally. */
   --logo-size-sm: 36px;
@@ -3568,4 +3619,34 @@ label {
 
 .profile-success {
   animation: fadeIn 0.2s ease-out;
+}
+
+/* ── Typography Adjustments ─────────────────────────────────── */
+
+/* 1. Reset font-style to normal for non-landing titles and components */
+.brand-title,
+.interview-prompt,
+.interview-bool-btn .bool-label,
+.processing-title,
+.results-project-name,
+.stage-card-name,
+.tab-section-title,
+.hist-title,
+.hist-empty-title,
+.hist-card-name,
+.score-final,
+.modal-title {
+  font-style: normal;
+}
+
+/* 2. Retain italic strictly for landing page headlines */
+.landing-wrap .landing-headline,
+.landing-wrap .landing-headline em {
+  font-style: italic;
+}
+
+/* 3. Strict Arabic (RTL) typography: disable all synthetic italics for clean rendering */
+[dir="rtl"],
+[dir="rtl"] * {
+  font-style: normal !important;
 }
