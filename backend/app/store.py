@@ -39,12 +39,11 @@ if IS_POSTGRES:
     try:
         import psycopg2
         import psycopg2.extras
-    except ImportError:
-        print(
-            "WARNING: DATABASE_URL is PostgreSQL but 'psycopg2' is not installed. Falling back to SQLite.",
-            file=sys.stderr
-        )
-        IS_POSTGRES = False
+    except ImportError as exc:
+        raise ImportError(
+            "DATABASE_URL is set to PostgreSQL but 'psycopg2' is not installed. "
+            "Please install psycopg2 or psycopg2-binary to use PostgreSQL database."
+        ) from exc
 
 
 def _adapt_query(query: str, is_postgres: bool) -> str:
@@ -297,13 +296,27 @@ def get_user_by_token(token: str) -> dict | None:
     with db_session() as conn:
         row = conn.execute(
             """
-            SELECT users.*
+            SELECT users.*, sessions.created_at as session_created_at
             FROM sessions
             JOIN users ON users.id = sessions.user_id
             WHERE sessions.token = ?
             """,
             (token,),
         ).fetchone()
+    if row is None:
+        return None
+
+    try:
+        created_at = datetime.fromisoformat(row["session_created_at"])
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        age = datetime.now(timezone.utc) - created_at
+        if age.days > 30:
+            delete_session(token)
+            return None
+    except Exception:
+        pass
+
     return _user_from_row(row)
 
 
