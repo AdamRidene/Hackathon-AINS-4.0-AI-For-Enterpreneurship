@@ -353,6 +353,56 @@ class OpenAIProvider(LLMProvider):
             return ""
 
 
+class DeepSeekProvider(LLMProvider):
+    """DeepSeek API (OpenAI-compatible endpoint at api.deepseek.com).
+
+    Reads FIRASA_DEEPSEEK_API_KEY (or bare DEEPSEEK_API_KEY) and
+    FIRASA_DEEPSEEK_MODEL (default: deepseek-chat).
+    """
+    name = "deepseek"
+
+    def __init__(self) -> None:
+        import os as _os
+        self.api_key = (
+            _os.getenv("FIRASA_DEEPSEEK_API_KEY")
+            or _os.getenv("DEEPSEEK_API_KEY")
+            or settings.deepseek_api_key
+        )
+        self.model = (
+            _os.getenv("FIRASA_DEEPSEEK_MODEL")
+            or settings.deepseek_model
+            or "deepseek-chat"
+        )
+        self.api_base = "https://api.deepseek.com"
+
+    async def _complete(self, prompt: str, max_tokens: int = 400) -> str:
+        if not self.api_key:
+            raise RuntimeError("DeepSeek API key not set (DEEPSEEK_API_KEY or FIRASA_DEEPSEEK_API_KEY)")
+        body = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": 0.2,
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}",
+        }
+        timeout = httpx.Timeout(_get_timeout())
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(
+                f"{self.api_base}/chat/completions",
+                json=body,
+                headers=headers,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            choices = data.get("choices", [])
+            if choices:
+                return choices[0].get("message", {}).get("content", "")
+            return ""
+
+
 class GeminiProvider(LLMProvider):
     """Google Gemini via the native generative-ai SDK (free tier).
 
@@ -414,6 +464,7 @@ _PROVIDERS = {
     "ollama": OllamaProvider,
     "huggingface": HuggingFaceProvider,
     "openai": OpenAIProvider,
+    "deepseek": DeepSeekProvider,
     "gemini": GeminiProvider,
     "stub": StubProvider,
 }
