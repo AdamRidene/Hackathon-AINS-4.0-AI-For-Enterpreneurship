@@ -69,7 +69,7 @@ export default function Topbar({ lang, setLang, theme, setTheme, user, plan, ope
           <span>{user ? user.name : ar ? "دخول" : "Connexion"}</span>
           {user && (
             <span className={`plan-badge ${plan}`}>
-              {plan === "free" ? (ar ? "مجاني" : "Gratuit") : plan === "plus" ? (ar ? "بلس" : "Plus") : ar ? "برو" : "Pro"}
+              {plan === "admin" ? (ar ? "مؤسسة" : "Entreprise") : plan === "free" ? (ar ? "مجاني" : "Gratuit") : plan === "plus" ? (ar ? "بلس" : "Plus") : ar ? "برو" : "Pro"}
             </span>
           )}
         </button>

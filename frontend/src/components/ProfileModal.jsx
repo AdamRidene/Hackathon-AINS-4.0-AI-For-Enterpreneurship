@@ -31,6 +31,7 @@ const TEXTS = {
     freeLabel: "Gratuit",
     plusLabel: "Plus",
     proLabel: "Pro",
+    adminLabel: "Entreprise",
     freeDesc: "Idéal pour tester",
     plusDesc: "Pour les créateurs",
     proDesc: "Pour les professionnels",
@@ -85,6 +86,7 @@ const TEXTS = {
     freeLabel: "مجاني",
     plusLabel: "بلس",
     proLabel: "برو",
+    adminLabel: "مؤسسة",
     freeDesc: "للتجربة والاستكشاف",
     plusDesc: "لرواد الأعمال الناشئين",
     proDesc: "للمحترفين والمستشارين",
@@ -130,7 +132,7 @@ const PRESET_AVATARS = [
 ];
 
 export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout, plan, onUpgrade, history, lang, onResume, api }) {
-  const [activeTab, setActiveTab] = useState(() => plan === "free" ? "pricing" : "projects");
+  const [activeTab, setActiveTab] = useState(() => (plan === "free" || plan === "admin") ? (plan === "admin" ? "projects" : "pricing") : "projects");
   const [isRegister, setIsRegister] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState(null);
@@ -181,7 +183,7 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
   // Adjust active tab when plan changes
   useEffect(() => {
     if (plan) {
-      setActiveTab(plan === "free" ? "pricing" : "projects");
+      setActiveTab(plan === "free" ? "pricing" : "projects"); // admin → "projects" (not "pricing")
     }
   }, [plan]);
 
@@ -514,7 +516,7 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                             <div style={{ fontSize: "0.78rem", color: "var(--text-sub)", marginTop: 2 }}>{user.email}</div>
                           </div>
                         </div>
-                        <span className={`plan-badge ${plan}`}>{plan === "free" ? t.freeLabel : plan === "plus" ? t.plusLabel : t.proLabel}</span>
+                        <span className={`plan-badge ${plan}`}>{plan === "admin" ? t.adminLabel : plan === "free" ? t.freeLabel : plan === "plus" ? t.plusLabel : t.proLabel}</span>
                       </div>
 
                       {/* Bio if exists */}
@@ -535,7 +537,7 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                             style={{ 
                               height: "100%", 
                               width: `${Math.min((history.length / limit) * 100, 100)}%`, 
-                              background: plan === "pro" ? "var(--orange)" : plan === "plus" ? "var(--cyan)" : "var(--text-sub)",
+                              background: (plan === "pro" || plan === "admin") ? "var(--orange)" : plan === "plus" ? "var(--cyan)" : "var(--text-sub)",
                               transition: "width 0.4s ease"
                             }} 
                           />
@@ -756,7 +758,7 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                             <button disabled style={{ background: "rgba(255,255,255,0.02)", borderColor: "var(--border)", color: "var(--text-dim)" }}>
                               {ar ? "الخطة النشطة" : "Plan Actif"}
                             </button>
-                          ) : plan === "pro" ? (
+                          ) : (plan === "pro" || plan === "admin") ? (
                             <button disabled style={{ background: "rgba(255,255,255,0.02)", borderColor: "var(--border)", color: "var(--text-dim)" }}>
                               {ar ? "مستوى أدنى" : "Plan inférieur"}
                             </button>
@@ -768,7 +770,7 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                         </div>
 
                         {/* Pro */}
-                        <div className={`pricing-card${plan === "pro" ? " active-plan" : ""}`}>
+                        <div className={`pricing-card${(plan === "pro" || plan === "admin") ? " active-plan" : ""}`}>
                           <div>
                             <div className="price-title">{t.proLabel}</div>
                             <div style={{ fontSize: "0.72rem", color: "var(--text-sub)", marginTop: 2 }}>{t.proDesc}</div>
@@ -778,7 +780,7 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                               <li>{t.features.allFeatures}</li>
                             </ul>
                           </div>
-                          {plan === "pro" ? (
+                          {(plan === "pro" || plan === "admin") ? (
                             <button disabled style={{ background: "rgba(255,255,255,0.02)", borderColor: "var(--border)", color: "var(--text-dim)" }}>
                               {ar ? "الخطة النشطة" : "Plan Actif"}
                             </button>

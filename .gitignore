@@ -33,3 +33,9 @@ backend/_data/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Claude Code session files
+.claude/
+tasks.md
+AGENTS.md
+docs/

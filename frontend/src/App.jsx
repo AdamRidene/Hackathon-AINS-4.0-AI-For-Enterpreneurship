@@ -34,34 +34,32 @@ export default function App() {
 
   const [theme, setTheme] = useState(() => localStorage.getItem("firasa_theme") || "dark");
 
-  const [user, setUser] = useState({ name: "Entrepreneur", plan: "free" });
+  const [user, setUser] = useState(null);
   const [plan, setPlan] = useState("free");
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [profileReturnPhase, setProfileReturnPhase] = useState("start");
   const [showLimitModal, setShowLimitModal] = useState(false);
 
-  async function autoLogin() {
-    const mockCredentials = {
-      email: "mock.developer@firasa.tn",
-      password: "password123",
-      name: "Entrepreneur",
-    };
-    try {
-      const res = await api.login(mockCredentials);
-      setUser(res);
-      setPlan(res.plan || "free");
-      await refreshHistory();
-    } catch {
-      try {
-        const res = await api.register(mockCredentials);
-        setUser(res);
-        setPlan(res.plan || "free");
-        await refreshHistory();
-      } catch (err) {
-        console.error("Auto login failed:", err);
-      }
+  // Removed autoLogin — users must sign in with real credentials
+
+  /* ── Browser history (back/forward button support) ── */
+  function navigate(newPhase) {
+    setPhase(newPhase);
+    // Don't push "processing" — can't navigate back into a loading screen
+    if (newPhase !== "processing") {
+      window.history.pushState({ phase: newPhase }, "");
     }
   }
+
+  useEffect(() => {
+    // Seed initial history entry so the first popstate has somewhere to go
+    window.history.replaceState({ phase: "start" }, "");
+    function onPopState(e) {
+      setPhase(e.state?.phase || "start");
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   /* ── Bootstrap ── */
   useEffect(() => {
@@ -91,11 +89,10 @@ export default function App() {
         })
         .catch(() => {
           api.setToken(null);
-          autoLogin();
+          // token invalid — user will see login prompt on next action
         });
-    } else {
-      autoLogin();
     }
+    // No token: user stays as null, ProfileModal opens when they try to start
   }, []);
 
   useEffect(() => {
@@ -135,7 +132,8 @@ export default function App() {
   /* ── Phase: start → intake ── */
   async function handleStart(name) {
     if (!user) {
-      await autoLogin();
+      setShowProfileModal(true);
+      return;
     }
     setBusy(true); setError(null);
     try {
@@ -145,7 +143,7 @@ export default function App() {
       setQuestion(res.next_question);
       setProgress(res.progress);
       saveHistory(res.project_id, projectName || (lang === "ar" ? "مشروع جديد" : "Nouveau Projet"), null);
-      setPhase("intake");
+      navigate("intake");
     } catch (err) {
       if (err.message.includes("limit reached") || err.message.includes("Limit reached") || err.message.includes("limite")) {
         setShowLimitModal(true);
@@ -168,7 +166,7 @@ export default function App() {
       if (qRes.next_question) {
         setQuestion(qRes.next_question);
         setProgress(qRes.progress);
-        setPhase("intake");
+        navigate("intake");
       } else {
         await runAudit(existingId);
       }
@@ -207,10 +205,10 @@ export default function App() {
       ]);
       if (res.scores?.vector) saveVector(pid, res.scores.vector);
       setAudit(res);
-      setPhase("audit");
+      navigate("audit");
     } catch (err) {
       setError(err.message);
-      setPhase("intake");  // back to intake on error
+      navigate("intake");
     }
   }
 
@@ -223,10 +221,10 @@ export default function App() {
       ]);
       if (res.scores?.vector) saveVector(projectId, res.scores.vector);
       setAudit(res);
-      setPhase("audit");
+      navigate("audit");
     } catch (err) {
       setError(err.message);
-      setPhase("start");
+      navigate("start");
     }
   }
 
@@ -238,7 +236,7 @@ export default function App() {
 
   /* ── Restart ── */
   function restart() {
-    setPhase("start"); setPid(null); setAudit(null);
+    navigate("start"); setPid(null); setAudit(null);
     setQuestion(null); setProgress(null); setError(null);
   }
 
@@ -246,7 +244,7 @@ export default function App() {
   function handleViewFromHistory(projectId, auditData) {
     setPid(projectId);
     setAudit(auditData);
-    setPhase("audit");
+    navigate("audit");
   }
 
   function handleProjectDeleted(projectId) {
@@ -293,11 +291,11 @@ export default function App() {
       return;
     }
     setProfileReturnPhase(phase);
-    setPhase("profile");
+    navigate("profile");
   }
 
   function closeProfilePage() {
-    setPhase(profileReturnPhase || "start");
+    navigate(profileReturnPhase || "start");
   }
 
   function openHistory() {
@@ -308,7 +306,7 @@ export default function App() {
       setShowProfileModal(true);
       return;
     }
-    setPhase("history");
+    navigate("history");
   }
 
   /* ── Render ── */
@@ -325,7 +323,7 @@ export default function App() {
           openProfile={openProfilePage}
           health={health}
           onLogoClick={restart}
-          onEvalClick={() => setPhase("eval")}
+          onEvalClick={() => navigate("eval")}
         />
       )}
 
@@ -366,7 +364,7 @@ export default function App() {
           plan={plan}
           openProfile={openProfilePage}
           api={api}
-          onBack={() => setPhase("start")}
+          onBack={() => navigate("start")}
           onView={handleViewFromHistory}
           onResume={handleResume}
           onDeleted={handleProjectDeleted}
@@ -386,6 +384,7 @@ export default function App() {
           busy={busy}
           onSubmit={handleAnswer}
           onSkipToAudit={handleRunAudit}
+          onBack={restart}
           pid={pid}
           api={api}
         />

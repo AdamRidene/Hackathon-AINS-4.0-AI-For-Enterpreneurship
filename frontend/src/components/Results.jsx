@@ -216,7 +216,7 @@ function ScoresTab({ audit, lang, T, plan, openProfile }) {
   const scores = audit.scores;
   if (!scores) return null;
 
-  const isLocked = plan !== "plus" && plan !== "pro";
+  const isLocked = plan !== "plus" && plan !== "pro" && plan !== "admin";
 
   return (
     <div style={{ position: "relative", minHeight: "350px" }}>
@@ -310,7 +310,7 @@ function RoadmapTab({ audit, pid, lang, T, checked, onToggle, plan, openProfile 
   const ar = lang === "ar";
   if (!audit.roadmap) return null;
 
-  const isLocked = plan !== "pro";
+  const isLocked = plan !== "pro" && plan !== "admin";
 
   return (
     <div style={{ position: "relative", minHeight: "350px" }}>

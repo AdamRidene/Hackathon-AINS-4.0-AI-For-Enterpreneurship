@@ -255,7 +255,7 @@ export default function ProfilePage({ user, plan, history, lang, api, onBack, on
     }, 1200);
   }
 
-  const planLabel = plan === "plus" ? t.planPlus : plan === "pro" ? t.planPro : t.planFree;
+  const planLabel = plan === "admin" ? (lang === "ar" ? "مؤسسة" : "Entreprise") : plan === "plus" ? t.planPlus : plan === "pro" ? t.planPro : t.planFree;
 
   return (
     <div className="profile-page" dir={ar ? "rtl" : "ltr"}>
@@ -427,69 +427,66 @@ export default function ProfilePage({ user, plan, history, lang, api, onBack, on
               <div className="profile-section-head">
                 <div>
                   <h3>{t.subscriptions}</h3>
-                  <p>{t.upgradeHint}</p>
+                  {plan !== "admin" && plan !== "pro" && <p>{t.upgradeHint}</p>}
                 </div>
                 <span className={`plan-badge ${plan}`}>{planLabel}</span>
               </div>
 
               <div className="subscription-card" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                <div className="subscription-price" style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: "1px solid var(--border)", paddingBottom: "12px" }}>
-                  <strong style={{ fontSize: "1.1rem" }}>{planLabel}</strong>
-                  <span style={{ color: "var(--orange)", fontWeight: 700 }}>
-                    {plan === "free" ? "0 DT" : plan === "plus" ? "49 DT" : "99 DT"}
-                    <span style={{ fontSize: "0.75rem", color: "var(--text-sub)", fontWeight: "normal" }}> / mois</span>
-                  </span>
-                </div>
+                {plan === "admin" ? (
+                  <div style={{ padding: "16px 0", fontSize: "0.9rem", color: "var(--orange)", fontWeight: 600, display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span>🏢</span>
+                    {ar ? "حساب مؤسسي — وصول غير محدود لجميع الميزات." : "Compte Entreprise — accès illimité à toutes les fonctionnalités."}
+                  </div>
+                ) : (
+                  <>
+                    <div className="subscription-price" style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: "1px solid var(--border)", paddingBottom: "12px" }}>
+                      <strong style={{ fontSize: "1.1rem" }}>{planLabel}</strong>
+                      <span style={{ color: "var(--orange)", fontWeight: 700 }}>
+                        {plan === "free" ? "0 DT" : plan === "plus" ? "49 DT" : "99 DT"}
+                        <span style={{ fontSize: "0.75rem", color: "var(--text-sub)", fontWeight: "normal" }}> / mois</span>
+                      </span>
+                    </div>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                  {/* Plus Upgrade Option */}
-                  {plan === "free" && (
-                    <div className="upgrade-option-card">
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <div>
-                          <strong style={{ fontSize: "0.85rem", display: "block" }}>{ar ? "باقة بلس (Plus)" : "Plan Plus"}</strong>
-                          <span style={{ fontSize: "0.75rem", color: "var(--text-sub)", display: "block", marginTop: "2px" }}>
-                            {ar ? "3 مشاريع · المؤشرات والتشخيص" : "3 projets max · Diag & Scores"}
-                          </span>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                      {plan === "free" && (
+                        <div className="upgrade-option-card">
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div>
+                              <strong style={{ fontSize: "0.85rem", display: "block" }}>{ar ? "باقة بلس (Plus)" : "Plan Plus"}</strong>
+                              <span style={{ fontSize: "0.75rem", color: "var(--text-sub)", display: "block", marginTop: "2px" }}>
+                                {ar ? "3 مشاريع · المؤشرات والتشخيص" : "3 projets max · Diag & Scores"}
+                              </span>
+                            </div>
+                            <button className="primary small" onClick={() => setCheckoutPlan("plus")} style={{ padding: "6px 12px", fontSize: "0.75rem", background: "var(--cyan)", borderColor: "var(--cyan-border)", color: "#000", minWidth: "75px" }}>
+                              49 DT
+                            </button>
+                          </div>
                         </div>
-                        <button
-                          className="primary small"
-                          onClick={() => setCheckoutPlan("plus")}
-                          style={{ padding: "6px 12px", fontSize: "0.75rem", background: "var(--cyan)", borderColor: "var(--cyan-border)", color: "#000", minWidth: "75px" }}
-                        >
-                          49 DT
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Pro Upgrade Option */}
-                  {plan !== "pro" && (
-                    <div className="upgrade-option-card" style={{ borderColor: "var(--orange-border)" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <div>
-                          <strong style={{ fontSize: "0.85rem", display: "block" }}>{ar ? "باقة برو (Pro)" : "Plan Pro"}</strong>
-                          <span style={{ fontSize: "0.75rem", color: "var(--text-sub)", display: "block", marginTop: "2px" }}>
-                            {ar ? "5 مشاريع · الوصول الكامل (خارطة الطريق)" : "5 projets max · Tout débloqué"}
-                          </span>
+                      )}
+                      {plan !== "pro" && (
+                        <div className="upgrade-option-card" style={{ borderColor: "var(--orange-border)" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div>
+                              <strong style={{ fontSize: "0.85rem", display: "block" }}>{ar ? "باقة برو (Pro)" : "Plan Pro"}</strong>
+                              <span style={{ fontSize: "0.75rem", color: "var(--text-sub)", display: "block", marginTop: "2px" }}>
+                                {ar ? "5 مشاريع · الوصول الكامل (خارطة الطريق)" : "5 projets max · Tout débloqué"}
+                              </span>
+                            </div>
+                            <button className="primary small" onClick={() => setCheckoutPlan("pro")} style={{ padding: "6px 12px", fontSize: "0.75rem", background: "var(--orange)", borderColor: "var(--orange-border)", color: "#000", minWidth: "75px" }}>
+                              99 DT
+                            </button>
+                          </div>
                         </div>
-                        <button
-                          className="primary small"
-                          onClick={() => setCheckoutPlan("pro")}
-                          style={{ padding: "6px 12px", fontSize: "0.75rem", background: "var(--orange)", borderColor: "var(--orange-border)", color: "#000", minWidth: "75px" }}
-                        >
-                          99 DT
-                        </button>
-                      </div>
+                      )}
+                      {plan === "pro" && (
+                        <div style={{ padding: "8px 0", fontSize: "0.85rem", color: "var(--green)", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
+                          <span>✨</span> {ar ? "أنت تستخدم الباقة الأعلى حالياً. شكراً لك!" : "Vous bénéficiez de notre forfait Pro maximal. Merci !"}
+                        </div>
+                      )}
                     </div>
-                  )}
-
-                  {plan === "pro" && (
-                    <div style={{ padding: "8px 0", fontSize: "0.85rem", color: "var(--green)", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
-                      <span>✨</span> {ar ? "أنت تستخدم الباقة الأعلى حالياً. شكراً لك!" : "Vous bénéficiez de notre forfait Pro maximal. Merci !"}
-                    </div>
-                  )}
-                </div>
+                  </>
+                )}
               </div>
             </article>
           </section>

@@ -2749,6 +2749,13 @@ label {
   border: 1px solid var(--orange-border);
 }
 
+.plan-badge.admin {
+  color: #fff;
+  background: linear-gradient(135deg, var(--orange), var(--cyan));
+  border: none;
+  box-shadow: 0 0 8px var(--orange-glow);
+}
+
 /* Modal Overlay */
 .modal-overlay {
   position: fixed;
@@ -3430,6 +3437,13 @@ label {
   background: var(--orange-soft);
   color: var(--orange);
   border: 1px solid var(--border-accent);
+}
+
+.plan-badge.admin {
+  color: #fff;
+  background: linear-gradient(135deg, var(--orange), var(--cyan));
+  border: none;
+  box-shadow: 0 0 8px var(--orange-glow);
 }
 
 .profile-form-grid {
