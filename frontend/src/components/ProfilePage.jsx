@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SECTOR_LABELS } from "../constants.js";
+import ConfirmDialog from "./ConfirmDialog.jsx";
 
 const TEXTS = {
   fr: {
@@ -123,7 +124,7 @@ function formatDate(value, lang) {
   }).format(date);
 }
 
-export default function ProfilePage({ user, plan, history, lang, api, onBack, onLogout, onUserUpdated, onResumeProject, onProjectDeleted }) {
+export default function ProfilePage({ user, plan, history, lang, api, onBack, onLogout, onUserUpdated, onViewProject, onProjectDeleted }) {
   const t = TEXTS[lang] || TEXTS.fr;
   const ar = lang === "ar";
   const fileRef = useRef(null);
@@ -391,7 +392,7 @@ export default function ProfilePage({ user, plan, history, lang, api, onBack, on
                     >
                       <div
                         style={{ flex: 1, cursor: "pointer", textAlign: ar ? "right" : "left" }}
-                        onClick={() => onResumeProject?.(item.project_id)}
+                        onClick={() => onViewProject?.(item.project_id)}
                       >
                         <strong>{item.name && item.name.trim() && item.name !== "—" ? item.name : (ar ? "مشروع بدون اسم" : "Projet sans nom")}</strong>
                         <span style={{ fontSize: "0.75rem", color: "var(--text-sub)" }}>{item.sector && item.sector !== "—" ? (SECTOR_LABELS[lang]?.[item.sector] || item.sector) : ""}</span>
@@ -400,7 +401,7 @@ export default function ProfilePage({ user, plan, history, lang, api, onBack, on
                         <button
                           className="ghost"
                           style={{ color: "var(--orange)", padding: "4px 8px", fontSize: "0.8rem", border: "none", background: "transparent", cursor: "pointer" }}
-                          onClick={() => onResumeProject?.(item.project_id)}
+                          onClick={() => onViewProject?.(item.project_id)}
                         >
                           {t.openProject}
                         </button>
@@ -439,6 +440,38 @@ export default function ProfilePage({ user, plan, history, lang, api, onBack, on
                     {plan === "free" ? "0 DT" : plan === "plus" ? "49 DT" : "99 DT"}
                     <span style={{ fontSize: "0.75rem", color: "var(--text-sub)", fontWeight: "normal" }}> / mois</span>
                   </span>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px", borderBottom: "1px solid var(--border)", paddingBottom: "12px" }}>
+                  <label style={{ fontSize: "0.82rem", color: "var(--text-sub)", fontWeight: "600" }}>
+                    {ar ? "تغيير خطة الاشتراك:" : "Changer l'abonnement :"}
+                  </label>
+                  <select 
+                    value={plan} 
+                    onChange={async (e) => {
+                      try {
+                        const nextUser = await api.updatePlan(e.target.value);
+                        onUserUpdated?.(nextUser);
+                      } catch (err) {
+                        setError(err.message);
+                      }
+                    }}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: "var(--r-md)",
+                      border: "1px solid var(--border)",
+                      background: "rgba(255, 255, 255, 0.02)",
+                      color: "var(--text)",
+                      cursor: "pointer",
+                      outline: "none",
+                      fontSize: "0.85rem",
+                      fontFamily: "inherit"
+                    }}
+                  >
+                    <option value="free" style={{ background: "#0a0a0a", color: "var(--text)" }}>{ar ? "مجاني (Free)" : "Gratuit (Free)"}</option>
+                    <option value="plus" style={{ background: "#0a0a0a", color: "var(--text)" }}>{ar ? "بلس (Plus)" : "Plus (Plus)"}</option>
+                    <option value="pro" style={{ background: "#0a0a0a", color: "var(--text)" }}>{ar ? "برو (Pro)" : "Pro (Pro)"}</option>
+                  </select>
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
@@ -496,115 +529,52 @@ export default function ProfilePage({ user, plan, history, lang, api, onBack, on
         </main>
       </div>
 
-      {/* Delete Confirmation Modal */}
-      {deletingProjectId && (
-        <div className="modal-overlay" onClick={() => setDeletingProjectId(null)}>
-          <div className="modal-container" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440, padding: 24, textAlign: "center", display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ fontSize: "2.8rem", lineHeight: 1 }}>⚠️</div>
-            <h3 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 700 }}>
-              {t.deleteConfirmTitle}
-            </h3>
-            <p style={{ fontSize: "0.88rem", color: "var(--text-sub)", lineHeight: 1.4, margin: 0 }}>
-              {t.deleteConfirmDesc} <strong>"{history.find((h) => h.project_id === deletingProjectId)?.name || ""}"</strong> ?
-            </p>
-            <p style={{ fontSize: "0.78rem", color: "var(--red)", margin: 0, fontStyle: "italic" }}>
-              {t.deleteConfirmWarn}
-            </p>
-            <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 8 }}>
-              <button
-                className="ghost"
-                onClick={() => setDeletingProjectId(null)}
-                disabled={deletingBusy}
-                style={{ minWidth: 100 }}
-              >
-                {t.cancel}
-              </button>
-              <button
-                className="primary"
-                onClick={confirmDeleteProject}
-                disabled={deletingBusy}
-                style={{ minWidth: 100, background: "var(--red)", borderColor: "rgba(239, 68, 68, 0.4)", color: "#fff" }}
-              >
-                {deletingBusy ? (ar ? "جاري الحذف..." : "Suppression...") : t.deleteBtn}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Delete Confirmation — using shared ConfirmDialog */}
+      <ConfirmDialog
+        isOpen={!!deletingProjectId}
+        title={t.deleteConfirmTitle}
+        message={`${t.deleteConfirmDesc} "${history.find((h) => h.project_id === deletingProjectId)?.name || ""}" ?\n\n${t.deleteConfirmWarn}`}
+        confirmLabel={t.deleteBtn}
+        cancelLabel={t.cancel}
+        variant="danger"
+        busy={deletingBusy}
+        onConfirm={confirmDeleteProject}
+        onCancel={() => setDeletingProjectId(null)}
+        lang={lang}
+      />
 
-      {/* Upgrade Checkout Modal */}
+      {/* Upgrade Checkout — simplified modal */}
       {checkoutPlan && (
         <div className="modal-overlay" onClick={() => setCheckoutPlan(null)}>
           <div className="modal-container" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460, padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
-            <div className="modal-header" style={{ padding: "0 0 12px 0", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h3 className="modal-title" style={{ fontSize: "1.1rem", margin: 0 }}>
-                {t.checkoutTitle}
-              </h3>
-              <button
-                onClick={() => setCheckoutPlan(null)}
-                style={{ background: "transparent", border: "none", fontSize: "1.4rem", cursor: "pointer", color: "var(--text-sub)", padding: 0, lineheight: 1 }}
-              >
-                &times;
-              </button>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border)", paddingBottom: 12 }}>
+              <h3 style={{ fontSize: "1.1rem", margin: 0 }}>{t.checkoutTitle}</h3>
+              <button onClick={() => setCheckoutPlan(null)} style={{ background: "transparent", border: "none", fontSize: "1.4rem", cursor: "pointer", color: "var(--text-sub)", padding: 0 }}>&times;</button>
             </div>
 
             {checkoutSuccess ? (
               <div style={{ textAlign: "center", padding: "16px 0" }}>
-                <div style={{ margin: "0 auto 16px", background: "rgba(34,197,94,0.08)", borderColor: "rgba(34,197,94,0.25)", color: "var(--green)", border: "2px solid", width: 44, height: 44, borderRadius: "50%", display: "grid", placeItems: "center", fontSize: "1.3rem" }}>✓</div>
-                <p style={{ fontWeight: 600, color: "var(--text)", margin: 0 }}>
-                  {t.checkoutSuccess}
-                </p>
+                <div style={{ margin: "0 auto 16px", background: "rgba(34,197,94,0.08)", border: "2px solid rgba(34,197,94,0.25)", color: "var(--green)", width: 44, height: 44, borderRadius: "50%", display: "grid", placeItems: "center", fontSize: "1.3rem" }}>✓</div>
+                <p style={{ fontWeight: 600, color: "var(--text)" }}>{t.checkoutSuccess}</p>
               </div>
             ) : (
-              <form className="auth-form" onSubmit={handlePay} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                <p style={{ fontSize: "0.85rem", color: "var(--text-sub)", margin: 0, lineHeight: 1.4 }}>
+              <form onSubmit={handlePay} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <p style={{ fontSize: "0.85rem", color: "var(--text-sub)", lineHeight: 1.4 }}>
                   {ar
-                    ? `أنت بصدد الترقية إلى باقة ${checkoutPlan === "plus" ? "بلس (Plus)" : "برو (Pro)"} بقيمة ${checkoutPlan === "plus" ? "49" : "99"} د.ت شهرياً.`
-                    : `Vous êtes sur le point de vous abonner au plan ${checkoutPlan === "plus" ? "Plus" : "Pro"} (${checkoutPlan === "plus" ? "49 DT" : "99 DT"}/mois).`}
+                    ? `الترقية إلى ${checkoutPlan === "plus" ? "بلس" : "برو"} — ${checkoutPlan === "plus" ? "49" : "99"} د.ت/شهرياً`
+                    : `Abonnement ${checkoutPlan === "plus" ? "Plus" : "Pro"} — ${checkoutPlan === "plus" ? "49 DT" : "99 DT"}/mois`}
                 </p>
-                <div className="form-group" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <label style={{ fontSize: "0.8rem", color: "var(--text-sub)" }}>{t.cardNumber}</label>
-                  <input
-                    type="text"
-                    placeholder="4000 1234 5678 9010"
-                    value={cardNum}
-                    onChange={(e) => setCardNum(e.target.value)}
-                    required
-                    style={{ padding: "10px 14px", borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "rgba(255,255,255,0.02)", color: "var(--text)" }}
-                  />
-                </div>
+                <input placeholder={t.cardNumber} value={cardNum} onChange={e => setCardNum(e.target.value)} required
+                  style={{ padding: "10px 14px", borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "rgba(255,255,255,0.02)", color: "var(--text)" }} />
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                  <div className="form-group" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <label style={{ fontSize: "0.8rem", color: "var(--text-sub)" }}>{t.expiry}</label>
-                    <input
-                      type="text"
-                      placeholder="12/28"
-                      value={cardExp}
-                      onChange={(e) => setCardExp(e.target.value)}
-                      required
-                      style={{ padding: "10px 14px", borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "rgba(255,255,255,0.02)", color: "var(--text)" }}
-                    />
-                  </div>
-                  <div className="form-group" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <label style={{ fontSize: "0.8rem", color: "var(--text-sub)" }}>{t.cvc}</label>
-                    <input
-                      type="password"
-                      placeholder="123"
-                      value={cardCvc}
-                      maxLength={4}
-                      onChange={(e) => setCardCvc(e.target.value)}
-                      required
-                      style={{ padding: "10px 14px", borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "rgba(255,255,255,0.02)", color: "var(--text)" }}
-                    />
-                  </div>
+                  <input placeholder={t.expiry} value={cardExp} onChange={e => setCardExp(e.target.value)} required
+                    style={{ padding: "10px 14px", borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "rgba(255,255,255,0.02)", color: "var(--text)" }} />
+                  <input type="password" placeholder={t.cvc} value={cardCvc} maxLength={4} onChange={e => setCardCvc(e.target.value)} required
+                    style={{ padding: "10px 14px", borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "rgba(255,255,255,0.02)", color: "var(--text)" }} />
                 </div>
                 <div style={{ display: "flex", gap: 12, marginTop: 10 }}>
-                  <button type="button" className="ghost" onClick={() => setCheckoutPlan(null)} style={{ flex: 1 }}>
-                    {t.cancel}
-                  </button>
-                  <button type="submit" className="primary" disabled={checkoutBusy} style={{ flex: 1 }}>
-                    {checkoutBusy ? t.loadingPay : t.payBtn}
-                  </button>
+                  <button type="button" className="ghost" onClick={() => setCheckoutPlan(null)} style={{ flex: 1 }}>{t.cancel}</button>
+                  <button type="submit" className="primary" disabled={checkoutBusy} style={{ flex: 1 }}>{checkoutBusy ? t.loadingPay : t.payBtn}</button>
                 </div>
               </form>
             )}

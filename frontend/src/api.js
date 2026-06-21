@@ -1,28 +1,31 @@
 // Thin typed client over the Firasa REST surface (see backend/app/main.py).
 // In dev, Vite proxies /api -> FastAPI. In prod, set VITE_API_BASE.
+// Token management is delegated to the auth module (src/auth.js).
+import { auth } from "./auth.js";
+
 const BASE = import.meta.env.VITE_API_BASE || "";
-const TOKEN_KEY = "firasa_session_token";
-
-function getToken() {
-  return localStorage.getItem(TOKEN_KEY);
-}
-
-function setToken(token) {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
-}
 
 async function req(path, options = {}) {
-  const token = getToken();
+  const token = await auth.getToken();
+  const isFormData = options.body instanceof FormData;
   const headers = {
-    "Content-Type": "application/json",
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers || {}),
   };
-  const res = await fetch(`${BASE}${path}`, {
-    ...options,
-    headers,
-  });
+  const { signal, ...fetchOptions } = options;
+  let res;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      ...fetchOptions,
+      headers,
+      signal,
+    });
+  } catch (err) {
+    // Network errors (DNS failure, connection refused, timeout, abort)
+    if (err.name === "AbortError") throw err;
+    throw new Error("Impossible de se connecter au serveur. Vérifiez votre connexion.");
+  }
   if (!res.ok) {
     let detail = `${res.status} ${res.statusText}`;
     try {
@@ -37,41 +40,36 @@ async function req(path, options = {}) {
 }
 
 export const api = {
-  getToken,
-  setToken,
-
   health: () => req("/api/health"),
   kb: () => req("/api/kb"),
-
-  register: async ({ email, password, name, birth_date, location, phone, role, company }) => {
-    const res = await req("/api/auth/register", {
+  listDocuments: (pid) => req(`/api/projects/${pid}/documents`),
+  uploadDocument: (pid, file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return req(`/api/projects/${pid}/documents`, {
       method: "POST",
-      body: JSON.stringify({ email, password, name, birth_date, location, phone, role, company }),
+      body: formData,
     });
-    setToken(res.token);
-    return res.user;
   },
+  deleteDocument: (pid, docId) => req(`/api/projects/${pid}/documents/${docId}`, { method: "DELETE" }),
+
+  // Auth delegated to auth module
+  getToken: () => auth.getToken(),
 
   login: async ({ email, password }) => {
-    const res = await req("/api/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-    });
-    setToken(res.token);
-    return res.user;
+    return auth.login({ email, password });
+  },
+
+  register: async ({ email, password, name, birth_date, location, phone, role, company }) => {
+    return auth.register({ email, password, name, birth_date, location, phone, role, company });
   },
 
   logout: async () => {
-    try {
-      if (getToken()) await req("/api/auth/logout", { method: "POST" });
-    } finally {
-      setToken(null);
-    }
+    return auth.logout();
   },
 
   me: async () => {
-    const res = await req("/api/auth/me");
-    return res.user;
+    return auth.me();
   },
 
   updatePlan: async (plan) => {
@@ -97,6 +95,11 @@ export const api = {
     }),
 
   getProject: (pid) => req(`/api/projects/${pid}`),
+  updateProject: (pid, fields) =>
+    req(`/api/projects/${pid}`, {
+      method: "PATCH",
+      body: JSON.stringify(fields),
+    }),
 
   getQuestions: (pid) => req(`/api/projects/${pid}/questions`),
 
@@ -117,7 +120,7 @@ export const api = {
     }),
 
   // History / management
-  listProjects: () => req("/api/projects"),
+  listProjects: (opts) => req("/api/projects", opts),
   getLastAudit: (pid) => req(`/api/projects/${pid}/last-audit`),
   deleteProject: (pid) => req(`/api/projects/${pid}`, { method: "DELETE" }),
   eval: () => req("/api/eval"),

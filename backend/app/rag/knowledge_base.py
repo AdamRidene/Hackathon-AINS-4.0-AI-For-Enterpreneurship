@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import threading
 from collections import Counter
 from dataclasses import dataclass
 from functools import lru_cache
@@ -109,6 +110,46 @@ class KnowledgeBase:
                 horizon=r["horizon"], content=r["content"], vector=vec,
                 title_ar=r.get("title_ar", ""), content_ar=r.get("content_ar", "")))
 
+        # ── Optional embedding-based retrieval (lazy-loaded on first query) ──
+        self._embeddings = None   # list[ndarray] parallel to self.chunks
+        self._embedder = None
+        self._embeddings_loaded = False  # tri-state: False=unattempted, None=failed
+        self._embeddings_lock = threading.Lock()
+
+    def _ensure_embeddings(self) -> None:
+        """Lazy-load sentence-transformers on first query (avoids ~90MB download at startup)."""
+        if self._embeddings_loaded:
+            return  # already succeeded
+        with self._embeddings_lock:
+            if self._embeddings_loaded:
+                return
+            self._try_load_embeddings()
+            if self._embeddings is not None:
+                self._embeddings_loaded = True
+
+    def _try_load_embeddings(self) -> None:
+        """Load sentence-transformers if available and pre-compute embeddings."""
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError:
+            return  # TF-IDF fallback path
+
+        try:
+            model = SentenceTransformer("all-MiniLM-L6-v2")
+            texts = [c.content for c in self.chunks]
+            self._embeddings = model.encode(texts, show_progress_bar=False)
+            self._embedder = model
+            self.meta["embedding_model"] = "all-MiniLM-L6-v2"
+            self.meta["embedding_dim"] = int(self._embeddings[0].shape[0])
+        except Exception:
+            # Silently fall back to TF-IDF on any embedding error
+            self._embeddings = None
+            self._embedder = None
+
+    def has_embeddings(self) -> bool:
+        self._ensure_embeddings()
+        return self._embeddings is not None and self._embedder is not None
+
     def __len__(self) -> int:
         return len(self.chunks)
 
@@ -117,6 +158,17 @@ class KnowledgeBase:
         for t, f in Counter(_tokenise(text)).items():
             vec[t] = f * self._idf.get(t, 1.0)
         return vec
+
+    def query_embedding(self, text: str):
+        """Return a dense embedding vector for semantic search.
+        Requires sentence-transformers. Returns None if unavailable.
+        """
+        self._ensure_embeddings()
+        if not self._embeddings or self._embedder is None:
+            return None
+        import numpy as np
+        emb = self._embedder.encode([text], show_progress_bar=False)[0]
+        return emb
 
     @staticmethod
     def cosine(a: Counter, b: Counter) -> float:
@@ -127,6 +179,15 @@ class KnowledgeBase:
         na = math.sqrt(sum(v * v for v in a.values()))
         nb = math.sqrt(sum(v * v for v in b.values()))
         return dot / (na * nb) if na and nb else 0.0
+
+    @staticmethod
+    def cosine_dense(a, b) -> float:
+        """Cosine similarity between two dense numpy arrays."""
+        import numpy as np
+        dot = np.dot(a, b)
+        na = np.linalg.norm(a)
+        nb = np.linalg.norm(b)
+        return float(dot / (na * nb)) if na and nb else 0.0
 
 
 @lru_cache(maxsize=1)

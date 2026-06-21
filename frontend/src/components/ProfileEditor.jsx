@@ -47,14 +47,17 @@ export default function ProfileEditor({ pid, lang, api, onClose, onAuditUpdated,
   });
 
   const questionRefs = useRef({});
+  const reloadGen = useRef(0); // version counter to prevent stale reloads
 
   // Load questions
   useEffect(() => {
+    const version = ++reloadGen.current;
     async function load() {
       try {
         const qList = await api.getQuestions(pid);
+        if (version !== reloadGen.current) return; // stale
         setQuestions(qList);
-        
+
         // Populate initial values
         const vals = {};
         qList.forEach(q => {
@@ -62,9 +65,10 @@ export default function ProfileEditor({ pid, lang, api, onClose, onAuditUpdated,
         });
         setValues(vals);
       } catch (err) {
+        if (version !== reloadGen.current) return;
         setError(err.message);
       } finally {
-        setLoading(false);
+        if (version === reloadGen.current) setLoading(false);
       }
     }
     load();
@@ -126,7 +130,9 @@ export default function ProfileEditor({ pid, lang, api, onClose, onAuditUpdated,
 
       // If sector or declared_stage changes, reload questions as the flow branches dynamically!
       if (qid === "sector" || qid === "declared_stage") {
+        const version = ++reloadGen.current;
         const qList = await api.getQuestions(pid);
+        if (version !== reloadGen.current) return; // stale — a newer reload superseded us
         setQuestions(qList);
         setValues(prev => {
           const next = { ...prev };

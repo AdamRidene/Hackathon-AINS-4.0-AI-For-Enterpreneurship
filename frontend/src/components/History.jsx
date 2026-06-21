@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import logoSvg from "../../assets/logo_first.svg";
+import ConfirmDialog from "./ConfirmDialog.jsx";
 
 import { SECTOR_LABELS, STAGE_LABELS as STAGE_NAMES } from "../constants.js";
 
@@ -28,10 +28,11 @@ function formatDate(iso, lang) {
   if (!iso) return "";
   try {
     const d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso).slice(0, 10);
     return d.toLocaleDateString(lang === "ar" ? "ar-TN" : "fr-TN", {
       day:"2-digit", month:"short", year:"numeric",
     });
-  } catch { return iso.slice(0, 10); }
+  } catch { return String(iso).slice(0, 10); }
 }
 
 const TEXTS = {
@@ -71,41 +72,46 @@ const TEXTS = {
 
 const SECTORS = ["agri-food","digital-saas","industry","health","greentech","services","other"];
 
-export default function History({ lang, theme, setTheme, api, onBack, onView, user, plan, openProfile }) {
+export default function History({ lang, api, onBack, onViewProject, user, plan, openProfile }) {
   const [audits,  setAudits]  = useState([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState(null);
   const [filter,  setFilter]  = useState("all");
   const [deleting, setDeleting] = useState(null);
-  const [viewing,  setViewing]  = useState(null);
+  const [confirmPid, setConfirmPid] = useState(null); // project ID pending delete confirmation
+  const [viewing, setViewing] = useState(null);        // project ID currently navigating to
 
   const ar = lang === "ar";
   const t  = TEXTS[lang];
 
   useEffect(() => {
-    api.listProjects()
+    const controller = new AbortController();
+    api.listProjects({ signal: controller.signal })
       .then(data => { setAudits(data); setLoading(false); })
-      .catch(err  => { setError(err.message); setLoading(false); });
-  }, []);
+      .catch(err  => {
+        if (err.name === "AbortError") return;
+        setError(err.message); setLoading(false);
+      });
+    return () => controller.abort();
+  }, [api]);
 
   const visible = filter === "all"
     ? audits
     : audits.filter(a => a.sector === filter);
 
   async function handleView(pid) {
+    // Show the project dashboard first, not the raw audit
     setViewing(pid);
-    try {
-      const audit = await api.getLastAudit(pid);
-      onView(pid, audit);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setViewing(null);
-    }
+    onViewProject(pid);
   }
 
-  async function handleDelete(pid) {
-    if (!window.confirm(t.confirmDelete)) return;
+  function handleDeleteClick(pid) {
+    setConfirmPid(pid);
+  }
+
+  async function handleDeleteConfirm() {
+    const pid = confirmPid;
+    setConfirmPid(null);
     setDeleting(pid);
     try {
       await api.deleteProject(pid);
@@ -159,7 +165,7 @@ export default function History({ lang, theme, setTheme, api, onBack, onView, us
         )}
 
         {error && (
-          <div className="error-banner" style={{ marginBottom: 24 }}>
+          <div className="error-banner" role="alert" style={{ marginBottom: 24 }}>
             <span>{error}</span>
           </div>
         )}
@@ -218,7 +224,11 @@ export default function History({ lang, theme, setTheme, api, onBack, onView, us
                       <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
                     </svg>
                     {t.audited} {formatDate(a.audited_at, lang)}
-                    <span className="hist-pid">{a.project_id.slice(0,8)}…</span>
+                    {a.stage && (
+                      <span className={`hist-tag ${a.stage >= 4 ? "orange" : "cyan"}`}>
+                        {t.stage} {a.stage}
+                      </span>
+                    )}
                   </div>
 
                   {/* Actions */}
@@ -227,14 +237,14 @@ export default function History({ lang, theme, setTheme, api, onBack, onView, us
                       className="primary"
                       style={{ flex: 1 }}
                       onClick={() => handleView(a.project_id)}
-                      disabled={isViewing || isDeleting}
+                      disabled={isDeleting}
                     >
-                      {isViewing ? <span className="spinner" /> : (!a.stage && !a.vector ? t.resume : t.view)}
+                      {t.view}
                     </button>
                     <button
                       className="danger-btn"
-                      onClick={() => handleDelete(a.project_id)}
-                      disabled={isViewing || isDeleting}
+                      onClick={() => handleDeleteClick(a.project_id)}
+                      disabled={isDeleting}
                       title={t.delete}
                     >
                       {isDeleting ? <span className="spinner" /> : (
@@ -253,6 +263,21 @@ export default function History({ lang, theme, setTheme, api, onBack, onView, us
           </div>
         )}
       </main>
+
+      <ConfirmDialog
+        isOpen={!!confirmPid}
+        title={t.confirmDelete}
+        message={ar
+          ? "سيتم حذف المشروع وجميع بيانات التدقيق المرتبطة به بشكل نهائي."
+          : "Le projet et toutes ses données d'audit seront définitivement supprimés."}
+        confirmLabel={ar ? "نعم، حذف" : "Oui, supprimer"}
+        cancelLabel={ar ? "إلغاء" : "Annuler"}
+        variant="danger"
+        busy={!!deleting}
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setConfirmPid(null)}
+        lang={lang}
+      />
     </div>
   );
 }

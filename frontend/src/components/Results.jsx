@@ -1,5 +1,4 @@
-import { useState, useEffect, useRef } from "react";
-import logoSvg from "../../assets/logo_first.svg";
+import { useState } from "react";
 import Assistant from "./Assistant.jsx";
 import ScoreDeltas from "./ScoreDeltas.jsx";
 import ProfileEditor from "./ProfileEditor.jsx";
@@ -218,9 +217,9 @@ function ScoresTab({ audit, lang, T, plan, openProfile }) {
 
   const isLocked = plan !== "plus" && plan !== "pro";
 
-  return (
-    <div style={{ position: "relative", minHeight: "350px" }}>
-      {isLocked && (
+  if (isLocked) {
+    return (
+      <div style={{ position: "relative", minHeight: "350px" }}>
         <div className="tab-locked-overlay">
           <div className="lock-icon-container">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -238,66 +237,68 @@ function ScoresTab({ audit, lang, T, plan, openProfile }) {
             {ar ? "ترقية الاشتراك" : "Mettre à niveau mon plan"}
           </button>
         </div>
-      )}
+      </div>
+    );
+  }
 
-      <div style={{ pointerEvents: isLocked ? "none" : "auto", opacity: isLocked ? 0.22 : 1 }}>
-        <ScoreDeltas scoreDeltas={audit.score_deltas} />
-        <div className="score-rows" style={{ marginTop: 24 }}>
-          {DIMS.map(([key, labelFr, labelAr]) => {
-            const res = scores[key];
-            if (!res) return null;
-            const open = expanded === key;
-            const label = ar ? labelAr : labelFr;
-            const color = barColor(res.final_score, res.gate_triggered);
-            const delta = audit.score_deltas?.deltas?.[key];
+  return (
+    <div style={{ position: "relative", minHeight: "350px" }}>
+      <ScoreDeltas scoreDeltas={audit.score_deltas} />
+      <div className="score-rows" style={{ marginTop: 24 }}>
+        {DIMS.map(([key, labelFr, labelAr]) => {
+          const res = scores[key];
+          if (!res) return null;
+          const open = expanded === key;
+          const label = ar ? labelAr : labelFr;
+          const color = barColor(res.final_score, res.gate_triggered);
+          const delta = audit.score_deltas?.deltas?.[key];
 
-            return (
-              <div key={key} className="score-row">
-                <div className="score-head" onClick={() => setExpanded(open ? null : key)}>
-                  <div className="score-dim">
-                    <span className="score-dim-name">{label}</span>
-                  </div>
-                  <div className="score-bar-track">
-                    <div className="score-bar-fill" style={{ width: `${res.final_score}%`, background: color }} />
-                  </div>
-                  <div className="score-val">
-                    <span className="score-final" style={{ color }}>{res.final_score}</span>
-                    {res.base_score !== res.final_score && (
-                      <span className="score-base">/ {res.base_score}</span>
-                    )}
-                  </div>
-                  {delta !== undefined && delta !== 0 && (
-                    <span className={`delta-badge ${delta > 0 ? "up" : "down"}`}>
-                      {delta > 0 ? `+${delta}` : delta}
-                    </span>
-                  )}
-                  {res.gate_triggered && <span className="gate-flag">GATE</span>}
-                  <span className={`score-chevron${open ? " open" : ""}`}>▶</span>
+          return (
+            <div key={key} className="score-row">
+              <div className="score-head" onClick={() => setExpanded(open ? null : key)}>
+                <div className="score-dim">
+                  <span className="score-dim-name">{label}</span>
                 </div>
-
-                {open && (
-                  <div className="score-detail">
-                    <div className="score-anchor">{T.anchor} : {res.anchor}</div>
-                    {res.gate_triggered && res.gate_reason && (
-                      <div className="score-gate-msg">⚠ {T.gateRule} : {res.gate_reason}</div>
-                    )}
-                    {res.contributions.map((c, i) => (
-                      <div key={i} className="contrib-row">
-                        <span className="contrib-name">{c.criterion}</span>
-                        <span className="contrib-detail">{c.detail}</span>
-                        <span className="contrib-w mono">w:{c.weight}</span>
-                        <span className="contrib-score mono">{c.weighted}</span>
-                      </div>
-                    ))}
-                    {res.missing_inputs?.length > 0 && (
-                      <div className="score-missing muted">⚠ {T.missing} : {res.missing_inputs.join(", ")}</div>
-                    )}
-                  </div>
+                <div className="score-bar-track">
+                  <div className="score-bar-fill" style={{ width: `${res.final_score}%`, background: color }} />
+                </div>
+                <div className="score-val">
+                  <span className="score-final" style={{ color }}>{res.final_score}</span>
+                  {res.base_score !== res.final_score && (
+                    <span className="score-base">/ {res.base_score}</span>
+                  )}
+                </div>
+                {delta !== undefined && delta !== 0 && (
+                  <span className={`delta-badge ${delta > 0 ? "up" : "down"}`}>
+                    {delta > 0 ? `+${delta}` : delta}
+                  </span>
                 )}
+                {res.gate_triggered && <span className="gate-flag">GATE</span>}
+                <span className={`score-chevron${open ? " open" : ""}`}>▶</span>
               </div>
-            );
-          })}
-        </div>
+
+              {open && (
+                <div className="score-detail">
+                  <div className="score-anchor">{T.anchor} : {res.anchor}</div>
+                  {res.gate_triggered && res.gate_reason && (
+                    <div className="score-gate-msg">⚠ {T.gateRule} : {res.gate_reason}</div>
+                  )}
+                  {res.contributions.map((c, i) => (
+                    <div key={i} className="contrib-row">
+                      <span className="contrib-name">{c.criterion}</span>
+                      <span className="contrib-detail">{c.detail}</span>
+                      <span className="contrib-w mono">w:{c.weight}</span>
+                      <span className="contrib-score mono">{c.weighted}</span>
+                    </div>
+                  ))}
+                  {res.missing_inputs?.length > 0 && (
+                    <div className="score-missing muted">⚠ {T.missing} : {res.missing_inputs.join(", ")}</div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -312,9 +313,9 @@ function RoadmapTab({ audit, pid, lang, T, checked, onToggle, plan, openProfile 
 
   const isLocked = plan !== "pro";
 
-  return (
-    <div style={{ position: "relative", minHeight: "350px" }}>
-      {isLocked && (
+  if (isLocked) {
+    return (
+      <div style={{ position: "relative", minHeight: "350px" }}>
         <div className="tab-locked-overlay">
           <div className="lock-icon-container">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -332,54 +333,56 @@ function RoadmapTab({ audit, pid, lang, T, checked, onToggle, plan, openProfile 
             {ar ? "ترقية الاشتراك" : "Mettre à niveau mon plan"}
           </button>
         </div>
-      )}
+      </div>
+    );
+  }
 
-      <div style={{ pointerEvents: isLocked ? "none" : "auto", opacity: isLocked ? 0.22 : 1 }}>
-        <div className="roadmap-summary">
-          <div>
-            <div className="tab-section-title">{T.roadmapTitle}</div>
-            <div className="tab-section-sub">{T.roadmapSub}</div>
-          </div>
-          <span className="roadmap-count">{audit.roadmap.length}</span>
+  return (
+    <div style={{ position: "relative", minHeight: "350px" }}>
+      <div className="roadmap-summary">
+        <div>
+          <div className="tab-section-title">{T.roadmapTitle}</div>
+          <div className="tab-section-sub">{T.roadmapSub}</div>
         </div>
-        <div className="roadmap-items">
-          {audit.roadmap.map((m, i) => {
-            const key = `${pid}_${m.id}`;
-            const done = !!checked[key];
-            const horizon = ar ? m.horizon_ar || m.horizon_fr : m.horizon_fr;
-            const rat = ar ? m.rationale_ar || m.rationale_fr : m.rationale_fr;
-            const action = ar ? m.action_ar || m.action_fr : m.action_fr;
+        <span className="roadmap-count">{audit.roadmap.length}</span>
+      </div>
+      <div className="roadmap-items">
+        {audit.roadmap.map((m, i) => {
+          const key = `${pid}_${m.id}`;
+          const done = !!checked[key];
+          const horizon = ar ? m.horizon_ar || m.horizon_fr : m.horizon_fr;
+          const rat = ar ? m.rationale_ar || m.rationale_fr : m.rationale_fr;
+          const action = ar ? m.action_ar || m.action_fr : m.action_fr;
 
-            return (
-              <div key={i} className={`milestone${done ? " done" : ""}`}>
-                <div className="ms-side">
-                  <div className={`ms-check${done ? " done" : ""}`} onClick={() => onToggle(m.id)} title={T.checkDone}>
-                    {done && "✓"}
-                  </div>
-                  <span className="ms-order">{m.order}</span>
+          return (
+            <div key={i} className={`milestone${done ? " done" : ""}`}>
+              <div className="ms-side">
+                <div className={`ms-check${done ? " done" : ""}`} onClick={() => onToggle(m.id)} title={T.checkDone}>
+                  {done && "✓"}
                 </div>
-                <div className="ms-body">
-                  <div className="ms-head">
-                    <span className="ms-title">{m.title}</span>
-                    {horizon && <span className="ms-horizon">{horizon}</span>}
-                  </div>
-                  {rat && <div className="ms-rationale">{rat}</div>}
-                  {action && <div className="ms-action">{action}</div>}
-                  {m.sources?.length > 0 && (
-                    <div className="ms-sources">
-                      {m.sources.map((src, si) => (
-                        <span key={si} className="ms-source">
-                          <span className="ms-inst">{src.institution}</span>
-                          <a href={src.url} target="_blank" rel="noopener noreferrer">{src.title}</a>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <span className="ms-order">{m.order}</span>
               </div>
-            );
-          })}
-        </div>
+              <div className="ms-body">
+                <div className="ms-head">
+                  <span className="ms-title">{m.title}</span>
+                  {horizon && <span className="ms-horizon">{horizon}</span>}
+                </div>
+                {rat && <div className="ms-rationale">{rat}</div>}
+                {action && <div className="ms-action">{action}</div>}
+                {m.sources?.length > 0 && (
+                  <div className="ms-sources">
+                    {m.sources.map((src, si) => (
+                      <span key={si} className="ms-source">
+                        <span className="ms-inst">{src.institution}</span>
+                        <a href={src.url} target="_blank" rel="noopener noreferrer">{src.title}</a>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -388,7 +391,7 @@ function RoadmapTab({ audit, pid, lang, T, checked, onToggle, plan, openProfile 
 /* ══════════════════════════════════════════════════════════════
    RESULTS ROOT
  ══════════════════════════════════════════════════════════════ */
-export default function Results({ audit, pid, lang, theme, setTheme, onNewAudit, checkedMilestones, onToggleMilestone, api, user, plan, openProfile, onAuditUpdated }) {
+export default function Results({ audit, pid, lang, onNewAudit, onBackToDashboard, checkedMilestones, onToggleMilestone, api, user, plan, openProfile, onAuditUpdated }) {
   const [activeTab, setActiveTab] = useState(0);
   const [showEditor, setShowEditor] = useState(false);
   const [focusQuestion, setFocusQuestion] = useState(null);
@@ -402,70 +405,6 @@ export default function Results({ audit, pid, lang, theme, setTheme, onNewAudit,
 
   const anomalyCount = audit.anomalies?.length || 0;
   const tabLabels = T.tabs;
-
-  const SECTION_IDS = ["diagnostic-sec", "scores-sec", "roadmap-sec", "assistant-sec"];
-  const isScrollingRef = useRef(false);
-  const scrollTimeoutRef = useRef(null);
-
-  const scrollToSection = (index) => {
-    setActiveTab(index);
-    isScrollingRef.current = true;
-    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
-
-    const id = SECTION_IDS[index];
-    const element = document.getElementById(id);
-    if (element) {
-      const offset = 120; // 58px topbar + ~50px tabs + safety margin
-      const bodyRect = document.body.getBoundingClientRect().top;
-      const elementRect = element.getBoundingClientRect().top;
-      const elementPosition = elementRect - bodyRect;
-      const offsetPosition = elementPosition - offset;
-
-      window.scrollTo({
-        top: offsetPosition,
-        behavior: "smooth"
-      });
-    }
-
-    scrollTimeoutRef.current = setTimeout(() => {
-      isScrollingRef.current = false;
-    }, 800);
-  };
-
-  useEffect(() => {
-    const observerOptions = {
-      root: null,
-      rootMargin: "-120px 0px -60% 0px",
-      threshold: 0
-    };
-
-    const handleIntersection = (entries) => {
-      if (isScrollingRef.current) return;
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          const index = SECTION_IDS.indexOf(entry.target.id);
-          if (index !== -1) {
-            setActiveTab(index);
-          }
-        }
-      });
-    };
-
-    const observer = new IntersectionObserver(handleIntersection, observerOptions);
-
-    SECTION_IDS.forEach((id) => {
-      const el = document.getElementById(id);
-      if (el) observer.observe(el);
-    });
-
-    return () => {
-      SECTION_IDS.forEach((id) => {
-        const el = document.getElementById(id);
-        if (el) observer.unobserve(el);
-      });
-      if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
-    };
-  }, []);
 
   return (
     <div className="results-wrap" dir={ar ? "rtl" : "ltr"}>
@@ -483,6 +422,9 @@ export default function Results({ audit, pid, lang, theme, setTheme, onNewAudit,
             )}
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button className="ghost" onClick={onBackToDashboard} style={{ border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "10px 16px", cursor: "pointer" }}>
+              {ar ? "لوحة قيادة المشروع" : "Tableau de bord"}
+            </button>
             <button className="ghost" onClick={() => setShowEditor(true)} style={{ border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "10px 16px", cursor: "pointer" }}>
               {T.editProfile}
             </button>
@@ -507,13 +449,13 @@ export default function Results({ audit, pid, lang, theme, setTheme, onNewAudit,
           </div>
         )}
 
-        {/* Local Navigation Sticky Tabs */}
+        {/* Local Navigation Tabs — panel switching, NOT scrolling */}
         <div className="results-local-nav">
           {tabLabels.map((label, i) => (
             <button
               key={i}
               className={`res-tab${activeTab === i ? " active" : ""}`}
-              onClick={() => scrollToSection(i)}
+              onClick={() => setActiveTab(i)}
             >
               {label}
               {i === 0 && anomalyCount > 0 && (
@@ -523,43 +465,39 @@ export default function Results({ audit, pid, lang, theme, setTheme, onNewAudit,
           ))}
         </div>
 
-        {/* Section 1: Diagnostic */}
-        <section id="diagnostic-sec" className="results-section">
-          <div className="results-section-header">
-            <h2 className="results-section-title">{T.tabs[0]}</h2>
+        {/* Tab Panels — only the active one renders */}
+        {activeTab === 0 && (
+          <div className="results-section">
+            <DiagnosticTab audit={audit} lang={lang} T={T} onFixGate={handleFixGate} />
           </div>
-          <DiagnosticTab audit={audit} lang={lang} T={T} onFixGate={handleFixGate} />
-        </section>
+        )}
 
-        {/* Section 2: Scores */}
-        <section id="scores-sec" className="results-section">
-          <div className="results-section-header">
-            <h2 className="results-section-title">{T.tabs[1]}</h2>
+        {activeTab === 1 && (
+          <div className="results-section">
+            <ScoresTab audit={audit} lang={lang} T={T} plan={plan} openProfile={openProfile} />
           </div>
-          <ScoresTab audit={audit} lang={lang} T={T} plan={plan} openProfile={openProfile} />
-        </section>
+        )}
 
-        {/* Section 3: Roadmap */}
-        <section id="roadmap-sec" className="results-section">
-          <RoadmapTab
-            audit={audit}
-            pid={pid}
-            lang={lang}
-            T={T}
-            checked={checkedMilestones}
-            onToggle={onToggleMilestone}
-            plan={plan}
-            openProfile={openProfile}
-          />
-        </section>
-
-        {/* Section 4: Assistant */}
-        <section id="assistant-sec" className="results-section">
-          <div className="results-section-header">
-            <h2 className="results-section-title">{T.tabs[3]}</h2>
+        {activeTab === 2 && (
+          <div className="results-section">
+            <RoadmapTab
+              audit={audit}
+              pid={pid}
+              lang={lang}
+              T={T}
+              checked={checkedMilestones}
+              onToggle={onToggleMilestone}
+              plan={plan}
+              openProfile={openProfile}
+            />
           </div>
-          <Assistant pid={pid} lang={lang} />
-        </section>
+        )}
+
+        {activeTab === 3 && (
+          <div className="results-section">
+            <Assistant pid={pid} lang={lang} />
+          </div>
+        )}
       </div>
 
       {showEditor && (

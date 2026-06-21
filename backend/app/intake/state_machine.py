@@ -108,7 +108,7 @@ QUESTIONS: list[Question] = [
     # --- Stage-claim probe: validation evidence depth ---------------------- #
     Question("validation_proof", "Décrivez la preuve de validation la plus forte "
              "que vous détenez (chiffres réels).",
-             "commercial.value_proposition_narrative", "text",
+             "validation_evidence_narrative", "text",
              applies=lambda p: _advanced_claim(p),
              triggered_by="declared_stage>=Fundraising",
              help_fr="Bloc d'évidence injecté car un stade avancé est revendiqué.",
@@ -188,6 +188,113 @@ QUESTIONS: list[Question] = [
     Question("sdg", "Quels ODD (1-17) visez-vous ?", "green.sdg_targets", "sdg",
              prompt_ar="ما أهداف التنمية المستدامة (1-17) التي تستهدفها ؟"),
 
+    # --- Team & Organization (gate: Structuration+) ------------------------ #
+    Question("team_size", "Combien de co-fondateurs et employés compte votre équipe ?",
+             "team_size", "int",
+             applies=lambda p: p.self_assessment.declared_stage is not None
+                 and int(p.self_assessment.declared_stage) >= 3,
+             triggered_by="declared_stage>=Structuration",
+             help_fr="Taille totale de l'équipe incluant les fondateurs.",
+             prompt_ar="كم عدد المؤسسين والموظفين في فريقك ؟",
+             help_ar="الحجم الإجمالي للفريق بما في ذلك المؤسسون."),
+    Question("key_hires", "Quels sont les profils clés que vous devez recruter en priorité ?",
+             "key_hires", "tags",
+             applies=lambda p: p.self_assessment.declared_stage is not None
+                 and int(p.self_assessment.declared_stage) >= 4,
+             triggered_by="declared_stage>=Fundraising",
+             help_fr="Ex: CTO, responsable commercial, chef de produit. Séparez par des virgules.",
+             prompt_ar="ما هي الكفاءات الأساسية التي تحتاج لتوظيفها بالأولوية ؟",
+             help_ar="مثال: مدير تقني، مسؤول تجاري، مدير منتج. افصل بينها بفواصل."),
+
+    # --- Financial probes (gate: Fundraising+) ------------------------------ #
+    Question("monthly_revenue", "Quel est votre chiffre d'affaires mensuel actuel (TND) ?",
+             "monthly_revenue_tnd", "float",
+             applies=lambda p: _advanced_claim(p),
+             triggered_by="declared_stage>=Fundraising",
+             help_fr="Revenu brut mensuel. Laissez 0 si aucun.",
+             prompt_ar="ما هو رقم معاملاتك الشهري الحالي (بالدينار التونسي) ؟",
+             help_ar="الإيراد الشهري الإجمالي. اتركه 0 إذا لم يوجد."),
+    Question("burn_rate", "Quel est votre taux de consommation mensuel (burn rate) en TND ?",
+             "burn_rate_tnd", "float",
+             applies=lambda p: _advanced_claim(p),
+             triggered_by="declared_stage>=Fundraising",
+             help_fr="Dépenses mensuelles totales (salaires, loyer, outils, etc.).",
+             prompt_ar="ما هو معدل استهلاكك الشهري (burn rate) بالدينار التونسي ؟",
+             help_ar="إجمالي النفقات الشهرية (رواتب، كراء، أدوات، إلخ)."),
+    Question("runway_months", "Combien de mois de trésorerie (runway) vous reste-t-il ?",
+             "runway_months", "int",
+             applies=lambda p: _advanced_claim(p),
+             triggered_by="declared_stage>=Fundraising",
+             help_fr="Nombre de mois avant épuisement de la trésorerie au rythme actuel.",
+             prompt_ar="كم شهراً من السيولة النقدية (runway) تبقى لديك ؟",
+             help_ar="عدد الأشهر قبل نفاد السيولة بالوتيرة الحالية."),
+
+    # --- Traction metrics (gate: Market Validation+) ------------------------ #
+    Question("user_count", "Combien d'utilisateurs ou clients actifs avez-vous actuellement ?",
+             "user_count", "int",
+             applies=lambda p: p.market.customer_validation_evidence is True,
+             triggered_by="validation_evidence=true",
+             help_fr="Nombre d'utilisateurs actifs ou de clients payants.",
+             prompt_ar="كم عدد المستخدمين أو العملاء النشطين لديك حالياً ؟",
+             help_ar="عدد المستخدمين النشطين أو العملاء الذين يدفعون."),
+    Question("growth_rate", "Quel est votre taux de croissance mensuel (%) ?",
+             "growth_rate_pct", "float",
+             applies=lambda p: p.market.customer_validation_evidence is True,
+             triggered_by="validation_evidence=true",
+             help_fr="Croissance en pourcentage du nombre d'utilisateurs ou du CA mois sur mois.",
+             prompt_ar="ما هو معدل نموك الشهري (%) ؟",
+             help_ar="نسبة النمو في عدد المستخدمين أو رقم المعاملات شهرياً."),
+
+    # --- Competition deep-dive (all stages) --------------------------------- #
+    Question("competitor_names", "Qui sont vos 3 principaux concurrents directs ?",
+             "competitor_names", "tags",
+             applies=lambda p: p.market.competitor_headcount is not None
+                 and p.market.competitor_headcount > 0,
+             triggered_by="competitors>0",
+             help_fr="Noms ou descriptions. Séparez par des virgules.",
+             prompt_ar="من هم منافسوك المباشرون الثلاثة الرئيسيون ؟",
+             help_ar="الأسماء أو الوصف. افصل بينها بفواصل."),
+    Question("differentiation", "Qu'est-ce qui différencie votre offre de celle de vos concurrents ?",
+             "differentiation_narrative", "text",
+             applies=lambda p: p.market.competitor_headcount is not None
+                 and p.market.competitor_headcount > 0,
+             triggered_by="competitors>0",
+             help_fr="En une phrase : votre avantage concurrentiel principal.",
+             prompt_ar="ما الذي يميّز عرضك عن منافسيك ؟",
+             help_ar="في جملة واحدة: ميزتك التنافسية الرئيسية."),
+
+    # --- Legal & Fiscal detail (gate: Structuration+) ----------------------- #
+    Question("incorporation_date", "Date de création officielle de votre entreprise ?",
+             "incorporation_date", "text",
+             applies=lambda p: p.legal_form is not None
+                 and p.legal_form.value not in ("None",),
+             triggered_by="legal_form_registered",
+             help_fr="Date d'immatriculation au registre des entreprises (AAAA-MM-JJ).",
+             prompt_ar="تاريخ الإنشاء الرسمي لمؤسستك ؟",
+             help_ar="تاريخ التسجيل في السجل الوطني للمؤسسات (YYYY-MM-DD)."),
+    Question("fiscal_regime", "Quel est votre régime fiscal ?",
+             "fiscal_regime", "text",
+             applies=lambda p: p.legal_form is not None
+                 and p.legal_form.value not in ("None",),
+             triggered_by="legal_form_registered",
+             prompt_ar="ما هو نظامك الجبائي ؟"),
+
+    # --- Market deep-dive (gate: Market Validation+) ------------------------ #
+    Question("cac", "Quel est votre coût d'acquisition client (CAC) en TND ?",
+             "cac_tnd", "float",
+             applies=lambda p: p.market.customer_validation_evidence is True,
+             triggered_by="validation_evidence=true",
+             help_fr="Coût marketing et commercial moyen pour acquérir un client.",
+             prompt_ar="ما هي تكلفة اكتساب العميل (CAC) بالدينار التونسي ؟",
+             help_ar="متوسط تكلفة التسويق والمبيعات لاكتساب عميل واحد."),
+    Question("ltv", "Quelle est la valeur vie client (LTV) estimée en TND ?",
+             "ltv_tnd", "float",
+             applies=lambda p: p.market.customer_validation_evidence is True,
+             triggered_by="validation_evidence=true",
+             help_fr="Revenu total estimé par client sur la durée de la relation.",
+             prompt_ar="ما هي القيمة التقديرية للعميل مدى الحياة (LTV) بالدينار التونسي ؟",
+             help_ar="إجمالي الإيراد المقدّر لكل عميل طوال مدة العلاقة."),
+
     # --- Stage 3/4 gate evidence ------------------------------------------ #
     Question("legal_form", "Forme juridique enregistrée ?",
              "legal_form", "enum", [lf.value for lf in LegalForm],
@@ -220,6 +327,8 @@ _ENUM_FIELDS = {
 
 def _coerce(q: Question, value: Any) -> Any:
     if value is None:
+        if q.qtype in ("tags", "sdg"):
+            return []
         return None
     if q.qtype == "bool":
         if isinstance(value, str):
@@ -230,6 +339,8 @@ def _coerce(q: Question, value: Any) -> Any:
     if q.qtype == "float":
         return float(value)
     if q.qtype in ("tags",):
+        if isinstance(value, str):
+            return [v.strip() for v in value.split(",") if v.strip()]
         return list(value) if isinstance(value, (list, tuple)) else [value]
     if q.qtype == "sdg":
         return [int(v) for v in (value if isinstance(value, (list, tuple)) else [value])]

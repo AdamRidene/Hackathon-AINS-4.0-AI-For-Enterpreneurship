@@ -1,0 +1,57 @@
+# Firasa — Docker Compose
+# Profiles:
+#   docker compose --profile dev up       (Vite HMR + backend, no Supabase)
+#   docker compose --profile staging up   (built frontend + backend + Supabase)
+#   docker compose --profile prod up      (built frontend + backend + Supabase)
+#
+# The backend always runs as a container. PostgreSQL/Supabase is external —
+# configure via DATABASE_URL in the env file.
+
+services:
+  # ── Backend API ──────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    env_file:
+      - .env.${FIRASA_ENV:-dev}
+    environment:
+      - FIRASA_ENV=${FIRASA_ENV:-dev}
+    volumes:
+      # Persist uploaded documents
+      - ./backend/_data:/app/_data
+    profiles: ["dev", "staging", "prod"]
+    restart: unless-stopped
+
+  # ── Frontend (production build served by nginx) ──────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    profiles: ["staging", "prod"]
+    restart: unless-stopped
+
+  # ── Frontend (Vite dev server with hot reload) ───────────────────────────
+  frontend-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend-dev
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/index.html:/app/index.html
+      - ./frontend/vite.config.js:/app/vite.config.js
+    environment:
+      - FIRASA_API=http://backend:8000
+    depends_on:
+      - backend
+    profiles: ["dev"]
+    restart: unless-stopped

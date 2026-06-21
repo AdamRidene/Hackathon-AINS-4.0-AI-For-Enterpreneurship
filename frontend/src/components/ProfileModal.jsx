@@ -139,11 +139,6 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [birthDate, setBirthDate] = useState("");
-  const [location, setLocation] = useState("");
-  const [phone, setPhone] = useState("");
-  const [role, setRole] = useState("");
-  const [company, setCompany] = useState("");
   
   // Checkout State
   const [checkoutPlan, setCheckoutPlan] = useState(null); // null | 'plus' | 'pro'
@@ -202,22 +197,12 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
             email: email.trim(),
             password,
             name: name.trim(),
-            birth_date: birthDate || null,
-            location: location.trim() || null,
-            phone: phone.trim() || null,
-            role: role.trim() || null,
-            company: company.trim() || null,
           })
         : await api.login({ email: email.trim(), password });
       onLogin(nextUser);
       setEmail("");
       setPassword("");
       setName("");
-      setBirthDate("");
-      setLocation("");
-      setPhone("");
-      setRole("");
-      setCompany("");
       onClose();
     } catch (err) {
       setAuthError(err.message);
@@ -357,66 +342,16 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                   <form className="auth-form" onSubmit={handleSubmitAuth}>
                     {authError && <div className="error-banner">{authError}</div>}
                     {isRegister && (
-                      <>
-                        <div className="form-group">
-                          <label>{t.name}</label>
-                          <input 
-                            type="text" 
-                            placeholder="e.g. Elyes Riden" 
-                            value={name} 
-                            onChange={e => setName(e.target.value)} 
-                            required 
-                          />
-                        </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                          <div className="form-group">
-                            <label>{lang === "ar" ? "تاريخ الميلاد" : "Date de naissance"}</label>
-                            <input
-                              type="date"
-                              value={birthDate}
-                              onChange={(e) => setBirthDate(e.target.value)}
-                            />
-                          </div>
-                          <div className="form-group">
-                            <label>{lang === "ar" ? "المدينة / البلد" : "Ville / Pays"}</label>
-                            <input
-                              type="text"
-                              placeholder={lang === "ar" ? "تونس، تونس" : "Tunis, Tunisia"}
-                              value={location}
-                              onChange={(e) => setLocation(e.target.value)}
-                            />
-                          </div>
-                        </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                          <div className="form-group">
-                            <label>{t.phoneLabel}</label>
-                            <input
-                              type="text"
-                              placeholder="+216 -- --- ---"
-                              value={phone}
-                              onChange={(e) => setPhone(e.target.value)}
-                            />
-                          </div>
-                          <div className="form-group">
-                            <label>{lang === "ar" ? "الدور" : "Rôle"}</label>
-                            <input
-                              type="text"
-                              placeholder="Founder / CEO"
-                              value={role}
-                              onChange={(e) => setRole(e.target.value)}
-                            />
-                          </div>
-                        </div>
-                        <div className="form-group">
-                          <label>{lang === "ar" ? "الشركة / المشروع" : "Entreprise / Startup"}</label>
-                          <input
-                            type="text"
-                            placeholder="MyStartup"
-                            value={company}
-                            onChange={(e) => setCompany(e.target.value)}
-                          />
-                        </div>
-                      </>
+                      <div className="form-group">
+                        <label>{t.name}</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Elyes Riden"
+                          value={name}
+                          onChange={e => setName(e.target.value)}
+                          required
+                        />
+                      </div>
                     )}
                     <div className="form-group">
                       <label>{t.email}</label>
