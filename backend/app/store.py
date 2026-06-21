@@ -42,6 +42,11 @@ def is_admin(email: str) -> bool:
 _DB_URL = os.getenv("DATABASE_URL", "")
 IS_POSTGRES = _DB_URL.startswith("postgres://") or _DB_URL.startswith("postgresql://")
 
+# psycopg2-binary on Windows doesn't support channel_binding — strip it to
+# avoid "SSL error: decryption failed or bad record mac" with Neon's pooler.
+import re as _re
+_PG_URL = _re.sub(r"[&?]channel_binding=[^&]*", "", _DB_URL) if IS_POSTGRES else _DB_URL
+
 if IS_POSTGRES:
     try:
         import psycopg2
@@ -65,7 +70,7 @@ def db_session():
     try:
         if IS_POSTGRES:
             # Direct connection to PostgreSQL / Supabase
-            conn = psycopg2.connect(_DB_URL, cursor_factory=psycopg2.extras.DictCursor)
+            conn = psycopg2.connect(_PG_URL, cursor_factory=psycopg2.extras.DictCursor)
         else:
             # Thread-safe SQLite connection
             conn = sqlite3.connect(str(_DB_PATH), check_same_thread=False, timeout=10.0)
@@ -92,11 +97,17 @@ def db_session():
         conn.commit()
     except Exception as e:
         if conn:
-            conn.rollback()
+            try:
+                conn.rollback()
+            except Exception:
+                pass  # connection already closed — let original error propagate
         raise e
     finally:
         if conn:
-            conn.close()
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def _init_db() -> None:
@@ -179,6 +190,35 @@ def _init_db() -> None:
 
 
 _init_db()
+
+# ── Dev-mode auto user ────────────────────────────────────────────────────────
+# In local dev, a single "always logged in" user is created automatically.
+# No password required — frontend calls GET /api/auth/dev to get a token.
+_DEV_USER_EMAIL = os.getenv("DEV_USER_EMAIL", "dev@firasa.local")
+_DEV_USER_NAME  = os.getenv("DEV_USER_NAME",  "Entrepreneur")
+
+
+def _ensure_dev_user() -> dict:
+    """Upsert the dev user (plan=admin) and return it."""
+    email = _normalise_email(_DEV_USER_EMAIL)
+    now   = datetime.now(timezone.utc).isoformat()
+    uid   = uuid4().hex
+    with _lock:
+        with db_session() as conn:
+            conn.execute(
+                """
+                INSERT INTO users (id, email, name, password_hash, plan, created_at)
+                VALUES (?, ?, ?, ?, 'admin', ?)
+                ON CONFLICT(email) DO UPDATE SET plan = 'admin'
+                """,
+                (uid, email, _DEV_USER_NAME, _hash_password(secrets.token_hex(32)), now),
+            )
+    with db_session() as conn:
+        row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    return _user_from_row(row)
+
+
+_ensure_dev_user()
 
 
 # Auth/session store

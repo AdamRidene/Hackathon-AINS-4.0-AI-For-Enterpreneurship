@@ -147,6 +147,14 @@ def _require_owned(pid: str, user: dict) -> ProjectProfile:
     return profile
 
 
+@app.get("/api/auth/dev")
+def dev_login() -> dict:
+    """Dev-mode auto-login — returns a session token for the local dev user."""
+    user = store._ensure_dev_user()
+    token = store.create_session(user["id"])
+    return {"token": token, "user": _public_user(user)}
+
+
 @app.post("/api/auth/register")
 def register(body: AuthBody) -> dict:
     try:

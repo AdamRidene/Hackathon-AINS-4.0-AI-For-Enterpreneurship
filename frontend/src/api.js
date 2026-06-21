@@ -41,6 +41,12 @@ export const api = {
   setToken,
 
   health: () => req("/api/health"),
+
+  devLogin: async () => {
+    const res = await req("/api/auth/dev");
+    setToken(res.token);
+    return res.user;
+  },
   kb: () => req("/api/kb"),
 
   register: async ({ email, password, name, birth_date, location, phone, role, company }) => {

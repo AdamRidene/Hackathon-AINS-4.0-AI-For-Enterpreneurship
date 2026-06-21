@@ -38,7 +38,6 @@ export default function App() {
   const [plan, setPlan] = useState("free");
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [profileReturnPhase, setProfileReturnPhase] = useState("start");
-  const [showLimitModal, setShowLimitModal] = useState(false);
 
   // Removed autoLogin — users must sign in with real credentials
 
@@ -79,20 +78,14 @@ export default function App() {
 
   useEffect(() => {
     api.health().then(setHealth).catch(() => setHealth({ status: "down" }));
-    const token = api.getToken();
-    if (token) {
-      api.me()
-        .then((me) => {
-          setUser(me);
-          setPlan(me.plan || "free");
-          return refreshHistory();
-        })
-        .catch(() => {
-          api.setToken(null);
-          // token invalid — user will see login prompt on next action
-        });
-    }
-    // No token: user stays as null, ProfileModal opens when they try to start
+    // Dev mode: always auto-login as the local dev user (no credentials needed)
+    api.devLogin()
+      .then((me) => {
+        setUser(me);
+        setPlan(me.plan || "admin");
+        return refreshHistory();
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -131,10 +124,6 @@ export default function App() {
 
   /* ── Phase: start → intake ── */
   async function handleStart(name) {
-    if (!user) {
-      setShowProfileModal(true);
-      return;
-    }
     setBusy(true); setError(null);
     try {
       const projectName = name || "";
@@ -145,11 +134,7 @@ export default function App() {
       saveHistory(res.project_id, projectName || (lang === "ar" ? "مشروع جديد" : "Nouveau Projet"), null);
       navigate("intake");
     } catch (err) {
-      if (err.message.includes("limit reached") || err.message.includes("Limit reached") || err.message.includes("limite")) {
-        setShowLimitModal(true);
-      } else {
-        setError(err.message);
-      }
+      setError(err.message);
     }
     finally { setBusy(false); }
   }
@@ -274,8 +259,8 @@ export default function App() {
 
   async function handleLogout() {
     await api.logout();
-    setUser(null);
-    setPlan("free");
+    // In dev mode, immediately re-login as the local dev user
+    api.devLogin().then((me) => { setUser(me); setPlan(me.plan || "admin"); }).catch(() => {});
     setHistory([]);
     restart();
   }
@@ -452,40 +437,6 @@ export default function App() {
         api={api}
       />
 
-      {showLimitModal && (
-        <div className="modal-overlay" onClick={() => setShowLimitModal(false)}>
-          <div className="modal-container" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440, padding: 24, textAlign: "center", display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ fontSize: "2.8rem", lineHeight: 1 }}>🔒</div>
-            <h3 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 700 }}>
-              {lang === "ar" ? "تم الوصول إلى الحد الأقصى للمشاريع" : "Limite de projets atteinte"}
-            </h3>
-            <p style={{ fontSize: "0.88rem", color: "var(--text-sub)", lineHeight: 1.4, margin: 0 }}>
-              {lang === "ar"
-                ? `باقة اشتراكك الحالية (${plan === "free" ? "مجاني" : plan === "plus" ? "بلس" : "برو"}) تسمح لك بحد أقصى من المشاريع. يرجى ترقية اشتراكك أو حذف بعض المشاريع السابقة من ملفك الشخصي لإتاحة مساحة.`
-                : `Votre abonnement actuel (${plan === "free" ? "Gratuit" : plan === "plus" ? "Plus" : "Pro"}) a atteint sa limite de projets. Veuillez mettre à niveau votre plan ou supprimer des projets existants depuis votre profil pour continuer.`}
-            </p>
-            <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 8 }}>
-              <button
-                className="ghost"
-                onClick={() => setShowLimitModal(false)}
-                style={{ minWidth: 120 }}
-              >
-                {lang === "ar" ? "إلغاء" : "Fermer"}
-              </button>
-              <button
-                className="primary"
-                onClick={() => {
-                  setShowLimitModal(false);
-                  openProfilePage();
-                }}
-                style={{ minWidth: 120 }}
-              >
-                {lang === "ar" ? "الملف الشخصي" : "Voir mon profil"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }

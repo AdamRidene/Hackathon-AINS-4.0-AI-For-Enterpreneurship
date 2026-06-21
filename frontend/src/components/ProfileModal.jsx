@@ -4,49 +4,10 @@ import { SECTOR_LABELS } from "../constants.js";
 const TEXTS = {
   fr: {
     title: "Espace Entrepreneur",
-    login: "Connexion",
-    register: "Inscription",
-    email: "Adresse e-mail",
-    password: "Mot de passe",
-    name: "Nom complet",
-    submitLogin: "Se connecter",
-    submitRegister: "Créer mon compte",
-    noAccount: "Pas encore de compte ? ",
-    hasAccount: "Déjà un compte ? ",
-    logout: "Se déconnecter",
-    activePlan: "Plan actif",
-    projectLimit: "Limite de projets",
-    activeProjects: "Vos projets récents",
-    unlimited: "Illimité",
-    upgradeBtn: "Mettre à niveau",
-    pricingTitle: "Plans & Tarifs",
-    monProfil: "Mon Profil",
-    checkoutTitle: "Paiement sécurisé",
-    cardNumber: "Numéro de carte",
-    expiry: "Date d'expiration (MM/AA)",
-    cvc: "Code CVC",
-    payBtn: "Valider le paiement (Simulé)",
-    loadingPay: "Traitement en cours...",
-    checkoutSuccess: "Paiement réussi ! Votre plan a été mis à niveau.",
-    freeLabel: "Gratuit",
-    plusLabel: "Plus",
-    proLabel: "Pro",
-    adminLabel: "Entreprise",
-    freeDesc: "Idéal pour tester",
-    plusDesc: "Pour les créateurs",
-    proDesc: "Pour les professionnels",
-    features: {
-      projects1: "1 Projet maximum",
-      projects3: "3 Projets maximum",
-      projects5: "5 Projets maximum",
-      diagOnly: "Accès au Diagnostic uniquement",
-      diagScores: "Accès au Diagnostic & Scores",
-      allFeatures: "Toutes les fonctionnalités (Roadmap)",
-    },
-    // New profile keys
     tabProjects: "Mes projets",
     tabEditProfile: "Modifier le profil",
-    tabSubscription: "Mon abonnement",
+    activeProjects: "Vos projets récents",
+    noProjects: "Aucun audit en cours.",
     bioLabel: "Biographie / Description de l'entrepreneur",
     phoneLabel: "Numéro de téléphone",
     roleLabel: "Rôle / Titre (ex. CEO, Directeur Technique)",
@@ -56,52 +17,14 @@ const TEXTS = {
     saveBtn: "Enregistrer les modifications",
     savingBtn: "Enregistrement en cours...",
     saveSuccess: "Profil mis à jour avec succès !",
+    name: "Nom complet",
   },
   ar: {
     title: "فضاء رائد الأعمال",
-    login: "تسجيل الدخول",
-    register: "إنشاء حساب",
-    email: "البريد الإلكتروني",
-    password: "كلمة المرور",
-    name: "الاسم الكامل",
-    submitLogin: "تسجيل الدخول",
-    submitRegister: "إنشاء الحساب",
-    noAccount: "ليس لديك حساب؟ ",
-    hasAccount: "لديك حساب بالفعل؟ ",
-    logout: "تسجيل الخروج",
-    activePlan: "الاشتراك الحالي",
-    projectLimit: "سقف المشاريع",
-    activeProjects: "مشاريعك الحالية",
-    unlimited: "غير محدود",
-    upgradeBtn: "ترقية الحساب",
-    pricingTitle: "الخطط والأسعار",
-    monProfil: "ملفي الشخصي",
-    checkoutTitle: "الدفع الآمن",
-    cardNumber: "رقم البطاقة",
-    expiry: "تاريخ انتهاء الصلاحية (MM/AA)",
-    cvc: "رمز CVC",
-    payBtn: "تأكيد الدفع (محاكاة)",
-    loadingPay: "جاري المعالجة...",
-    checkoutSuccess: "تم الدفع بنجاح! تم ترقية اشتراكك.",
-    freeLabel: "مجاني",
-    plusLabel: "بلس",
-    proLabel: "برو",
-    adminLabel: "مؤسسة",
-    freeDesc: "للتجربة والاستكشاف",
-    plusDesc: "لرواد الأعمال الناشئين",
-    proDesc: "للمحترفين والمستشارين",
-    features: {
-      projects1: "مشروع واحد كحد أقصى",
-      projects3: "3 مشاريع كحد أقصى",
-      projects5: "5 مشاريع كحد أقصى",
-      diagOnly: "دخول للتشخيص فقط",
-      diagScores: "دخول للتشخيص والمؤشرات",
-      allFeatures: "جميع الميزات (خارطة الطريق)",
-    },
-    // New profile keys
     tabProjects: "مشاريعي",
     tabEditProfile: "تعديل الملف الشخصي",
-    tabSubscription: "اشتراكي",
+    activeProjects: "مشاريعك الحالية",
+    noProjects: "لا توجد تدقيقات جارية.",
     bioLabel: "السيرة الذاتية / وصف رائد الأعمال",
     phoneLabel: "رقم الهاتف",
     roleLabel: "الدور / المسمى الوظيفي (مثال: الرئيس التنفيذي)",
@@ -111,13 +34,8 @@ const TEXTS = {
     saveBtn: "حفظ التغييرات",
     savingBtn: "جاري الحفظ...",
     saveSuccess: "تم تحديث الملف الشخصي بنجاح!",
+    name: "الاسم الكامل",
   }
-};
-
-const PLAN_LIMITS = {
-  free: 1,
-  plus: 3,
-  pro: 5,
 };
 
 const PRESET_AVATARS = [
@@ -132,28 +50,7 @@ const PRESET_AVATARS = [
 ];
 
 export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout, plan, onUpgrade, history, lang, onResume, api }) {
-  const [activeTab, setActiveTab] = useState(() => (plan === "free" || plan === "admin") ? (plan === "admin" ? "projects" : "pricing") : "projects");
-  const [isRegister, setIsRegister] = useState(false);
-  const [authBusy, setAuthBusy] = useState(false);
-  const [authError, setAuthError] = useState(null);
-  
-  // Auth Form State
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
-  const [birthDate, setBirthDate] = useState("");
-  const [location, setLocation] = useState("");
-  const [phone, setPhone] = useState("");
-  const [role, setRole] = useState("");
-  const [company, setCompany] = useState("");
-  
-  // Checkout State
-  const [checkoutPlan, setCheckoutPlan] = useState(null); // null | 'plus' | 'pro'
-  const [cardNum, setCardNum] = useState("");
-  const [cardExp, setCardExp] = useState("");
-  const [cardCvc, setCardCvc] = useState("");
-  const [checkoutBusy, setCheckoutBusy] = useState(false);
-  const [checkoutSuccess, setCheckoutSuccess] = useState(false);
+  const [activeTab, setActiveTab] = useState("projects");
 
   // Profile Edit Form State
   const [profileName, setProfileName] = useState("");
@@ -166,7 +63,6 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
   const [profileSaveSuccess, setProfileSaveSuccess] = useState(false);
   const [profileSaveError, setProfileSaveError] = useState(null);
 
-  // Reset / sync profile edit form state when user changes or modal opens
   useEffect(() => {
     if (user) {
       setProfileName(user.name || "");
@@ -180,76 +76,10 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
     }
   }, [user, isOpen]);
 
-  // Adjust active tab when plan changes
-  useEffect(() => {
-    if (plan) {
-      setActiveTab(plan === "free" ? "pricing" : "projects"); // admin → "projects" (not "pricing")
-    }
-  }, [plan]);
-
   if (!isOpen) return null;
 
   const t = TEXTS[lang];
   const ar = lang === "ar";
-  const limit = PLAN_LIMITS[plan] || 1;
-
-  async function handleSubmitAuth(e) {
-    e.preventDefault();
-    if (!email.trim() || !password.trim()) return;
-    setAuthBusy(true);
-    setAuthError(null);
-    try {
-      const nextUser = isRegister
-        ? await api.register({
-            email: email.trim(),
-            password,
-            name: name.trim(),
-            birth_date: birthDate || null,
-            location: location.trim() || null,
-            phone: phone.trim() || null,
-            role: role.trim() || null,
-            company: company.trim() || null,
-          })
-        : await api.login({ email: email.trim(), password });
-      onLogin(nextUser);
-      setEmail("");
-      setPassword("");
-      setName("");
-      setBirthDate("");
-      setLocation("");
-      setPhone("");
-      setRole("");
-      setCompany("");
-      onClose();
-    } catch (err) {
-      setAuthError(err.message);
-    } finally {
-      setAuthBusy(false);
-    }
-  }
-
-  function handleStartCheckout(planName) {
-    setCheckoutPlan(planName);
-    setCheckoutSuccess(false);
-    setCardNum("");
-    setCardExp("");
-    setCardCvc("");
-  }
-
-  function handlePay(e) {
-    e.preventDefault();
-    setCheckoutBusy(true);
-    setTimeout(() => {
-      api.updatePlan(checkoutPlan)
-        .then((nextUser) => {
-          setCheckoutSuccess(true);
-          onUpgrade(nextUser);
-          setTimeout(() => setCheckoutPlan(null), 1500);
-        })
-        .catch((err) => setAuthError(err.message))
-        .finally(() => setCheckoutBusy(false));
-    }, 1200);
-  }
 
   async function handleSaveProfile(e) {
     e.preventDefault();
@@ -266,7 +96,7 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
         company: profileCompany.trim() || null,
         photo: profilePhoto.trim() || null,
       });
-      onLogin(nextUser); // updates global user state
+      onLogin(nextUser);
       setProfileSaveSuccess(true);
       setTimeout(() => setProfileSaveSuccess(false), 3000);
     } catch (err) {
@@ -279,527 +109,179 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
   return (
     <div className="modal-overlay" onClick={onClose} dir={ar ? "rtl" : "ltr"}>
       <div className="modal-container" onClick={e => e.stopPropagation()} style={{ maxWidth: activeTab === "edit" ? 600 : 750 }}>
-        
-        {/* Header */}
+
         <div className="modal-header">
           <h2 className="modal-title">{t.title}</h2>
           <button className="modal-close-btn" onClick={onClose}>&times;</button>
         </div>
 
-        {/* Body */}
         <div className="modal-body">
-          {/* 1. Checkout Screen */}
-          {checkoutPlan ? (
-            <div className="checkout-modal">
-              <div className="checkout-header">
-                <h3>{t.checkoutTitle}</h3>
-                <p style={{ fontSize: "0.85rem", color: "var(--text-sub)", marginTop: 6 }}>
-                  Abonnement au plan <b>{checkoutPlan === "plus" ? t.plusLabel : t.proLabel}</b> ({checkoutPlan === "plus" ? "49 DT" : "99 DT"}/mois)
-                </p>
+          {/* Tabs */}
+          <div className="results-tabs" style={{ marginBottom: 20, justifyContent: "center" }}>
+            <button
+              className={`res-tab${activeTab === "projects" ? " active" : ""}`}
+              onClick={() => { setActiveTab("projects"); setProfileSaveSuccess(false); setProfileSaveError(null); }}
+            >
+              {t.tabProjects}
+            </button>
+            <button
+              className={`res-tab${activeTab === "edit" ? " active" : ""}`}
+              onClick={() => { setActiveTab("edit"); setProfileSaveSuccess(false); setProfileSaveError(null); }}
+            >
+              {t.tabEditProfile}
+            </button>
+          </div>
+
+          {/* TAB: Mes Projets */}
+          {activeTab === "projects" && (
+            <div>
+              {user && (
+                <div className="profile-info-row" style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px", flex: 1 }}>
+                    {user.photo ? (
+                      user.photo.startsWith("http") || user.photo.startsWith("/") ? (
+                        <img src={user.photo} alt={user.name} style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: "2px solid var(--orange-border)" }} />
+                      ) : (
+                        <span style={{ fontSize: "2.4rem", lineHeight: 1 }}>{user.photo}</span>
+                      )
+                    ) : (
+                      <div style={{ width: 44, height: 44, borderRadius: "50%", border: "2px solid var(--border)", display: "grid", placeItems: "center", background: "rgba(255,255,255,0.02)" }}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                          <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                      </div>
+                    )}
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: "1.1rem" }}>{user.name}</div>
+                      {user.role && <div style={{ fontSize: "0.8rem", color: "var(--orange)", fontWeight: 600 }}>{user.role}{user.company ? ` @ ${user.company}` : ""}</div>}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {user && user.bio && (
+                <div style={{ padding: "12px 16px", borderRadius: "var(--r-md)", background: "rgba(255,255,255,0.01)", border: "1px solid var(--border)", marginBottom: 20, fontSize: "0.85rem", color: "var(--text-sub)", fontStyle: "italic", lineHeight: 1.4 }}>
+                  {user.bio}
+                </div>
+              )}
+
+              <div style={{ marginTop: 8 }}>
+                <h4 style={{ marginBottom: 12, fontFamily: "var(--f-display)", fontStyle: "italic", fontSize: "0.95rem" }}>{t.activeProjects}</h4>
+                {history.length === 0 ? (
+                  <p style={{ fontSize: "0.85rem", color: "var(--text-dim)" }}>{t.noProjects}</p>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {history.map((h) => (
+                      <div
+                        key={h.project_id}
+                        className="profile-info-row"
+                        style={{ margin: 0, padding: "10px 14px", cursor: "pointer", transition: "all 0.15s ease" }}
+                        onClick={() => { onResume(h.project_id); onClose(); }}
+                      >
+                        <div>
+                          <span style={{ fontWeight: 600, fontSize: "0.88rem" }}>{h.name && h.name.trim() && h.name !== "—" ? h.name : (ar ? "مشروع بدون اسم" : "Projet sans nom")}</span>
+                          {h.sector && <span className="hist-tag cyan" style={{ marginLeft: 8, marginRight: 8, fontSize: "0.6rem", padding: "1px 6px" }}>{SECTOR_LABELS[lang]?.[h.sector] || h.sector}</span>}
+                        </div>
+                        <span style={{ fontSize: "0.78rem", color: "var(--orange)", fontWeight: 600 }}>
+                          {ar ? "← فتح" : "Ouvrir →"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB: Modifier le profil */}
+          {activeTab === "edit" && (
+            <form className="auth-form" onSubmit={handleSaveProfile} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              {profileSaveError && <div className="error-banner">{profileSaveError}</div>}
+              {profileSaveSuccess && (
+                <div className="success-banner" style={{ background: "var(--green-soft)", color: "var(--green)", border: "1px solid rgba(34,197,94,0.25)", padding: "10px 14px", borderRadius: "var(--r-md)", fontSize: "0.88rem", fontWeight: 600, textAlign: "center" }}>
+                  {t.saveSuccess}
+                </div>
+              )}
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div className="form-group">
+                  <label>{t.name}</label>
+                  <input type="text" value={profileName} onChange={e => setProfileName(e.target.value)} required />
+                </div>
+                <div className="form-group">
+                  <label>{t.phoneLabel}</label>
+                  <input type="text" placeholder="+216 -- --- ---" value={profilePhone} onChange={e => setProfilePhone(e.target.value)} />
+                </div>
               </div>
 
-              {checkoutSuccess ? (
-                <div style={{ textAlign: "center", padding: "20px 0" }}>
-                  <div className="lock-icon-container" style={{ margin: "0 auto 16px", background: "rgba(34,197,94,0.08)", borderColor: "rgba(34,197,94,0.25)", color: "var(--green)", boxShadow: "0 0 20px var(--green-glow)" }}>✓</div>
-                  <p style={{ fontWeight: 600, color: "var(--text)" }}>{t.checkoutSuccess}</p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div className="form-group">
+                  <label>{t.roleLabel}</label>
+                  <input type="text" placeholder="e.g. CEO / Fondateur" value={profileRole} onChange={e => setProfileRole(e.target.value)} />
                 </div>
-              ) : (
-                <form className="auth-form" onSubmit={handlePay}>
-                  <div className="form-group">
-                    <label>{t.cardNumber}</label>
-                    <input 
-                      type="text" 
-                      placeholder="4000 1234 5678 9010" 
-                      value={cardNum} 
-                      onChange={e => setCardNum(e.target.value)} 
-                      required 
-                    />
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    <div className="form-group">
-                      <label>{t.expiry}</label>
-                      <input 
-                        type="text" 
-                        placeholder="12/28" 
-                        value={cardExp} 
-                        onChange={e => setCardExp(e.target.value)} 
-                        required 
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label>{t.cvc}</label>
-                      <input 
-                        type="password" 
-                        placeholder="123" 
-                        value={cardCvc} 
-                        maxLength={4}
-                        onChange={e => setCardCvc(e.target.value)} 
-                        required 
-                      />
-                    </div>
-                  </div>
-                  <button type="submit" className="primary" style={{ marginTop: 10 }} disabled={checkoutBusy}>
-                    {checkoutBusy ? t.loadingPay : t.payBtn}
-                  </button>
-                  <button type="button" onClick={() => setCheckoutPlan(null)} style={{ background: "transparent", borderColor: "var(--border)" }} disabled={checkoutBusy}>
-                    {ar ? "إلغاء" : "Annuler"}
-                  </button>
-                </form>
-              )}
-            </div>
-          ) : (
-            <>
-              {/* 2. Unauthenticated Login Screen */}
-              {!user ? (
-                <div>
-                  <h3 style={{ textAlign: "center", marginBottom: 20, fontFamily: "var(--f-display)", fontStyle: "italic" }}>
-                    {isRegister ? t.register : t.login}
-                  </h3>
-                  
-                  <form className="auth-form" onSubmit={handleSubmitAuth}>
-                    {authError && <div className="error-banner">{authError}</div>}
-                    {isRegister && (
-                      <>
-                        <div className="form-group">
-                          <label>{t.name}</label>
-                          <input 
-                            type="text" 
-                            placeholder="e.g. Elyes Riden" 
-                            value={name} 
-                            onChange={e => setName(e.target.value)} 
-                            required 
-                          />
-                        </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                          <div className="form-group">
-                            <label>{lang === "ar" ? "تاريخ الميلاد" : "Date de naissance"}</label>
-                            <input
-                              type="date"
-                              value={birthDate}
-                              onChange={(e) => setBirthDate(e.target.value)}
-                            />
-                          </div>
-                          <div className="form-group">
-                            <label>{lang === "ar" ? "المدينة / البلد" : "Ville / Pays"}</label>
-                            <input
-                              type="text"
-                              placeholder={lang === "ar" ? "تونس، تونس" : "Tunis, Tunisia"}
-                              value={location}
-                              onChange={(e) => setLocation(e.target.value)}
-                            />
-                          </div>
-                        </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                          <div className="form-group">
-                            <label>{t.phoneLabel}</label>
-                            <input
-                              type="text"
-                              placeholder="+216 -- --- ---"
-                              value={phone}
-                              onChange={(e) => setPhone(e.target.value)}
-                            />
-                          </div>
-                          <div className="form-group">
-                            <label>{lang === "ar" ? "الدور" : "Rôle"}</label>
-                            <input
-                              type="text"
-                              placeholder="Founder / CEO"
-                              value={role}
-                              onChange={(e) => setRole(e.target.value)}
-                            />
-                          </div>
-                        </div>
-                        <div className="form-group">
-                          <label>{lang === "ar" ? "الشركة / المشروع" : "Entreprise / Startup"}</label>
-                          <input
-                            type="text"
-                            placeholder="MyStartup"
-                            value={company}
-                            onChange={(e) => setCompany(e.target.value)}
-                          />
-                        </div>
-                      </>
-                    )}
-                    <div className="form-group">
-                      <label>{t.email}</label>
-                      <input 
-                        type="email" 
-                        placeholder="entrepreneur@firasa.tn" 
-                        value={email} 
-                        onChange={e => setEmail(e.target.value)} 
-                        required 
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label>{t.password}</label>
-                      <input 
-                        type="password" 
-                        placeholder="••••••••" 
-                        value={password} 
-                        onChange={e => setPassword(e.target.value)} 
-                        required 
-                      />
-                    </div>
-                    <button type="submit" className="primary" style={{ marginTop: 8 }} disabled={authBusy}>
-                      {authBusy ? t.loadingPay : (isRegister ? t.submitRegister : t.submitLogin)}
-                    </button>
-                  </form>
-
-                  <div className="auth-toggle-msg">
-                    {isRegister ? (
-                      <p>{t.hasAccount}<span onClick={() => setIsRegister(false)}>{t.login}</span></p>
-                    ) : (
-                      <p>{t.noAccount}<span onClick={() => setIsRegister(true)}>{t.register}</span></p>
-                    )}
-                  </div>
+                <div className="form-group">
+                  <label>{t.companyLabel}</label>
+                  <input type="text" placeholder="e.g. MyStartup" value={profileCompany} onChange={e => setProfileCompany(e.target.value)} />
                 </div>
-              ) : (
-                /* 3. Authenticated Profile & Pricing tabs */
-                <div>
-                  {/* Local Navigation Tabs */}
-                  <div className="results-tabs" style={{ marginBottom: 20, justifyContent: "center" }}>
-                    <button 
-                      className={`res-tab${activeTab === "projects" ? " active" : ""}`}
-                      onClick={() => {
-                        setActiveTab("projects");
-                        setProfileSaveSuccess(false);
-                        setProfileSaveError(null);
-                      }}
-                    >
-                      {t.tabProjects}
-                    </button>
-                    <button 
-                      className={`res-tab${activeTab === "edit" ? " active" : ""}`}
-                      onClick={() => {
-                        setActiveTab("edit");
-                        setProfileSaveSuccess(false);
-                        setProfileSaveError(null);
-                      }}
-                    >
-                      {t.tabEditProfile}
-                    </button>
-                    <button 
-                      className={`res-tab${activeTab === "pricing" ? " active" : ""}`}
-                      onClick={() => {
-                        setActiveTab("pricing");
-                        setProfileSaveSuccess(false);
-                        setProfileSaveError(null);
-                      }}
-                    >
-                      {t.tabSubscription}
-                    </button>
-                  </div>
+              </div>
 
-                  {/* TAB 1: Mes Projets */}
-                  {activeTab === "projects" && (
-                    <div>
-                      {/* Profile details summary card */}
-                      <div className="profile-info-row" style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "12px", flex: 1 }}>
-                          {user.photo ? (
-                            user.photo.startsWith("http") || user.photo.startsWith("/") ? (
-                              <img src={user.photo} alt={user.name} style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: "2px solid var(--orange-border)" }} />
-                            ) : (
-                              <span style={{ fontSize: "2.4rem", lineHeight: 1 }}>{user.photo}</span>
-                            )
-                          ) : (
-                            <div style={{ width: 44, height: 44, borderRadius: "50%", border: "2px solid var(--border)", display: "grid", placeItems: "center", background: "rgba(255,255,255,0.02)" }}>
-                              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                                <circle cx="12" cy="7" r="4"></circle>
-                              </svg>
-                            </div>
-                          )}
-                          <div>
-                            <div style={{ fontWeight: 700, fontSize: "1.1rem" }}>{user.name}</div>
-                            {user.role && <div style={{ fontSize: "0.8rem", color: "var(--orange)", fontWeight: 600 }}>{user.role} {user.company ? `@ ${user.company}` : ""}</div>}
-                            <div style={{ fontSize: "0.78rem", color: "var(--text-sub)", marginTop: 2 }}>{user.email}</div>
-                          </div>
-                        </div>
-                        <span className={`plan-badge ${plan}`}>{plan === "admin" ? t.adminLabel : plan === "free" ? t.freeLabel : plan === "plus" ? t.plusLabel : t.proLabel}</span>
-                      </div>
+              <div className="form-group">
+                <label>{t.bioLabel}</label>
+                <textarea
+                  rows={3}
+                  value={profileBio}
+                  onChange={e => setProfileBio(e.target.value)}
+                  placeholder="..."
+                  style={{ width: "100%", padding: "10px 14px", borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "rgba(255,255,255,0.02)", color: "var(--text)", fontFamily: "var(--f-body)", resize: "vertical" }}
+                />
+              </div>
 
-                      {/* Bio if exists */}
-                      {user.bio && (
-                        <div style={{ padding: "12px 16px", borderRadius: "var(--r-md)", background: "rgba(255,255,255,0.01)", border: "1px solid var(--border)", margin: "16px 0", fontSize: "0.85rem", color: "var(--text-sub)", fontStyle: "italic", lineHeight: 1.4 }}>
-                          {user.bio}
-                        </div>
-                      )}
-
-                      {/* Project count indicator */}
-                      <div style={{ marginBottom: 20, marginTop: 16 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem", fontWeight: 600, color: "var(--text-sub)", marginBottom: 6 }}>
-                          <span>{t.projectLimit}</span>
-                          <span>{history.length} / {limit}</span>
-                        </div>
-                        <div style={{ height: 6, background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)", borderRadius: 3, overflow: "hidden" }}>
-                          <div 
-                            style={{ 
-                              height: "100%", 
-                              width: `${Math.min((history.length / limit) * 100, 100)}%`, 
-                              background: (plan === "pro" || plan === "admin") ? "var(--orange)" : plan === "plus" ? "var(--cyan)" : "var(--text-sub)",
-                              transition: "width 0.4s ease"
-                            }} 
-                          />
-                        </div>
-                      </div>
-
-                      {/* Active projects list */}
-                      <div style={{ marginTop: 24 }}>
-                        <h4 style={{ marginBottom: 12, fontFamily: "var(--f-display)", fontStyle: "italic", fontSize: "0.95rem" }}>{t.activeProjects}</h4>
-                        {history.length === 0 ? (
-                          <p style={{ fontSize: "0.85rem", color: "var(--text-dim)" }}>
-                            {ar ? "لا توجد تدقيقات جارية." : "Aucun audit en cours."}
-                          </p>
-                        ) : (
-                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                            {history.map((h) => (
-                              <div 
-                                key={h.project_id} 
-                                className="profile-info-row" 
-                                style={{ margin: 0, padding: "10px 14px", cursor: "pointer", transition: "all 0.15s ease" }}
-                                onClick={() => { onResume(h.project_id); onClose(); }}
-                              >
-                                <div>
-                                  <span style={{ fontWeight: 600, fontSize: "0.88rem" }}>{h.name && h.name.trim() && h.name !== "—" ? h.name : (ar ? "مشروع بدون اسم" : "Projet sans nom")}</span>
-                                  {h.sector && <span className="hist-tag cyan" style={{ marginLeft: 8, marginRight: 8, fontSize: "0.6rem", padding: "1px 6px" }}>{SECTOR_LABELS[lang]?.[h.sector] || h.sector}</span>}
-                                </div>
-                                <span style={{ fontSize: "0.78rem", color: "var(--orange)", fontWeight: 600 }}>
-                                  {ar ? "← فتح" : "Ouvrir →"}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Logout button */}
-                      <button 
-                        onClick={onLogout} 
-                        style={{ marginTop: 32, width: "100%", background: "transparent", borderColor: "rgba(239,68,68,0.25)", color: "var(--red)" }}
+              <div className="form-group">
+                <label style={{ marginBottom: "6px", display: "block" }}>{t.avatarLabel}</label>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px", marginBottom: "8px" }}>
+                  {PRESET_AVATARS.map((av) => {
+                    const isSelected = profilePhoto === av.emoji;
+                    return (
+                      <button
+                        key={av.emoji}
+                        type="button"
+                        onClick={() => setProfilePhoto(av.emoji)}
+                        style={{
+                          display: "flex", flexDirection: "column", alignItems: "center", gap: "4px",
+                          padding: "8px", borderRadius: "var(--r-md)", border: "1px solid",
+                          borderColor: isSelected ? "var(--orange)" : "var(--border)",
+                          background: isSelected ? "var(--orange-soft)" : "rgba(255,255,255,0.02)",
+                          boxShadow: isSelected ? "0 0 10px var(--orange-glow)" : "none",
+                          cursor: "pointer", transition: "all 0.15s ease"
+                        }}
                       >
-                        {t.logout}
+                        <span style={{ fontSize: "1.6rem", lineHeight: 1 }}>{av.emoji}</span>
+                        <span style={{ fontSize: "0.65rem", color: isSelected ? "var(--text)" : "var(--text-sub)", textAlign: "center" }}>
+                          {lang === "ar" ? av.labelAr : av.labelFr}
+                        </span>
                       </button>
-                    </div>
-                  )}
-
-                  {/* TAB 2: Modifier le profil */}
-                  {activeTab === "edit" && (
-                    <form className="auth-form" onSubmit={handleSaveProfile} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                      {profileSaveError && <div className="error-banner">{profileSaveError}</div>}
-                      {profileSaveSuccess && (
-                        <div className="success-banner" style={{ background: "var(--green-soft)", color: "var(--green)", border: "1px solid rgba(34,197,94,0.25)", padding: "10px 14px", borderRadius: "var(--r-md)", fontSize: "0.88rem", fontWeight: 600, textAlign: "center" }}>
-                          {t.saveSuccess}
-                        </div>
-                      )}
-                      
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                        <div className="form-group">
-                          <label>{t.name}</label>
-                          <input 
-                            type="text" 
-                            value={profileName} 
-                            onChange={e => setProfileName(e.target.value)} 
-                            required 
-                          />
-                        </div>
-                        <div className="form-group">
-                          <label>{t.phoneLabel}</label>
-                          <input 
-                            type="text" 
-                            placeholder="+216 -- --- ---"
-                            value={profilePhone} 
-                            onChange={e => setProfilePhone(e.target.value)} 
-                          />
-                        </div>
-                      </div>
-
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                        <div className="form-group">
-                          <label>{t.roleLabel}</label>
-                          <input 
-                            type="text" 
-                            placeholder="e.g. CEO / Fondateur"
-                            value={profileRole} 
-                            onChange={e => setProfileRole(e.target.value)} 
-                          />
-                        </div>
-                        <div className="form-group">
-                          <label>{t.companyLabel}</label>
-                          <input 
-                            type="text" 
-                            placeholder="e.g. MyStartup"
-                            value={profileCompany} 
-                            onChange={e => setProfileCompany(e.target.value)} 
-                          />
-                        </div>
-                      </div>
-
-                      <div className="form-group">
-                        <label>{t.bioLabel}</label>
-                        <textarea 
-                          rows={3} 
-                          value={profileBio} 
-                          onChange={e => setProfileBio(e.target.value)} 
-                          placeholder="..."
-                          style={{
-                            width: "100%",
-                            padding: "10px 14px",
-                            borderRadius: "var(--r-md)",
-                            border: "1px solid var(--border)",
-                            background: "rgba(255,255,255,0.02)",
-                            color: "var(--text)",
-                            fontFamily: "var(--f-body)",
-                            resize: "vertical"
-                          }}
-                        />
-                      </div>
-
-                      <div className="form-group">
-                        <label style={{ marginBottom: "6px", display: "block" }}>{t.avatarLabel}</label>
-                        <div className="avatar-grid" style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(4, 1fr)",
-                          gap: "8px",
-                          marginTop: "4px",
-                          marginBottom: "8px"
-                        }}>
-                          {PRESET_AVATARS.map((av) => {
-                            const isSelected = profilePhoto === av.emoji;
-                            return (
-                              <button
-                                key={av.emoji}
-                                type="button"
-                                onClick={() => setProfilePhoto(av.emoji)}
-                                style={{
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  alignItems: "center",
-                                  gap: "4px",
-                                  padding: "8px",
-                                  borderRadius: "var(--r-md)",
-                                  border: "1px solid",
-                                  borderColor: isSelected ? "var(--orange)" : "var(--border)",
-                                  background: isSelected ? "var(--orange-soft)" : "rgba(255, 255, 255, 0.02)",
-                                  boxShadow: isSelected ? "0 0 10px var(--orange-glow)" : "none",
-                                  cursor: "pointer",
-                                  transition: "all 0.15s ease"
-                                }}
-                              >
-                                <span style={{ fontSize: "1.6rem", lineHeight: 1 }}>{av.emoji}</span>
-                                <span style={{ fontSize: "0.65rem", color: isSelected ? "var(--text)" : "var(--text-sub)", textAlign: "center" }}>
-                                  {lang === "ar" ? av.labelAr : av.labelFr}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-
-                        <div className="form-group" style={{ marginTop: "8px" }}>
-                          <label style={{ fontSize: "0.8rem", color: "var(--text-sub)", marginBottom: "4px", display: "block" }}>
-                            {t.customPhotoUrl}
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="https://example.com/avatar.jpg"
-                            value={profilePhoto && (profilePhoto.startsWith("http") || profilePhoto.startsWith("/")) ? profilePhoto : ""}
-                            onChange={(e) => setProfilePhoto(e.target.value || "👨‍💻")}
-                            style={{
-                              width: "100%",
-                              padding: "10px 14px",
-                              borderRadius: "var(--r-md)",
-                              border: "1px solid var(--border)",
-                              background: "rgba(255,255,255,0.02)",
-                              color: "var(--text)"
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      <button type="submit" className="primary" style={{ marginTop: "8px" }} disabled={profileSaving}>
-                        {profileSaving ? t.savingBtn : t.saveBtn}
-                      </button>
-                    </form>
-                  )}
-
-                  {/* TAB 3: Mon Abonnement */}
-                  {activeTab === "pricing" && (
-                    <div>
-                      <div className="pricing-grid">
-                        
-                        {/* Gratuit / Free */}
-                        <div className={`pricing-card${plan === "free" ? " active-plan" : ""}`}>
-                          <div>
-                            <div className="price-title">{t.freeLabel}</div>
-                            <div style={{ fontSize: "0.72rem", color: "var(--text-sub)", marginTop: 2 }}>{t.freeDesc}</div>
-                            <div className="price-amt">0 DT<span> / mois</span></div>
-                            <ul className="price-features">
-                              <li>{t.features.projects1}</li>
-                              <li>{t.features.diagOnly}</li>
-                            </ul>
-                          </div>
-                          <button disabled style={{ background: "rgba(255,255,255,0.02)", borderColor: "var(--border)", color: "var(--text-dim)" }}>
-                            {t.freeLabel}
-                          </button>
-                        </div>
-
-                        {/* Plus */}
-                        <div className={`pricing-card${plan === "plus" ? " active-plan" : ""}`}>
-                          <div>
-                            <div className="price-title">{t.plusLabel}</div>
-                            <div style={{ fontSize: "0.72rem", color: "var(--text-sub)", marginTop: 2 }}>{t.plusDesc}</div>
-                            <div className="price-amt">49 DT<span> / mois</span></div>
-                            <ul className="price-features">
-                              <li>{t.features.projects3}</li>
-                              <li>{t.features.diagScores}</li>
-                            </ul>
-                          </div>
-                          {plan === "plus" ? (
-                            <button disabled style={{ background: "rgba(255,255,255,0.02)", borderColor: "var(--border)", color: "var(--text-dim)" }}>
-                              {ar ? "الخطة النشطة" : "Plan Actif"}
-                            </button>
-                          ) : (plan === "pro" || plan === "admin") ? (
-                            <button disabled style={{ background: "rgba(255,255,255,0.02)", borderColor: "var(--border)", color: "var(--text-dim)" }}>
-                              {ar ? "مستوى أدنى" : "Plan inférieur"}
-                            </button>
-                          ) : (
-                            <button className="primary" onClick={() => handleStartCheckout("plus")}>
-                              {t.upgradeBtn}
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Pro */}
-                        <div className={`pricing-card${(plan === "pro" || plan === "admin") ? " active-plan" : ""}`}>
-                          <div>
-                            <div className="price-title">{t.proLabel}</div>
-                            <div style={{ fontSize: "0.72rem", color: "var(--text-sub)", marginTop: 2 }}>{t.proDesc}</div>
-                            <div className="price-amt">99 DT<span> / mois</span></div>
-                            <ul className="price-features">
-                              <li>{t.features.projects5}</li>
-                              <li>{t.features.allFeatures}</li>
-                            </ul>
-                          </div>
-                          {(plan === "pro" || plan === "admin") ? (
-                            <button disabled style={{ background: "rgba(255,255,255,0.02)", borderColor: "var(--border)", color: "var(--text-dim)" }}>
-                              {ar ? "الخطة النشطة" : "Plan Actif"}
-                            </button>
-                          ) : (
-                            <button className="primary" onClick={() => handleStartCheckout("pro")} style={{ background: "var(--orange)", borderColor: "var(--orange-border)" }}>
-                              {t.upgradeBtn}
-                            </button>
-                          )}
-                        </div>
-
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })}
                 </div>
-              )}
-            </>
+                <div className="form-group" style={{ marginTop: "8px" }}>
+                  <label style={{ fontSize: "0.8rem", color: "var(--text-sub)", marginBottom: "4px", display: "block" }}>{t.customPhotoUrl}</label>
+                  <input
+                    type="text"
+                    placeholder="https://example.com/avatar.jpg"
+                    value={profilePhoto && (profilePhoto.startsWith("http") || profilePhoto.startsWith("/")) ? profilePhoto : ""}
+                    onChange={(e) => setProfilePhoto(e.target.value || "👨‍💻")}
+                    style={{ width: "100%", padding: "10px 14px", borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "rgba(255,255,255,0.02)", color: "var(--text)" }}
+                  />
+                </div>
+              </div>
+
+              <button type="submit" className="primary" style={{ marginTop: "8px" }} disabled={profileSaving}>
+                {profileSaving ? t.savingBtn : t.saveBtn}
+              </button>
+            </form>
           )}
         </div>
-
       </div>
     </div>
   );
