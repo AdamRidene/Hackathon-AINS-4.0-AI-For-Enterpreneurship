@@ -442,6 +442,38 @@ export default function ProfilePage({ user, plan, history, lang, api, onBack, on
                   </span>
                 </div>
 
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px", borderBottom: "1px solid var(--border)", paddingBottom: "12px" }}>
+                  <label style={{ fontSize: "0.82rem", color: "var(--text-sub)", fontWeight: "600" }}>
+                    {ar ? "تغيير خطة الاشتراك:" : "Changer l'abonnement :"}
+                  </label>
+                  <select 
+                    value={plan} 
+                    onChange={async (e) => {
+                      try {
+                        const nextUser = await api.updatePlan(e.target.value);
+                        onUserUpdated?.(nextUser);
+                      } catch (err) {
+                        setError(err.message);
+                      }
+                    }}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: "var(--r-md)",
+                      border: "1px solid var(--border)",
+                      background: "rgba(255, 255, 255, 0.02)",
+                      color: "var(--text)",
+                      cursor: "pointer",
+                      outline: "none",
+                      fontSize: "0.85rem",
+                      fontFamily: "inherit"
+                    }}
+                  >
+                    <option value="free" style={{ background: "#0a0a0a", color: "var(--text)" }}>{ar ? "مجاني (Free)" : "Gratuit (Free)"}</option>
+                    <option value="plus" style={{ background: "#0a0a0a", color: "var(--text)" }}>{ar ? "بلس (Plus)" : "Plus (Plus)"}</option>
+                    <option value="pro" style={{ background: "#0a0a0a", color: "var(--text)" }}>{ar ? "برو (Pro)" : "Pro (Pro)"}</option>
+                  </select>
+                </div>
+
                 <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                   {/* Plus Upgrade Option */}
                   {plan === "free" && (

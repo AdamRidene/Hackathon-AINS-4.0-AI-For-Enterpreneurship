@@ -163,6 +163,7 @@ function ArabicWindBackground({ theme }) {
 
 export default function Landing({ lang, setLang, theme, setTheme, health, history, busy, onStart, onViewProject, onViewHistory, user, plan, openProfile }) {
 
+  const [projectName, setProjectName] = useState("");
   const ar = lang === "ar";
   const t  = TEXTS[lang];
   const canStart = !busy && health?.status !== "down";
@@ -184,22 +185,46 @@ export default function Landing({ lang, setLang, theme, setTheme, health, histor
 
         <p className="landing-sub">{t.sub}</p>
 
-        {/* CTA buttons — no name input; name is asked as the first intake question */}
+        {/* CTA buttons with name input */}
         <form
           className="landing-form"
-          onSubmit={e => { e.preventDefault(); if (canStart) onStart(); }}
+          onSubmit={e => { e.preventDefault(); if (canStart && projectName.trim()) onStart(projectName.trim()); }}
           style={{ maxWidth: "420px", margin: "0 auto", marginTop: "24px" }}
         >
-          <div style={{ display: "flex", gap: "12px", width: "100%", flexWrap: "wrap", justifyContent: "center" }}>
-            <button type="submit" className="primary" disabled={!canStart} style={{ flex: 1.5, height: "48px", minWidth: "180px" }}>
-              {busy ? <span className="spinner" /> : t.cta}
-            </button>
-            <button type="button" className="ghost" onClick={onViewHistory} style={{ flex: 1, border: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "8px", justifyContent: "center", height: "48px", minWidth: "120px" }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M3 3h18v4H3z"/><path d="M3 11h18v4H3z"/><path d="M3 19h18v4H3z"/>
-              </svg>
-              <span>{t.historyBtn}</span>
-            </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px", width: "100%" }}>
+            <input
+              type="text"
+              value={projectName}
+              onChange={e => setProjectName(e.target.value)}
+              placeholder={t.namePlaceholder}
+              dir={ar ? "rtl" : "ltr"}
+              style={{
+                width: "100%",
+                padding: "14px 18px",
+                borderRadius: "var(--r-md)",
+                border: "1px solid var(--border)",
+                background: "rgba(255, 255, 255, 0.03)",
+                backdropFilter: "blur(8px)",
+                color: "var(--text)",
+                fontSize: "1rem",
+                textAlign: ar ? "right" : "left",
+                outline: "none",
+                transition: "border-color 0.2s, box-shadow 0.2s",
+                marginBottom: "4px",
+              }}
+              required
+            />
+            <div style={{ display: "flex", gap: "12px", width: "100%", flexWrap: "wrap", justifyContent: "center" }}>
+              <button type="submit" className="primary" disabled={!canStart || !projectName.trim()} style={{ flex: 1.5, height: "48px", minWidth: "180px" }}>
+                {busy ? <span className="spinner" /> : t.cta}
+              </button>
+              <button type="button" className="ghost" onClick={onViewHistory} style={{ flex: 1, border: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "8px", justifyContent: "center", height: "48px", minWidth: "120px" }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 3h18v4H3z"/><path d="M3 11h18v4H3z"/><path d="M3 19h18v4H3z"/>
+                </svg>
+                <span>{t.historyBtn}</span>
+              </button>
+            </div>
           </div>
         </form>
 

@@ -15,10 +15,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
+from typing import Optional, Any
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # --------------------------------------------------------------------------- #
@@ -107,6 +107,14 @@ class InnovationScope(BaseModel):
     tech_stack: list[str] = Field(default_factory=list)  # |T_stack|
     ip_status: Optional[IPStatus] = None                # P_ip
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_lists(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if data.get("tech_stack") is None:
+                data["tech_stack"] = []
+        return data
+
 
 class ScalabilityIndex(BaseModel):
     human_dependency: Optional[int] = None              # D_man [1,10]
@@ -114,11 +122,27 @@ class ScalabilityIndex(BaseModel):
     monthly_overhead: Optional[float] = None            # C_month
     cross_border_zones: list[str] = Field(default_factory=list)  # |E_zones|
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_lists(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if data.get("cross_border_zones") is None:
+                data["cross_border_zones"] = []
+        return data
+
 
 class GreenMatrices(BaseModel):
     footprint_category: Optional[FootprintCategory] = None  # W_ops
     circular_recycling: Optional[bool] = None           # C_env
     sdg_targets: list[int] = Field(default_factory=list)  # |N_sdg| (1..17)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_lists(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if data.get("sdg_targets") is None:
+                data["sdg_targets"] = []
+        return data
 
 
 # --------------------------------------------------------------------------- #
@@ -191,6 +215,15 @@ class ProjectProfile(BaseModel):
     last_pcoh: Optional[float] = None
     last_pcoh_rationale: Optional[str] = None
     last_pcoh_narrative: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_lists(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            for f in ("competitor_names", "key_hires", "answered_questions"):
+                if data.get(f) is None:
+                    data[f] = []
+        return data
 
     def touch(self) -> None:
         self.updated_at = datetime.now(timezone.utc)

@@ -255,7 +255,7 @@ def score_innovation(p: ProjectProfile) -> ScoreResult:
         missing.append("geo_novelty")
         geo_detail = "No geo-novelty tier -> 0"
 
-    n_stack = len(i.tech_stack)
+    n_stack = len(i.tech_stack) if i.tech_stack is not None else 0
     if n_stack > 0:
         stack_raw = min(n_stack / 5.0 * 100, 100)
         stack_detail = f"{n_stack} tech-stack layers -> min(|T|/5 x100,100) = {stack_raw:.0f}"
@@ -318,7 +318,7 @@ def score_scalability(p: ProjectProfile) -> ScoreResult:
         missing.append("monthly_overhead")
         decouple_detail = "No monthly overhead -> 0"
 
-    n_zones = len(s.cross_border_zones)
+    n_zones = len(s.cross_border_zones) if s.cross_border_zones is not None else 0
     if n_zones > 0:
         reach = min(n_zones / 3.0 * 100, 100)
         reach_detail = f"{n_zones} cross-border zones -> min(|E|/3 x100,100) = {reach:.0f}"
@@ -403,7 +403,7 @@ def score_green(p: ProjectProfile) -> ScoreResult:
         missing.append("circular_recycling")
         circ_detail = "No circularity check -> 0"
 
-    n_sdg = len(g.sdg_targets)
+    n_sdg = len(g.sdg_targets) if g.sdg_targets is not None else 0
     sdg_raw = min(n_sdg / 17.0 * 100, 100)
     sdg_detail = f"{n_sdg}/17 SDGs targeted -> {sdg_raw:.0f}"
     if n_sdg == 0:

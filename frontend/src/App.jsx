@@ -82,8 +82,9 @@ export default function App() {
   const [confirmDialog, setConfirmDialog] = useState(null); // { title, message, confirmLabel, cancelLabel, variant, onConfirm }
 
   async function autoLogin() {
-    // Only auto-login in local dev mode — NEVER in production.
-    if (!import.meta.env.DEV || auth.getMode() !== "local") {
+    // Only auto-login in dev mode with local/none auth — NEVER in production.
+    const mode = auth.getMode();
+    if (!import.meta.env.DEV || (mode !== "local" && mode !== "none")) {
       return;
     }
     const mockCredentials = {
@@ -191,18 +192,18 @@ export default function App() {
   }
 
   /* ── Phase: start → intake ── */
-  async function handleStart() {
+  async function handleStart(projectName) {
     if (!user) {
       await autoLogin();
     }
     setBusy(true); setError(null);
     try {
-      const res = await api.createProject("", lang);
+      const res = await api.createProject(projectName, lang);
       setPid(res.project_id);
       setQuestion(res.next_question);
       setProgress(res.progress);
-      saveHistory(res.project_id, lang === "ar" ? "مشروع جديد" : "Nouveau Projet", null);
-      setPhase("intake");
+      saveHistory(res.project_id, projectName, null);
+      setPhase("dashboard");
     } catch (err) {
       if (err.message.includes("limit reached") || err.message.includes("Limit reached") || err.message.includes("limite")) {
         setShowLimitModal(true);
@@ -354,7 +355,9 @@ export default function App() {
       setAudit(null);
       setQuestion(null);
       setProgress(null);
+      setPhase("start");
     }
+    refreshHistory().catch(() => {});
     setToast({ message: lang === "ar" ? "تم حذف المشروع" : "Projet supprimé", type: "success" });
   }
 
@@ -456,6 +459,7 @@ export default function App() {
           api={api}
           onBack={() => setPhase("history")}
           onViewAudit={handleViewAuditFromDashboard}
+          onRunAudit={(projectId) => runAudit(projectId, "dashboard")}
           onContinueIntake={handleContinueIntake}
           onEditProject={handleEditProject}
           onDeleted={handleProjectDeleted}
@@ -515,6 +519,7 @@ export default function App() {
           plan={plan}
           openProfile={openProfilePage}
           onNewAudit={restart}
+          onBackToDashboard={() => setPhase("dashboard")}
           checkedMilestones={checked}
           onToggleMilestone={toggleMilestone}
           api={api}

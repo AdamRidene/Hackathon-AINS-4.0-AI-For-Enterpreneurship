@@ -178,6 +178,10 @@ def auth_config() -> dict:
 # --------------------------------------------------------------------------- #
 @app.post("/api/auth/register")
 def register(body: AuthBody) -> dict:
+    if settings.auth_mode == "none":
+        # In bypass mode, return the mock dev user immediately
+        from .auth import _MOCK_USER
+        return {"token": "dev-token", "user": dict(_MOCK_USER)}
     if settings.is_supabase_auth:
         raise HTTPException(404, "Registration is managed by Supabase Auth in production mode.")
     try:
@@ -199,6 +203,9 @@ def register(body: AuthBody) -> dict:
 
 @app.post("/api/auth/login")
 def login(body: AuthBody) -> dict:
+    if settings.auth_mode == "none":
+        from .auth import _MOCK_USER
+        return {"token": "dev-token", "user": dict(_MOCK_USER)}
     if settings.is_supabase_auth:
         raise HTTPException(404, "Login is managed by Supabase Auth in production mode.")
     user = store.authenticate_user(body.email, body.password)

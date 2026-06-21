@@ -104,6 +104,9 @@ export const auth = {
       if (_mode === "supabase" && _supabaseUrl) {
         await initSupabase();
       }
+      if (_mode === "none") {
+        setLocalToken("dev-token");
+      }
     } catch {
       // Backend unreachable — default to local mode
       _mode = "local";
@@ -119,10 +122,18 @@ export const auth = {
     if (_mode === "supabase") {
       return await supabaseGetToken();
     }
+    if (_mode === "none") {
+      return "dev-token";
+    }
     return getLocalToken();
   },
 
   async login({ email, password }) {
+    if (_mode === "none") {
+      setLocalToken("dev-token");
+      try { const me = await apiReq("/api/auth/me"); return me.user; } catch { /* ok */ }
+      return { id: "dev-user-001", email: "dev@firasa.local", name: "Dev Entrepreneur", plan: "pro" };
+    }
     if (_mode === "supabase") {
       const data = await supabaseLogin(email, password);
       // Also call the backend /me to ensure user row exists
@@ -148,6 +159,11 @@ export const auth = {
   },
 
   async register({ email, password, name, birth_date, location, phone, role, company }) {
+    if (_mode === "none") {
+      setLocalToken("dev-token");
+      try { const me = await apiReq("/api/auth/me"); return me.user; } catch { /* ok */ }
+      return { id: "dev-user-001", email: "dev@firasa.local", name: name || "Dev Entrepreneur", plan: "pro" };
+    }
     if (_mode === "supabase") {
       const data = await supabaseRegister(email, password, name);
       // Supabase may require email confirmation — the user may not be
@@ -176,6 +192,10 @@ export const auth = {
   },
 
   async logout() {
+    if (_mode === "none") {
+      setLocalToken("dev-token"); // keep token for dev convenience
+      return;
+    }
     if (_mode === "supabase") {
       await supabaseLogout();
       return;

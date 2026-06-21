@@ -27,38 +27,41 @@ class TestAuthConfigEndpoint:
         assert data["supabase_anon_key"] is None
 
     def test_config_returns_supabase_when_configured(self):
-        os.environ["FIRASA_AUTH_MODE"] = "supabase"
-        os.environ["FIRASA_SUPABASE_URL"] = "https://test.supabase.co"
+        from app.config import settings
+        settings.auth_mode = "supabase"
+        settings.supabase_url = "https://test.supabase.co"
         resp = client.get("/api/auth/config")
         assert resp.status_code == 200
         data = resp.json()
         assert data["auth_mode"] == "supabase"
         assert data["supabase_url"] == "https://test.supabase.co"
         # Reset
-        os.environ["FIRASA_AUTH_MODE"] = "local"
-        os.environ.pop("FIRASA_SUPABASE_URL", None)
+        settings.auth_mode = "local"
+        settings.supabase_url = ""
 
 
 class TestAuthModeGating:
     """In Supabase mode, local-auth endpoints return 404."""
 
     def test_register_blocked_in_supabase_mode(self):
-        os.environ["FIRASA_AUTH_MODE"] = "supabase"
+        from app.config import settings
+        settings.auth_mode = "supabase"
         resp = client.post("/api/auth/register", json={
             "email": "test@example.com", "password": "test1234"
         })
         assert resp.status_code == 404
         assert "Supabase" in resp.json()["detail"]
-        os.environ["FIRASA_AUTH_MODE"] = "local"
+        settings.auth_mode = "local"
 
     def test_login_blocked_in_supabase_mode(self):
-        os.environ["FIRASA_AUTH_MODE"] = "supabase"
+        from app.config import settings
+        settings.auth_mode = "supabase"
         resp = client.post("/api/auth/login", json={
             "email": "test@example.com", "password": "test1234"
         })
         assert resp.status_code == 404
         assert "Supabase" in resp.json()["detail"]
-        os.environ["FIRASA_AUTH_MODE"] = "local"
+        settings.auth_mode = "local"
 
     def test_register_works_in_local_mode(self):
         os.environ["FIRASA_AUTH_MODE"] = "local"

@@ -114,6 +114,44 @@ async def _local_user(authorization: str | None) -> dict:
     return user
 
 
+# ── No-auth bypass (local testing only) ─────────────────────────────────────────
+
+_MOCK_USER = {
+    "id": "dev-user-001",
+    "email": "dev@firasa.local",
+    "name": "Dev Entrepreneur",
+    "plan": "pro",
+    "created_at": "2025-01-01T00:00:00+00:00",
+    "bio": None,
+    "phone": None,
+    "role": None,
+    "company": None,
+    "photo": None,
+    "birth_date": None,
+    "location": None,
+}
+
+
+async def _none_user(_authorization: str | None) -> dict:
+    """Bypass auth entirely — return a mock developer user."""
+    # Ensure the mock user exists in the DB (idempotent)
+    import hashlib
+    import secrets
+
+    try:
+        user = store.get_user_by_id(_MOCK_USER["id"])
+        if user is None:
+            user = store.create_user(
+                email=_MOCK_USER["email"],
+                password=secrets.token_urlsafe(16),
+                name=_MOCK_USER["name"],
+                user_id=_MOCK_USER["id"],
+            )
+        return user
+    except Exception:
+        return dict(_MOCK_USER)
+
+
 # ── Public interface ───────────────────────────────────────────────────────────
 
 async def get_current_user(
@@ -121,11 +159,16 @@ async def get_current_user(
 ) -> dict:
     """FastAPI dependency: returns the authenticated user dict.
 
-    Routes to local PBKDF2 auth or Supabase JWT auth based on FIRASA_AUTH_MODE.
-    Reads env at call time so tests can patch os.environ.
+    Routes based on FIRASA_AUTH_MODE:
+      - "local"     → PBKDF2 + session tokens
+      - "supabase"  → Supabase JWT validation
+      - "none"      → bypass, returns a mock dev user (testing only)
     """
-    if _get_auth_mode() == "supabase":
+    mode = _get_auth_mode()
+    if mode == "supabase":
         return await _supabase_user(authorization)
+    if mode == "none":
+        return await _none_user(authorization)
     return await _local_user(authorization)
 
 

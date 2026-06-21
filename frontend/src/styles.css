@@ -4212,4 +4212,79 @@ label {
   .pf-shell {
     grid-template-columns: 1fr;
   }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   Adaptive Question Card Styles
+   ══════════════════════════════════════════════════════════════════════ */
+
+.pf-card.adaptive-card {
+  border: 1px solid rgba(251, 146, 60, 0.3);
+  background: radial-gradient(circle at top right, rgba(251, 146, 60, 0.05), transparent 60%), var(--bg-surface);
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.pf-card.adaptive-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: var(--orange);
+}
+
+[dir="rtl"] .pf-card.adaptive-card::before {
+  left: auto;
+  right: 0;
+}
+
+.adaptive-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.adaptive-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--orange);
+  background: rgba(251, 146, 60, 0.1);
+  padding: 4px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.05em;
+}
+
+.adaptive-prompt {
+  font-family: var(--f-display);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.adaptive-help {
+  font-size: 0.82rem;
+  color: var(--text-sub);
+  margin-bottom: 16px;
+  line-height: 1.4;
+}
+
+.adaptive-input-container {
+  margin-bottom: 16px;
+}
+
+.adaptive-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
 }

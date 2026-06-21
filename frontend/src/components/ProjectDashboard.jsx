@@ -243,6 +243,18 @@ const TEXTS = {
     intakeComplete: "Questionnaire complété",
     intakeIncomplete: "En cours",
     questionsAnswered: "réponses",
+    adaptiveTitle: "Diagnostic adaptatif : Question recommandée",
+    adaptiveSub: "Répondez aux questions adaptatives pour affiner la précision de votre audit de maturité.",
+    valider: "Valider la réponse",
+    passer: "Passer cette question",
+    auditNow: "Lancer l'audit maintenant",
+    recalculateAudit: "Mettre à jour le diagnostic",
+    viewLastAudit: "Voir le rapport d'audit",
+    noQuestionLeft: "Toutes les questions recommandées ont été complétées !",
+    yes: "Oui",
+    no: "Non",
+    tagsPlaceholder: "Séparez par des virgules",
+    sdgNone: "Aucun sélectionné",
   },
   ar: {
     title: "ملف المشروع",
@@ -315,11 +327,23 @@ const TEXTS = {
     intakeComplete: "اكتمل الاستبيان",
     intakeIncomplete: "قيد الإنجاز",
     questionsAnswered: "إجابة",
+    adaptiveTitle: "التشخيص التكيفي: سؤال مقترح",
+    adaptiveSub: "أجب عن الأسئلة التكيفية لتحسين دقة تقرير تدقيق النضج الخاص بك.",
+    valider: "تأكيد الإجابة",
+    passer: "تخطي هذا السؤال",
+    auditNow: "إطلاق التدقيق الآن",
+    recalculateAudit: "تحديث التشخيص",
+    viewLastAudit: "عرض تقرير التدقيق",
+    noQuestionLeft: "تم إكمال جميع الأسئلة المقترحة !",
+    yes: "نعم",
+    no: "لا",
+    tagsPlaceholder: "افصل بفواصل",
+    sdgNone: "لم يتم الاختيار",
   },
 };
 
 export default function ProjectDashboard({
-  pid, lang, api, onBack, onViewAudit, onContinueIntake, onEditProject,
+  pid, lang, api, onBack, onViewAudit, onRunAudit, onContinueIntake, onEditProject,
   onDeleted, onMonParcours,
 }) {
   const [project, setProject] = useState(null);
@@ -332,20 +356,54 @@ export default function ProjectDashboard({
   const [showDelete, setShowDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // States for adaptive intake card
+  const [nextQ, setNextQ] = useState(null);
+  const [progress, setProgress] = useState(null);
+  const [qValue, setQValue] = useState("");
+  const [answering, setAnswering] = useState(false);
+
   const ar = lang === "ar";
   const t = TEXTS[lang];
   const dir = ar ? "rtl" : "ltr";
 
+  function initialQuestionValue(q) {
+    if (!q) return "";
+    if (q.qtype === "bool")  return true;
+    if (q.qtype === "enum")  return q.options[0] ?? "";
+    if (q.qtype === "tags" || q.qtype === "sdg") return [];
+    if (q.qtype === "int"  || q.qtype === "float") return 0;
+    return "";
+  }
+
+  function coerceValue(q, v) {
+    if (q.qtype === "int")   return parseInt(v, 10) || 0;
+    if (q.qtype === "float") return parseFloat(v)  || 0;
+    if (q.qtype === "tags")  return Array.isArray(v) ? v : String(v).split(",").map(s=>s.trim()).filter(Boolean);
+    if (q.qtype === "sdg")   return Array.isArray(v) ? v : String(v).split(",").map(s=>parseInt(s.trim(),10)).filter(Number.isInteger);
+    return v;
+  }
+
+  function optLabel(q, opt, lang) {
+    if (q.id === "sector")         return SECTOR_LABELS[lang]?.[opt] || opt;
+    if (q.id === "declared_stage") return STAGE_LABELS[lang]?.[parseInt(opt)] || opt;
+    return opt;
+  }
+
   useEffect(() => {
     async function load() {
       try {
-        const [proj, lastAudit] = await Promise.all([
+        const [proj, lastAudit, nextQRes] = await Promise.all([
           api.getProject(pid),
           api.getLastAudit(pid).catch(() => null),
+          api.nextQuestion(pid).catch(() => null),
         ]);
         setProject(proj);
         setAudit(lastAudit);
         setDraft(proj);  // initialise draft from server data
+        if (nextQRes) {
+          setNextQ(nextQRes.next_question);
+          setProgress(nextQRes.progress);
+        }
       } catch (err) {
         setError(err.message);
       } finally {
@@ -354,6 +412,38 @@ export default function ProjectDashboard({
     }
     load();
   }, [pid]);
+
+  useEffect(() => {
+    if (nextQ) {
+      setQValue(initialQuestionValue(nextQ));
+    } else {
+      setQValue("");
+    }
+  }, [nextQ?.id]);
+
+  async function handleAnswerQuestion(questionId, val) {
+    setAnswering(true);
+    try {
+      const res = await api.answer(pid, questionId, val);
+      const [updatedProj, updatedAudit] = await Promise.all([
+        api.getProject(pid),
+        api.getLastAudit(pid).catch(() => null),
+      ]);
+      setProject(updatedProj);
+      setDraft(updatedProj);
+      setAudit(updatedAudit);
+      setNextQ(res.next_question);
+      setProgress(res.progress);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setAnswering(false);
+    }
+  }
+
+  function handleSkipQuestion(questionId) {
+    handleAnswerQuestion(questionId, null);
+  }
 
   /* ── Handlers ── */
   function startEditing() {
@@ -438,6 +528,103 @@ export default function ProjectDashboard({
 
   const sectorOpts = SECTORS.map(s => ({ value: s, label: SECTOR_LABELS[lang]?.[s] || s }));
   const stageOpts = STAGES.map(s => ({ value: s, label: `${STAGE_LABELS[lang]?.[s] || `Stage ${s}`} (${s}/6)` }));
+
+  const renderAdaptiveInput = () => {
+    if (!nextQ) return null;
+
+    const value = qValue;
+    const setValue = setQValue;
+
+    const toggleSdg = (num) => {
+      setValue(prev => {
+        const list = Array.isArray(prev) ? [...prev] : [];
+        return list.includes(num) ? list.filter(n => n !== num) : [...list, num];
+      });
+    };
+
+    switch (nextQ.qtype) {
+      case "enum":
+        return (
+          <div className="interview-opts">
+            {nextQ.options.map((opt, idx) => (
+              <div
+                key={opt}
+                className={`interview-opt${value === opt ? " sel" : ""}`}
+                onClick={() => setValue(opt)}
+              >
+                <span>{optLabel(nextQ, opt, lang)}</span>
+                <span className="opt-key">{idx + 1}</span>
+              </div>
+            ))}
+          </div>
+        );
+      case "bool":
+        return (
+          <div className="interview-bool">
+            <div className={`interview-bool-btn${value === true ? " sel" : ""}`} onClick={() => setValue(true)}>
+              <span className="bool-label">{t.yes}</span>
+              <span className="bool-key">Y</span>
+            </div>
+            <div className={`interview-bool-btn${value === false ? " sel" : ""}`} onClick={() => setValue(false)}>
+              <span className="bool-label">{t.no}</span>
+              <span className="bool-key">N</span>
+            </div>
+          </div>
+        );
+      case "int":
+      case "float":
+        return (
+          <input
+            className="interview-number-input"
+            type="number"
+            value={value}
+            step={nextQ.qtype === "float" ? "0.1" : "1"}
+            min="0"
+            onChange={e => setValue(e.target.value)}
+          />
+        );
+      case "text":
+        return (
+          <textarea
+            className="pf-textarea"
+            rows={3}
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            style={{ width: "100%", background: "rgba(255,255,255,0.03)", color: "var(--text)" }}
+          />
+        );
+      case "tags":
+        return (
+          <input
+            className="interview-tags-input"
+            value={value}
+            placeholder={t.tagsPlaceholder}
+            onChange={e => setValue(e.target.value)}
+          />
+        );
+      case "sdg":
+        return (
+          <div>
+            <div className="interview-sdg-grid">
+              {Array.from({ length: 17 }, (_, i) => i + 1).map(num => (
+                <div
+                  key={num}
+                  className={`sdg-cell${Array.isArray(value) && value.includes(num) ? " sel" : ""}`}
+                  onClick={() => toggleSdg(num)}
+                >
+                  {num}
+                </div>
+              ))}
+            </div>
+            <div className="muted" style={{ fontSize: "0.76rem", marginTop: 8 }}>
+              {Array.isArray(value) && value.length > 0 ? value.join(", ") : t.sdgNone}
+            </div>
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
 
   return (
     <div className="dash-wrap" dir={dir}>
@@ -525,18 +712,17 @@ export default function ProjectDashboard({
               <h3 className="pf-card-title">{t.actions}</h3>
               <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                 {hasAudit ? (
-                  <button className="primary" onClick={() => onViewAudit(pid, audit)} style={{ width:"100%" }}>
-                    {t.viewAudit}
-                  </button>
+                  <>
+                    <button className="primary" onClick={() => onViewAudit(pid, audit)} style={{ width:"100%" }}>
+                      {t.viewLastAudit}
+                    </button>
+                    <button className="primary" onClick={() => onRunAudit(pid)} style={{ width:"100%", background:"var(--cyan)", borderColor:"var(--cyan)" }}>
+                      {t.recalculateAudit}
+                    </button>
+                  </>
                 ) : (
-                  <button className="primary" onClick={() => onViewAudit(pid, null)} style={{ width:"100%" }}>
-                    {t.runAudit}
-                  </button>
-                )}
-                {!intakeComplete && (
-                  <button className="primary" onClick={() => onContinueIntake(pid)}
-                    style={{ width:"100%", background:"var(--cyan)", borderColor:"var(--cyan)" }}>
-                    {t.continueIntake}
+                  <button className="primary" onClick={() => onRunAudit(pid)} style={{ width:"100%" }}>
+                    {t.auditNow}
                   </button>
                 )}
                 <button className="ghost" onClick={() => onMonParcours(pid)} style={{ width:"100%", borderColor:"var(--orange-border)", color:"var(--orange)" }}>
@@ -564,6 +750,53 @@ export default function ProjectDashboard({
                 <button className="ghost" onClick={startEditing}>{t.editing}</button>
               )}
             </div>
+
+            {/* Adaptive Intake Card */}
+            {nextQ && !editing && (
+              <section className="pf-card adaptive-card" style={{ marginBottom: 16 }}>
+                <div className="adaptive-header">
+                  <span className="adaptive-badge">⚡ {ar ? "سؤال تكيفي مقترح" : "Question adaptative recommandée"}</span>
+                  {progress && (
+                    <span style={{ fontSize: "0.8rem", color: "var(--text-sub)" }}>
+                      {progress.answered} / {progress.total} {ar ? "إجابة" : "réponses"} ({Math.round((progress.answered / progress.total) * 100)}%)
+                    </span>
+                  )}
+                </div>
+                
+                <div style={{ margin: "12px 0" }}>
+                  <h2 className="adaptive-prompt" style={{ fontSize: "1.1rem", fontWeight: 600, margin: "0 0 6px 0" }}>
+                    {ar && nextQ.prompt_ar ? nextQ.prompt_ar : nextQ.prompt_fr}
+                  </h2>
+                  {(ar && nextQ.help_ar ? nextQ.help_ar : nextQ.help_fr) && (
+                    <p className="adaptive-help" style={{ fontSize: "0.85rem", color: "var(--text-dim)", margin: "0 0 16px 0" }}>
+                      {ar && nextQ.help_ar ? nextQ.help_ar : nextQ.help_fr}
+                    </p>
+                  )}
+                </div>
+
+                <div className="adaptive-input-container" style={{ margin: "16px 0" }}>
+                  {renderAdaptiveInput()}
+                </div>
+
+                <div className="adaptive-actions" style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 16 }}>
+                  <button
+                    className="primary"
+                    disabled={answering || qValue === "" || qValue === null}
+                    onClick={() => handleAnswerQuestion(nextQ.id, coerceValue(nextQ, qValue))}
+                    style={{ minWidth: 140 }}
+                  >
+                    {answering ? <span className="spinner" /> : t.valider}
+                  </button>
+                  <button
+                    className="ghost"
+                    disabled={answering}
+                    onClick={() => handleSkipQuestion(nextQ.id)}
+                  >
+                    {t.passer}
+                  </button>
+                </div>
+              </section>
+            )}
 
             {/* Section: Identity */}
             <section className="pf-card">

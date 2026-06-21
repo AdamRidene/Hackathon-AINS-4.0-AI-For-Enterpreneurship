@@ -64,3 +64,41 @@ def test_engine_handles_every_sector():
         assert "sector" in seq
         assert "declared_stage" in seq
         assert len(seq) > 0
+
+
+def test_skipping_list_questions():
+    profile = ProjectProfile()
+    sm = IntakeStateMachine(profile)
+    sm.apply_answer("tech_stack", None)
+    sm.apply_answer("sdg", None)
+    
+    assert profile.innovation.tech_stack == []
+    assert profile.green.sdg_targets == []
+    
+    from app.scoring.gwlc import score_all
+    scores = score_all(profile)
+    assert scores.innovation.final_score is not None
+    assert scores.green.final_score is not None
+
+
+def test_model_validation_null_lists():
+    # Simulate database JSON with null lists
+    json_data = """{
+        "project_id": "test1234",
+        "name": "Test Project",
+        "innovation": {
+            "tech_stack": null
+        },
+        "scalability": {
+            "cross_border_zones": null
+        },
+        "green": {
+            "sdg_targets": null
+        },
+        "competitor_names": null
+    }"""
+    profile = ProjectProfile.model_validate_json(json_data)
+    assert profile.innovation.tech_stack == []
+    assert profile.scalability.cross_border_zones == []
+    assert profile.green.sdg_targets == []
+    assert profile.competitor_names == []

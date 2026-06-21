@@ -327,6 +327,8 @@ _ENUM_FIELDS = {
 
 def _coerce(q: Question, value: Any) -> Any:
     if value is None:
+        if q.qtype in ("tags", "sdg"):
+            return []
         return None
     if q.qtype == "bool":
         if isinstance(value, str):

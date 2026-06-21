@@ -15,20 +15,20 @@ class Settings(BaseSettings):
     """All Firasa configuration, sourced from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", "../.env.dev"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
 
     # ── Auth ──────────────────────────────────────────────────────────────
-    auth_mode: Literal["local", "supabase"] = "local"
+    auth_mode: Literal["local", "supabase", "none"] = "local"
     supabase_url: str = ""
     supabase_jwt_secret: str = ""
     supabase_anon_key: str = ""
 
     # ── Database ──────────────────────────────────────────────────────────
     database_url: str = ""
-    database_sslmode: str = "require"  # "require" for Neon, "disable" for local Postgres
+    database_enabled: bool = True  # Set FIRASA_SKIP_DB=true to run without DB
 
     # ── LLM provider ──────────────────────────────────────────────────────
     llm_provider: Literal["ollama", "huggingface", "openai", "gemini", "stub"] = "ollama"
@@ -66,7 +66,7 @@ settings = Settings(
     supabase_jwt_secret=os.getenv("FIRASA_SUPABASE_JWT_SECRET", ""),
     supabase_anon_key=os.getenv("FIRASA_SUPABASE_ANON_KEY", ""),
     database_url=os.getenv("DATABASE_URL", ""),
-    database_sslmode=os.getenv("DATABASE_SSLMODE", "require"),
+    database_enabled=os.getenv("FIRASA_SKIP_DB", "false").lower() != "true",
     llm_provider=os.getenv("FIRASA_LLM_PROVIDER", "ollama"),
     ollama_host=os.getenv("FIRASA_OLLAMA_HOST", "http://localhost:11434"),
     llm_model=os.getenv("FIRASA_LLM_MODEL", "qwen3:8b"),

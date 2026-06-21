@@ -219,22 +219,24 @@ function ScoresTab({ audit, lang, T, plan, openProfile }) {
 
   if (isLocked) {
     return (
-      <div className="tab-locked-overlay">
-        <div className="lock-icon-container">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-          </svg>
+      <div style={{ position: "relative", minHeight: "350px" }}>
+        <div className="tab-locked-overlay">
+          <div className="lock-icon-container">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+          </div>
+          <h3 className="lock-title">{ar ? "تحليل المؤشرات" : "Analyse des scores"}</h3>
+          <p className="lock-msg">
+            {ar
+              ? "تحليل المؤشرات التفصيلية لكل بعد من أبعاد مشروعك يتطلب الاشتراك في خطة بلس أو برو."
+              : "L'accès aux scores détaillés et à l'analyse de chaque dimension nécessite un plan Plus ou Pro."}
+          </p>
+          <button className="primary" onClick={openProfile} style={{ marginTop: 8 }}>
+            {ar ? "ترقية الاشتراك" : "Mettre à niveau mon plan"}
+          </button>
         </div>
-        <h3 className="lock-title">{ar ? "تحليل المؤشرات" : "Analyse des scores"}</h3>
-        <p className="lock-msg">
-          {ar
-            ? "تحليل المؤشرات التفصيلية لكل بعد من أبعاد مشروعك يتطلب الاشتراك في خطة بلس أو برو."
-            : "L'accès aux scores détaillés et à l'analyse de chaque dimension nécessite un plan Plus ou Pro."}
-        </p>
-        <button className="primary" onClick={openProfile} style={{ marginTop: 8 }}>
-          {ar ? "ترقية الاشتراك" : "Mettre à niveau mon plan"}
-        </button>
       </div>
     );
   }
@@ -313,22 +315,24 @@ function RoadmapTab({ audit, pid, lang, T, checked, onToggle, plan, openProfile 
 
   if (isLocked) {
     return (
-      <div className="tab-locked-overlay">
-        <div className="lock-icon-container">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-          </svg>
+      <div style={{ position: "relative", minHeight: "350px" }}>
+        <div className="tab-locked-overlay">
+          <div className="lock-icon-container">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+          </div>
+          <h3 className="lock-title">{ar ? "خارطة الطريق" : "Feuille de route"}</h3>
+          <p className="lock-msg">
+            {ar
+              ? "خارطة الطريق المخصصة مع التمويل والموارد الملائمة لهيكل مشروعك تتطلب الاشتراك في الخطة الاحترافية (برو)."
+              : "La feuille de route personnalisée avec financements et ressources adaptées nécessite le plan Pro."}
+          </p>
+          <button className="primary" onClick={openProfile} style={{ marginTop: 8 }}>
+            {ar ? "ترقية الاشتراك" : "Mettre à niveau mon plan"}
+          </button>
         </div>
-        <h3 className="lock-title">{ar ? "خارطة الطريق" : "Feuille de route"}</h3>
-        <p className="lock-msg">
-          {ar
-            ? "خارطة الطريق المخصصة مع التمويل والموارد الملائمة لهيكل مشروعك تتطلب الاشتراك في الخطة الاحترافية (برو)."
-            : "La feuille de route personnalisée avec financements et ressources adaptées nécessite le plan Pro."}
-        </p>
-        <button className="primary" onClick={openProfile} style={{ marginTop: 8 }}>
-          {ar ? "ترقية الاشتراك" : "Mettre à niveau mon plan"}
-        </button>
       </div>
     );
   }
@@ -387,7 +391,7 @@ function RoadmapTab({ audit, pid, lang, T, checked, onToggle, plan, openProfile 
 /* ══════════════════════════════════════════════════════════════
    RESULTS ROOT
  ══════════════════════════════════════════════════════════════ */
-export default function Results({ audit, pid, lang, onNewAudit, checkedMilestones, onToggleMilestone, api, user, plan, openProfile, onAuditUpdated }) {
+export default function Results({ audit, pid, lang, onNewAudit, onBackToDashboard, checkedMilestones, onToggleMilestone, api, user, plan, openProfile, onAuditUpdated }) {
   const [activeTab, setActiveTab] = useState(0);
   const [showEditor, setShowEditor] = useState(false);
   const [focusQuestion, setFocusQuestion] = useState(null);
@@ -418,6 +422,9 @@ export default function Results({ audit, pid, lang, onNewAudit, checkedMilestone
             )}
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button className="ghost" onClick={onBackToDashboard} style={{ border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "10px 16px", cursor: "pointer" }}>
+              {ar ? "لوحة قيادة المشروع" : "Tableau de bord"}
+            </button>
             <button className="ghost" onClick={() => setShowEditor(true)} style={{ border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "10px 16px", cursor: "pointer" }}>
               {T.editProfile}
             </button>
