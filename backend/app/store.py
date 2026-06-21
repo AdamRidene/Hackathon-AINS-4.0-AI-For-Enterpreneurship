@@ -191,34 +191,9 @@ def _init_db() -> None:
 
 _init_db()
 
-# ── Dev-mode auto user ────────────────────────────────────────────────────────
-# In local dev, a single "always logged in" user is created automatically.
-# No password required — frontend calls GET /api/auth/dev to get a token.
+# ── Dev-mode auto user (env vars read at module level, func defined below) ──
 _DEV_USER_EMAIL = os.getenv("DEV_USER_EMAIL", "dev@firasa.local")
 _DEV_USER_NAME  = os.getenv("DEV_USER_NAME",  "Entrepreneur")
-
-
-def _ensure_dev_user() -> dict:
-    """Upsert the dev user (plan=admin) and return it."""
-    email = _normalise_email(_DEV_USER_EMAIL)
-    now   = datetime.now(timezone.utc).isoformat()
-    uid   = uuid4().hex
-    with _lock:
-        with db_session() as conn:
-            conn.execute(
-                """
-                INSERT INTO users (id, email, name, password_hash, plan, created_at)
-                VALUES (?, ?, ?, ?, 'admin', ?)
-                ON CONFLICT(email) DO UPDATE SET plan = 'admin'
-                """,
-                (uid, email, _DEV_USER_NAME, _hash_password(secrets.token_hex(32)), now),
-            )
-    with db_session() as conn:
-        row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
-    return _user_from_row(row)
-
-
-_ensure_dev_user()
 
 
 # Auth/session store
@@ -595,3 +570,30 @@ def delete_project(pid: str) -> bool:
                 found = True
             conn.execute("DELETE FROM audits WHERE pid = ?", (pid,))
     return found
+
+
+# ── Dev-mode auto user ────────────────────────────────────────────────────────
+# In local dev a single "always logged in" user is created automatically.
+# Frontend calls GET /api/auth/dev to get a session token — no credentials needed.
+
+def _ensure_dev_user() -> dict:
+    """Upsert the dev user (plan=admin) and return it. Safe to call multiple times."""
+    email = _normalise_email(_DEV_USER_EMAIL)
+    now   = datetime.now(timezone.utc).isoformat()
+    uid   = uuid4().hex
+    with _lock:
+        with db_session() as conn:
+            conn.execute(
+                """
+                INSERT INTO users (id, email, name, password_hash, plan, created_at)
+                VALUES (?, ?, ?, ?, 'admin', ?)
+                ON CONFLICT(email) DO UPDATE SET plan = 'admin'
+                """,
+                (uid, email, _DEV_USER_NAME, _hash_password(secrets.token_hex(32)), now),
+            )
+    with db_session() as conn:
+        row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    return _user_from_row(row)
+
+
+_ensure_dev_user()
