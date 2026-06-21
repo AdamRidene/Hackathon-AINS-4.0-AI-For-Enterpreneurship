@@ -23,38 +23,23 @@ from . import store
 # ── Supabase JWT validation ────────────────────────────────────────────────────
 
 def _get_auth_mode() -> str:
-    """Read auth mode from env at call time (tests can patch os.environ)."""
-    return os.getenv("FIRASA_AUTH_MODE", "local")
+    """Read auth mode from settings."""
+    return settings.auth_mode
 
 
 def _validate_supabase_jwt(token: str) -> dict:
     """Validate a Supabase-issued JWT and return the decoded payload.
 
     Uses the symmetric HMAC secret for fast offline validation.
-    Falls back to the JWKS endpoint if the secret is not configured.
     """
-    jwt_secret = os.getenv("FIRASA_SUPABASE_JWT_SECRET", "")
+    jwt_secret = settings.supabase_jwt_secret
 
     if not jwt_secret:
-        # Fallback: fetch JWKS and validate
-        try:
-            import httpx
-            jwks_url = f"{settings.supabase_url}/auth/v1/jwks"
-            # We can't make sync HTTP calls easily. Instead, raise a clear error
-            # telling the operator to set FIRASA_SUPABASE_JWT_SECRET.
-            raise HTTPException(
-                500,
-                "FIRASA_SUPABASE_JWT_SECRET is not set. "
-                "Get it from Supabase Dashboard → Project Settings → API → JWT Secret.",
-            )
-        except HTTPException:
-            raise
-        except Exception:
-            raise HTTPException(
-                500,
-                "Supabase JWT validation failed: no secret configured and "
-                "JWKS fetch not available.",
-            )
+        raise HTTPException(
+            500,
+            "FIRASA_SUPABASE_JWT_SECRET is not set. "
+            "Get it from Supabase Dashboard → Project Settings → API → JWT Secret.",
+        )
 
     try:
         payload = jwt.decode(
@@ -135,7 +120,6 @@ _MOCK_USER = {
 async def _none_user(_authorization: str | None) -> dict:
     """Bypass auth entirely — return a mock developer user."""
     # Ensure the mock user exists in the DB (idempotent)
-    import hashlib
     import secrets
 
     try:

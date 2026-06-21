@@ -1,8 +1,8 @@
 """Contextual project memory (persistence).
 
 Two backends:
-  • Neon PostgreSQL — when FIRASA_SKIP_DB is unset/false (production)
-  • In-memory dicts  — when FIRASA_SKIP_DB=true (local testing, no DB needed)
+  • Local SQLite database — when database is enabled (default)
+  • In-memory dicts       — when database is disabled (local testing, no DB needed)
 """
 from __future__ import annotations
 

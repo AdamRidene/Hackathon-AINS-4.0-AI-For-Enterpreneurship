@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 import logging
 import os
 import re
@@ -12,7 +13,7 @@ from uuid import uuid4
 
 from fastapi import Depends, FastAPI, File as FastAPIFile, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, Field
 
 from . import __version__, store
 from .auth import get_current_user, extract_token
@@ -361,14 +362,14 @@ class ProfilePatchBody(BaseModel):
     name: Optional[str] = None
     sector: Optional[str] = None
     language: Optional[str] = None
-    team_size: Optional[int] = None
-    monthly_revenue_tnd: Optional[float] = None
-    burn_rate_tnd: Optional[float] = None
-    runway_months: Optional[int] = None
-    user_count: Optional[int] = None
-    growth_rate_pct: Optional[float] = None
-    cac_tnd: Optional[float] = None
-    ltv_tnd: Optional[float] = None
+    team_size: Optional[int] = Field(None, ge=0)
+    monthly_revenue_tnd: Optional[float] = Field(None, ge=0.0)
+    burn_rate_tnd: Optional[float] = Field(None, ge=0.0)
+    runway_months: Optional[int] = Field(None, ge=0)
+    user_count: Optional[int] = Field(None, ge=0)
+    growth_rate_pct: Optional[float] = Field(None, ge=-100.0)
+    cac_tnd: Optional[float] = Field(None, ge=0.0)
+    ltv_tnd: Optional[float] = Field(None, ge=0.0)
     competitor_names: Optional[list[str]] = None
     differentiation_narrative: Optional[str] = None
     incorporation_date: Optional[str] = None
@@ -393,7 +394,7 @@ def patch_project(pid: str, body: ProfilePatchBody, user: dict = Depends(get_cur
     for field, value in updates.items():
         if hasattr(profile, field):
             setattr(profile, field, value)
-    profile.updated_at = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+    profile.updated_at = datetime.now(timezone.utc)
     store.save(profile)
     return store.redact(profile, is_owner=True)
 

@@ -7,8 +7,9 @@ const BASE = import.meta.env.VITE_API_BASE || "";
 
 async function req(path, options = {}) {
   const token = await auth.getToken();
+  const isFormData = options.body instanceof FormData;
   const headers = {
-    "Content-Type": "application/json",
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers || {}),
   };
@@ -41,6 +42,16 @@ async function req(path, options = {}) {
 export const api = {
   health: () => req("/api/health"),
   kb: () => req("/api/kb"),
+  listDocuments: (pid) => req(`/api/projects/${pid}/documents`),
+  uploadDocument: (pid, file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return req(`/api/projects/${pid}/documents`, {
+      method: "POST",
+      body: formData,
+    });
+  },
+  deleteDocument: (pid, docId) => req(`/api/projects/${pid}/documents/${docId}`, { method: "DELETE" }),
 
   // Auth delegated to auth module
   getToken: () => auth.getToken(),

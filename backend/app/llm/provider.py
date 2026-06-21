@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import random
 import re
 import threading
@@ -36,6 +37,16 @@ import httpx
 from ..config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _get_timeout() -> float:
+    t = os.getenv("FIRASA_LLM_TIMEOUT")
+    if t is not None:
+        try:
+            return float(t)
+        except ValueError:
+            pass
+    return settings.llm_timeout
 
 # Retry configuration
 MAX_RETRIES = 3
@@ -266,8 +277,8 @@ class OllamaProvider(LLMProvider):
     name = "ollama"
 
     def __init__(self) -> None:
-        self.host = settings.ollama_host
-        self.model = settings.llm_model
+        self.host = os.getenv("FIRASA_OLLAMA_HOST") or settings.ollama_host
+        self.model = os.getenv("FIRASA_LLM_MODEL") or settings.llm_model
 
     async def _complete(self, prompt: str, max_tokens: int = 400) -> str:
         body = {
@@ -276,7 +287,7 @@ class OllamaProvider(LLMProvider):
             "stream": False,
             "options": {"num_predict": max_tokens, "temperature": 0.2},
         }
-        timeout = httpx.Timeout(float(str(settings.llm_timeout)))
+        timeout = httpx.Timeout(_get_timeout())
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(f"{self.host}/api/generate", json=body)
             resp.raise_for_status()
@@ -287,8 +298,8 @@ class HuggingFaceProvider(LLMProvider):
     name = "huggingface"
 
     def __init__(self) -> None:
-        self.model = settings.hf_model
-        self.token = settings.hf_token
+        self.model = os.getenv("FIRASA_HF_MODEL") or settings.hf_model
+        self.token = os.getenv("FIRASA_HF_TOKEN") or settings.hf_token
         self.url = f"https://api-inference.huggingface.co/models/{self.model}"
 
     async def _complete(self, prompt: str, max_tokens: int = 400) -> str:
@@ -300,7 +311,7 @@ class HuggingFaceProvider(LLMProvider):
         headers = {}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
-        timeout = httpx.Timeout(float(str(settings.llm_timeout)))
+        timeout = httpx.Timeout(_get_timeout())
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(self.url, json=body, headers=headers)
             resp.raise_for_status()
@@ -314,9 +325,9 @@ class OpenAIProvider(LLMProvider):
     name = "openai"
 
     def __init__(self) -> None:
-        self.api_key = settings.openai_api_key
-        self.api_base = settings.openai_api_base.rstrip("/")
-        self.model = settings.openai_model
+        self.api_key = os.getenv("FIRASA_OPENAI_API_KEY") or settings.openai_api_key
+        self.api_base = (os.getenv("FIRASA_OPENAI_API_BASE") or settings.openai_api_base).rstrip("/")
+        self.model = os.getenv("FIRASA_OPENAI_MODEL") or settings.openai_model
 
     async def _complete(self, prompt: str, max_tokens: int = 400) -> str:
         body = {
@@ -331,7 +342,7 @@ class OpenAIProvider(LLMProvider):
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
-        timeout = httpx.Timeout(float(str(settings.llm_timeout)))
+        timeout = httpx.Timeout(_get_timeout())
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(f"{self.api_base}/chat/completions", json=body, headers=headers)
             resp.raise_for_status()
@@ -358,8 +369,8 @@ class GeminiProvider(LLMProvider):
     _configured_key: Optional[str] = None
 
     def __init__(self) -> None:
-        self.api_key = settings.gemini_api_key
-        self.model = settings.gemini_model
+        self.api_key = os.getenv("FIRASA_GEMINI_API_KEY") or settings.gemini_api_key
+        self.model = os.getenv("FIRASA_GEMINI_MODEL") or settings.gemini_model
         self._genai = None
         try:
             import google.generativeai as _genai
@@ -411,7 +422,7 @@ _cache: dict[str, LLMProvider] = {}
 
 def get_llm() -> LLMProvider:
     # Read env at call time so tests can patch os.environ mid-run.
-    key = settings.llm_provider
+    key = os.getenv("FIRASA_LLM_PROVIDER") or settings.llm_provider
     if key not in _PROVIDERS:
         key = "stub"
     if key not in _cache:

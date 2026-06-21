@@ -142,3 +142,38 @@ def test_profile_update():
     assert user_me["photo"] == "🚀"
     assert user_me["birth_date"] == "1993-05-01"
     assert user_me["location"] == "Sfax, Tunisia"
+
+
+def test_project_patch_validation():
+    _, headers = _register()
+    pid = _create_project(headers, "Validation Test Project")
+
+    # Positive case: valid update
+    patch_res = client.patch(f"/api/projects/{pid}", json={
+        "team_size": 5,
+        "monthly_revenue_tnd": 1500.50,
+        "growth_rate_pct": -10.5
+    }, headers=headers)
+    assert patch_res.status_code == 200, patch_res.text
+    assert patch_res.json()["team_size"] == 5
+    assert patch_res.json()["monthly_revenue_tnd"] == 1500.50
+    assert patch_res.json()["growth_rate_pct"] == -10.5
+
+    # Negative case: invalid team_size
+    bad_res = client.patch(f"/api/projects/{pid}", json={
+        "team_size": -5
+    }, headers=headers)
+    assert bad_res.status_code == 422
+
+    # Negative case: invalid revenue
+    bad_res2 = client.patch(f"/api/projects/{pid}", json={
+        "monthly_revenue_tnd": -100.0
+    }, headers=headers)
+    assert bad_res2.status_code == 422
+
+    # Negative case: invalid growth rate (below -100%)
+    bad_res3 = client.patch(f"/api/projects/{pid}", json={
+        "growth_rate_pct": -150.0
+    }, headers=headers)
+    assert bad_res3.status_code == 422
+

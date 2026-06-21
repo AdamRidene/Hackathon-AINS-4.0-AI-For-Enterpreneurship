@@ -167,6 +167,266 @@ function FieldValue({ label, value, empty }) {
   );
 }
 
+/* ── Documents Manager ────────────────────────────────────────────────── */
+
+function DocumentsManager({ pid, lang, api }) {
+  const [docs, setDocs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState(null);
+  const [dragActive, setDragActive] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+
+  const ar = lang === "ar";
+  const t = {
+    fr: {
+      uploadBtn: "Sélectionner un fichier",
+      dragDrop: "ou glisser-déposer le fichier ici",
+      sizeLimit: "Taille maximale : 10 Mo. Format PDF ou TXT.",
+      uploadedDocs: "Documents de preuve",
+      noDocs: "Aucun document associé à ce projet.",
+      deleteConfirm: "Supprimer ce document ?",
+      cancel: "Annuler",
+      delete: "Supprimer",
+      uploading: "Téléchargement et extraction de texte...",
+      errorSize: "Le fichier dépasse la limite de 10 Mo.",
+      errorGeneric: "Erreur lors du traitement du fichier.",
+      date: "Ajouté le",
+      extracted: "Texte extrait avec succès",
+      emptyExtracted: "Aucun texte extrait (image ou PDF scanné)",
+    },
+    ar: {
+      uploadBtn: "اختر ملفاً",
+      dragDrop: "أو اسحب وأفلت الملف هنا",
+      sizeLimit: "الحد الأقصى: 10 ميغابايت. صيغة PDF أو TXT.",
+      uploadedDocs: "وثائق الإثبات المرفقة",
+      noDocs: "لا توجد وثائق مرفقة بهذا المشروع.",
+      deleteConfirm: "حذف هذا المستند ؟",
+      cancel: "إلغاء",
+      delete: "حذف",
+      uploading: "جاري رفع الملف واستخراج النصوص...",
+      errorSize: "الملف يتجاوز الحد الأقصى 10 ميغابايت.",
+      errorGeneric: "حدث خطأ أثناء معالجة الملف.",
+      date: "أضيف في",
+      extracted: "تم استخراج النص بنجاح",
+      emptyExtracted: "لم يتم استخراج أي نص (صورة أو ملف ممسوح ضوئياً)",
+    }
+  }[lang] || {
+    uploadBtn: "Sélectionner un fichier",
+    dragDrop: "ou glisser-déposer le fichier ici",
+    sizeLimit: "Taille maximale : 10 Mo. Format PDF ou TXT.",
+    uploadedDocs: "Documents de preuve",
+    noDocs: "Aucun document associé à ce projet.",
+    deleteConfirm: "Supprimer ce document ?",
+    cancel: "Annuler",
+    delete: "Supprimer",
+    uploading: "Téléchargement et extraction de texte...",
+    errorSize: "Le fichier dépasse la limite de 10 Mo.",
+    errorGeneric: "Erreur lors du traitement du fichier.",
+    date: "Ajouté le",
+    extracted: "Texte extrait avec succès",
+    emptyExtracted: "Aucun texte extrait",
+  };
+
+  useEffect(() => {
+    loadDocs();
+  }, [pid]);
+
+  async function loadDocs() {
+    try {
+      setLoading(true);
+      const res = await api.listDocuments(pid);
+      setDocs(res);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleFile(file) {
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setError(t.errorSize);
+      return;
+    }
+    setError(null);
+    setUploading(true);
+    try {
+      await api.uploadDocument(pid, file);
+      await loadDocs();
+    } catch (err) {
+      setError(err.message || t.errorGeneric);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function handleDrag(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFile(e.dataTransfer.files[0]);
+    }
+  }
+
+  async function handleDelete(docId) {
+    try {
+      await api.deleteDocument(pid, docId);
+      setDocs(prev => prev.filter(d => d.id !== docId));
+      setConfirmDelete(null);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  return (
+    <div className="doc-manager-wrap">
+      {error && <div className="error-banner" role="alert" style={{ marginBottom: 12 }}>{error}</div>}
+
+      <div 
+        className={`doc-dropzone${dragActive ? " active" : ""}${uploading ? " loading" : ""}`}
+        onDragEnter={handleDrag}
+        onDragOver={handleDrag}
+        onDragLeave={handleDrag}
+        onDrop={handleDrop}
+      >
+        {uploading ? (
+          <div className="doc-dropzone-inner" style={{ textAlign: "center" }}>
+            <span className="spinner" style={{ width: 28, height: 28, marginBottom: 8 }} />
+            <p style={{ fontSize: "0.84rem", color: "var(--text-sub)" }}>{t.uploading}</p>
+          </div>
+        ) : (
+          <div className="doc-dropzone-inner" style={{ textAlign: "center" }}>
+            <svg className="doc-dropzone-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: "var(--primary)", marginBottom: 8 }}>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+            </svg>
+            <div>
+              <label htmlFor={`file-upload-${pid}`} className="doc-upload-label-btn" style={{
+                background: "var(--orange-soft)",
+                color: "var(--orange)",
+                border: "1px solid var(--orange-border)",
+                padding: "4px 10px",
+                borderRadius: "var(--r-sm)",
+                fontSize: "0.8rem",
+                cursor: "pointer",
+                display: "inline-block",
+                marginRight: 6
+              }}>
+                {t.uploadBtn}
+              </label>
+              <input 
+                id={`file-upload-${pid}`}
+                type="file"
+                className="sr-only"
+                accept=".pdf,.txt,text/plain,application/pdf"
+                onChange={(e) => handleFile(e.target.files[0])}
+              />
+              <span style={{ fontSize: "0.8rem", color: "var(--text-sub)" }}>
+                {t.dragDrop}
+              </span>
+            </div>
+            <p style={{ fontSize: "0.72rem", color: "var(--text-dim)", marginTop: 6 }}>{t.sizeLimit}</p>
+          </div>
+        )}
+      </div>
+
+      <div className="doc-list-section" style={{ marginTop: 16 }}>
+        <h4 style={{ fontSize: "0.86rem", fontWeight: 700, marginBottom: 8, color: "var(--text)" }}>
+          {t.uploadedDocs} ({docs.length})
+        </h4>
+
+        {loading ? (
+          <div style={{ padding: "12px 0", textAlign: "center" }}><span className="spinner" /></div>
+        ) : docs.length === 0 ? (
+          <p style={{ fontSize: "0.8rem", color: "var(--text-dim)", fontStyle: "italic", textAlign: "center", padding: "12px 0" }}>
+            {t.noDocs}
+          </p>
+        ) : (
+          <div className="doc-list" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {docs.map(doc => (
+              <div key={doc.id} className="doc-item" style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "8px 12px",
+                background: "rgba(255,255,255,0.02)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--r-md)"
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, overflow: "hidden" }}>
+                  <div style={{ color: "var(--primary)" }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                  </div>
+                  <div style={{ overflow: "hidden" }}>
+                    <div style={{ fontSize: "0.84rem", fontWeight: 600, textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }} title={doc.filename}>{doc.filename}</div>
+                    <div style={{ fontSize: "0.72rem", color: "var(--text-sub)" }}>
+                      <span>{t.date} {new Date(doc.uploaded_at).toLocaleDateString(ar ? "ar-TN" : "fr-TN")}</span>
+                      {doc.extracted_preview ? (
+                        <span style={{ color: "var(--green)", marginLeft: 8, marginRight: 8, fontWeight: 600 }}>
+                          ✓ {t.extracted}
+                        </span>
+                      ) : (
+                        <span style={{ color: "var(--amber)", marginLeft: 8, marginRight: 8 }}>
+                          ⚠ {t.emptyExtracted}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setConfirmDelete(doc.id)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--text-sub)",
+                    cursor: "pointer",
+                    padding: 4,
+                    display: "flex",
+                    alignItems: "center"
+                  }}
+                  title={t.delete}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: "var(--red)" }}>
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {confirmDelete && (
+        <div className="modal-overlay" onClick={() => setConfirmDelete(null)}>
+          <div className="modal-container" onClick={e => e.stopPropagation()} style={{ maxWidth: 360, padding: 20, textAlign: "center" }}>
+            <h4 style={{ marginBottom: 12, fontWeight: 700, fontSize: "0.95rem" }}>{t.deleteConfirm}</h4>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+              <button className="ghost" onClick={() => setConfirmDelete(null)}>{t.cancel}</button>
+              <button className="primary" onClick={() => handleDelete(confirmDelete)} style={{ background: "var(--red)", borderColor: "var(--red)" }}>{t.delete}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    MAIN COMPONENT
    ═══════════════════════════════════════════════════════════════════════ */
@@ -794,6 +1054,14 @@ export default function ProjectDashboard({
                   >
                     {t.passer}
                   </button>
+                  <button
+                    className="ghost"
+                    disabled={answering}
+                    onClick={() => onRunAudit(pid)}
+                    style={{ color: "var(--orange)", borderColor: "var(--orange-border)", marginLeft: "auto" }}
+                  >
+                    {t.auditNow} →
+                  </button>
                 </div>
               </section>
             )}
@@ -1004,6 +1272,19 @@ export default function ProjectDashboard({
                 </div>
               )}
             </section>
+
+            {/* Section: Evidence Documents */}
+            {!editing && (
+              <section className="pf-card">
+                <h3 className="pf-card-title">{ar ? "وثائق الإثبات المرفقة" : "Documents justificatifs & Preuves"}</h3>
+                <p className="muted" style={{ fontSize: "0.8rem", marginBottom: 12 }}>
+                  {ar
+                    ? "أضف وثائق أو تقارير (مثل خطة العمل، استبيان التحقق، بطاقة تقنية) لدعم تشخيصك التكيفي."
+                    : "Téléversez des rapports ou fichiers (pitch deck, étude, registre commercial, etc.) pour appuyer votre diagnostic."}
+                </p>
+                <DocumentsManager pid={pid} lang={lang} api={api} />
+              </section>
+            )}
           </main>
         </div>
 

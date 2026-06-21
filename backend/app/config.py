@@ -5,9 +5,9 @@ Uses Pydantic BaseSettings for validation and documentation.
 """
 from __future__ import annotations
 
-import os
 from typing import Literal
 
+from pydantic import Field, AliasChoices, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,9 +15,10 @@ class Settings(BaseSettings):
     """All Firasa configuration, sourced from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=(".env", "../.env.dev"),
+        env_file=(".env", "../.env.dev", "../.env.prod", "../.env.staging"),
         env_file_encoding="utf-8",
         extra="ignore",
+        env_prefix="FIRASA_",
     )
 
     # ── Auth ──────────────────────────────────────────────────────────────
@@ -27,8 +28,9 @@ class Settings(BaseSettings):
     supabase_anon_key: str = ""
 
     # ── Database ──────────────────────────────────────────────────────────
-    database_url: str = ""
+    database_url: str = Field("", validation_alias=AliasChoices("FIRASA_DATABASE_URL", "DATABASE_URL"))
     database_enabled: bool = True  # Set FIRASA_SKIP_DB=true to run without DB
+    skip_db: bool = False
 
     # ── LLM provider ──────────────────────────────────────────────────────
     llm_provider: Literal["ollama", "huggingface", "openai", "gemini", "stub"] = "ollama"
@@ -58,25 +60,13 @@ class Settings(BaseSettings):
     def is_supabase_auth(self) -> bool:
         return self.auth_mode == "supabase"
 
+    @model_validator(mode="after")
+    def adjust_database_enabled(self) -> Settings:
+        if self.skip_db:
+            self.database_enabled = False
+        return self
+
 
 # Singleton — import this everywhere instead of os.getenv()
-settings = Settings(
-    auth_mode=os.getenv("FIRASA_AUTH_MODE", "local"),
-    supabase_url=os.getenv("FIRASA_SUPABASE_URL", ""),
-    supabase_jwt_secret=os.getenv("FIRASA_SUPABASE_JWT_SECRET", ""),
-    supabase_anon_key=os.getenv("FIRASA_SUPABASE_ANON_KEY", ""),
-    database_url=os.getenv("DATABASE_URL", ""),
-    database_enabled=os.getenv("FIRASA_SKIP_DB", "false").lower() != "true",
-    llm_provider=os.getenv("FIRASA_LLM_PROVIDER", "ollama"),
-    ollama_host=os.getenv("FIRASA_OLLAMA_HOST", "http://localhost:11434"),
-    llm_model=os.getenv("FIRASA_LLM_MODEL", "qwen3:8b"),
-    hf_model=os.getenv("FIRASA_HF_MODEL", "Qwen/Qwen2.5-7B-Instruct"),
-    hf_token=os.getenv("FIRASA_HF_TOKEN", ""),
-    openai_api_key=os.getenv("FIRASA_OPENAI_API_KEY", ""),
-    openai_api_base=os.getenv("FIRASA_OPENAI_API_BASE", "https://api.openai.com/v1"),
-    openai_model=os.getenv("FIRASA_OPENAI_MODEL", "gpt-4o-mini"),
-    gemini_api_key=os.getenv("FIRASA_GEMINI_API_KEY", ""),
-    gemini_model=os.getenv("FIRASA_GEMINI_MODEL", "gemini-2.0-flash"),
-    llm_timeout=float(os.getenv("FIRASA_LLM_TIMEOUT", "30")),
-    debug=os.getenv("FIRASA_DEBUG", "false").lower() == "true",
-)
+settings = Settings()
+

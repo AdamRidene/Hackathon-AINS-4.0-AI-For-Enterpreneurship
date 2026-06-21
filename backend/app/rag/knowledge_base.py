@@ -119,12 +119,13 @@ class KnowledgeBase:
     def _ensure_embeddings(self) -> None:
         """Lazy-load sentence-transformers on first query (avoids ~90MB download at startup)."""
         if self._embeddings_loaded:
-            return  # already attempted (success or failure)
+            return  # already succeeded
         with self._embeddings_lock:
             if self._embeddings_loaded:
                 return
-            self._embeddings_loaded = True  # mark attempted regardless of outcome
             self._try_load_embeddings()
+            if self._embeddings is not None:
+                self._embeddings_loaded = True
 
     def _try_load_embeddings(self) -> None:
         """Load sentence-transformers if available and pre-compute embeddings."""

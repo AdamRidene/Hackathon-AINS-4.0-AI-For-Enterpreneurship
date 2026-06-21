@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { api } from "../api.js";
 
 const TEXTS = {
@@ -50,9 +50,16 @@ export default function Assistant({ pid, lang = "fr" }) {
   const [log, setLog] = useState([]);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
+  const [docs, setDocs] = useState([]);
 
   const t = TEXTS[lang] || TEXTS.fr;
   const ar = lang === "ar";
+
+  useEffect(() => {
+    api.listDocuments(pid)
+      .then(setDocs)
+      .catch(() => {});
+  }, [pid]);
 
   async function send(e) {
     e.preventDefault();
@@ -76,9 +83,41 @@ export default function Assistant({ pid, lang = "fr" }) {
 
   return (
     <div className="advisor-wrap" dir={ar ? "rtl" : "ltr"}>
-      <p style={{ fontSize: "0.84rem", color: "var(--text-sub)", marginBottom: 16 }}>
+      <p style={{ fontSize: "0.84rem", color: "var(--text-sub)", marginBottom: docs.length > 0 ? 10 : 16 }}>
         {t.sub}
       </p>
+
+      {docs.length > 0 && (
+        <div className="assistant-docs-chips" style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 6,
+          padding: "8px 12px",
+          background: "rgba(74, 123, 247, 0.04)",
+          border: "1px solid var(--border-accent)",
+          borderRadius: "var(--r-md)",
+          marginBottom: 16,
+          alignItems: "center"
+        }}>
+          <span style={{ fontSize: "0.76rem", fontWeight: 700, color: "var(--orange)", display: "flex", alignItems: "center", gap: 4 }}>
+            📚 {ar ? "المستندات النشطة:" : "Documents lus par l'IA :"}
+          </span>
+          {docs.map(d => (
+            <span key={d.id} style={{
+              fontSize: "0.72rem",
+              background: "rgba(255,255,255,0.03)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--r-sm)",
+              padding: "2px 8px",
+              color: "var(--text-sub)",
+              display: "inline-flex",
+              alignItems: "center"
+            }}>
+              {d.filename}
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="advisor-log">
         {log.length === 0 && (

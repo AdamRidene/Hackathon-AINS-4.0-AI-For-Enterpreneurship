@@ -35,13 +35,14 @@ function setLocalToken(token) {
 }
 
 async function apiReq(path, options = {}) {
-  const token = await auth.getToken();
+  const token = options.anonymous ? null : await auth.getToken();
   const headers = {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers || {}),
   };
-  const res = await fetch(`${BASE}${path}`, { ...options, headers });
+  const { anonymous, ...fetchOptions } = options;
+  const res = await fetch(`${BASE}${path}`, { ...fetchOptions, headers });
   if (!res.ok) {
     let detail = `${res.status} ${res.statusText}`;
     try {
@@ -97,7 +98,7 @@ export const auth = {
     if (_initialised) return;
     try {
       // Discover auth mode from backend
-      const config = await apiReq("/api/auth/config");
+      const config = await apiReq("/api/auth/config", { anonymous: true });
       _mode = config.auth_mode || "local";
       _supabaseUrl = config.supabase_url || null;
 
@@ -153,6 +154,7 @@ export const auth = {
     const res = await apiReq("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
+      anonymous: true,
     });
     setLocalToken(res.token);
     return res.user;
@@ -186,6 +188,7 @@ export const auth = {
     const res = await apiReq("/api/auth/register", {
       method: "POST",
       body: JSON.stringify({ email, password, name, birth_date, location, phone, role, company }),
+      anonymous: true,
     });
     setLocalToken(res.token);
     return res.user;

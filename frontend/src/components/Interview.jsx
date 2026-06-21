@@ -189,7 +189,7 @@ export default function Interview({ lang, question, progress, busy, onSubmit, on
               </span>
             </span>
           )}
-          {progress && progress.answered >= 5 && (
+          {progress && (
             <button className="ghost" onClick={handleSkipClick} disabled={busy} style={{ fontSize: "0.78rem", padding: "6px 14px", border: "1px solid var(--border)", borderRadius: "var(--r-sm)" }}>
               {T.skip}
             </button>

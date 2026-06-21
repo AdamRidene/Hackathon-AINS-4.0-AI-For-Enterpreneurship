@@ -121,12 +121,27 @@ async def run_audit(profile: ProjectProfile) -> AuditResult:
 
 
 async def grounded_assistant_reply(profile: ProjectProfile, question: str) -> dict:
-    """Secondary conversational layer — grounded ONLY in structured outputs.
+    """Secondary conversational layer — grounded ONLY in structured outputs and uploaded documents.
 
     The assistant never answers from general knowledge: its context is the
-    audit (diagnostic, scores, roadmap). This satisfies the 'assistant is a
-    layer, not the product' requirement.
+    audit (diagnostic, scores, roadmap) and supporting evidence documents.
+    This satisfies the 'assistant is a layer, not the product' requirement.
     """
+    # Fetch uploaded documents
+    docs = store.list_documents(profile.project_id)
+    full_docs = []
+    for d in docs:
+        full_doc = store.get_document(d["id"])
+        if full_doc:
+            full_docs.append(full_doc)
+
+    docs_context = ""
+    if full_docs:
+        docs_context = "\nDocuments joints par l'entrepreneur:\n" + "\n".join(
+            f"- {d['filename']}: {d['extracted_text'][:2000] if d.get('extracted_text') else '[Contenu vide]'}"
+            for d in full_docs
+        )
+
     # Try to load the cached audit result snapshot from the database store
     audit_data = store.get_audit(profile.project_id)
     
@@ -156,19 +171,23 @@ async def grounded_assistant_reply(profile: ProjectProfile, question: str) -> di
             f"Scores (M,C,I,S,G): {vector}. "
             "Feuille de route: " + " | ".join(roadmap_prose)
         )
+        if docs_context:
+            ctx += docs_context
         sources_used = [s for m in roadmap_items[:5] for s in m.get("sources", [])]
     else:
         # Fallback to running run_audit
         audit = await run_audit(profile)
         ctx = (
             f"Stade objectif: {audit.diagnostic.classified_stage_name}. "
-            f"Écart perception-réalité: {audit.gap.message_fr}. "
+            f"Écart perception-reality: {audit.gap.message_fr}. "
             f"Scores (M,C,I,S,G): {audit.scores.vector()}. "
             "Feuille de route: "
             + " | ".join(f"{m.order}. {m.title} ({m.horizon_fr}) — "
                          f"{', '.join(s['institution'] for s in m.sources)}"
                          for m in audit.roadmap[:5])
         )
+        if docs_context:
+            ctx += docs_context
         sources_used = [s for m in audit.roadmap[:5] for s in m.sources]
         
     reply = await get_llm().chat(question, ctx, lang=profile.language)

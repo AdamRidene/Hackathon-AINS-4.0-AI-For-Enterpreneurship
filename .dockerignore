@@ -23,4 +23,6 @@ backend/_data/
 
 # Environment files (secrets belong in runtime env)
 .env
-.env.*.local
+.env.*
+**/.env
+**/.env.*
