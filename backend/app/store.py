@@ -30,7 +30,14 @@ _cache: dict[str, ProjectProfile] = {}
 
 # ── Database Driver configuration ─────────────────────────────────────────────
 _DB_PATH = _STORE_DIR / "firasa.db"
-PLAN_LIMITS = {"free": 1, "plus": 3, "pro": 5}
+PLAN_LIMITS = {"free": 1, "plus": 3, "pro": 50, "admin": 999999}
+
+
+def is_admin(email: str) -> bool:
+    """Read ADMIN_EMAILS at call time so dotenv timing doesn't matter."""
+    raw = os.getenv("ADMIN_EMAILS", "")
+    admins = {e.strip().lower() for e in raw.split(",") if e.strip()}
+    return email.lower() in admins
 
 _DB_URL = os.getenv("DATABASE_URL", "")
 IS_POSTGRES = _DB_URL.startswith("postgres://") or _DB_URL.startswith("postgresql://")
@@ -200,11 +207,13 @@ def _user_from_row(row: dict | None) -> dict | None:
     if row is None:
         return None
     r = dict(row)
+    email = r.get("email", "")
+    plan = "admin" if is_admin(email) else r["plan"]
     return {
         "id": r["id"],
-        "email": r["email"],
+        "email": email,
         "name": r["name"],
-        "plan": r["plan"],
+        "plan": plan,
         "created_at": r["created_at"],
         "bio": r.get("bio"),
         "phone": r.get("phone"),

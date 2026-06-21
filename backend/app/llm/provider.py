@@ -10,10 +10,11 @@ authority):
   3. generate_roadmap_prose()   -> extractive prose grounded in retrieved chunks
 
 Provider selection via env var FIRASA_LLM_PROVIDER:
-  - "ollama"      (default) local Ollama, model FIRASA_LLM_MODEL (qwen3:8b)
+  - "deepseek"   (default) DeepSeek API, model FIRASA_DEEPSEEK_MODEL
+  - "ollama"     local Ollama, model FIRASA_LLM_MODEL (qwen3:8b)
   - "huggingface" HF Inference API, model FIRASA_HF_MODEL, token FIRASA_HF_TOKEN
-  - "openai"      OpenAI-compatible cloud API (Groq, OpenRouter, Gemini, OpenAI)
-  - "stub"        deterministic, no network — always available
+  - "openai"     OpenAI-compatible cloud API (Groq, OpenRouter, Gemini, OpenAI)
+  - "stub"       deterministic, no network — always available
 
 Every provider falls back to the deterministic StubProvider on any error, so the
 pipeline runs end-to-end with no model installed (NFR: Reliability). The judge
@@ -279,17 +280,50 @@ class OpenAIProvider(LLMProvider):
             return ""
 
 
+class DeepSeekProvider(LLMProvider):
+    name = "deepseek"
+
+    def __init__(self) -> None:
+        self.api_key = os.getenv("FIRASA_DEEPSEEK_API_KEY", "")
+        self.model = os.getenv("FIRASA_DEEPSEEK_MODEL", "deepseek-v4-flash")
+
+    async def _complete(self, prompt: str, max_tokens: int = 400) -> str:
+        body = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": 0.2,
+        }
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        timeout = httpx.Timeout(float(os.getenv("FIRASA_LLM_TIMEOUT", "60")))
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(
+                "https://api.deepseek.com/chat/completions",
+                json=body,
+                headers=headers,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            choices = data.get("choices", [])
+            if choices:
+                return choices[0].get("message", {}).get("content", "")
+            return ""
+
+
 _PROVIDERS = {
+    "deepseek": DeepSeekProvider,
     "ollama": OllamaProvider,
     "huggingface": HuggingFaceProvider,
     "openai": OpenAIProvider,
-    "stub": StubProvider
+    "stub": StubProvider,
 }
 _cache: dict[str, LLMProvider] = {}
 
 
 def get_llm() -> LLMProvider:
-    key = os.getenv("FIRASA_LLM_PROVIDER", "ollama").lower()
+    key = os.getenv("FIRASA_LLM_PROVIDER", "deepseek").lower()
     if key not in _PROVIDERS:
         key = "stub"
     if key not in _cache:

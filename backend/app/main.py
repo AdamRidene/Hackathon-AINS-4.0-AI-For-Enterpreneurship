@@ -2,7 +2,12 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any, Optional
+
+# Load .env from repo root before anything else reads os.getenv()
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).parent.parent.parent / ".env", override=True)
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -192,6 +197,29 @@ def update_plan(body: PlanBody, user: dict = Depends(_current_user)) -> dict:
     return {"user": _public_user(updated)}
 
 
+class AdminSetPlanBody(BaseModel):
+    email: str
+    plan: str
+
+
+@app.post("/api/admin/set-plan")
+def admin_set_plan(body: AdminSetPlanBody, user: dict = Depends(_current_user)) -> dict:
+    if not store.is_admin(user["email"]):
+        raise HTTPException(403, "Admin access required")
+    with store.db_session() as conn:
+        row = conn.execute(
+            "SELECT * FROM users WHERE email = ?", (body.email.strip().lower(),)
+        ).fetchone()
+    if row is None:
+        raise HTTPException(404, f"No user with email {body.email}")
+    target = dict(row)
+    try:
+        updated = store.update_user_plan(target["id"], body.plan)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return {"ok": True, "user": _public_user(updated)}
+
+
 @app.patch("/api/me/profile")
 def update_profile(body: ProfileUpdateBody, user: dict = Depends(_current_user)) -> dict:
     updated = store.update_user_profile(
@@ -211,7 +239,7 @@ def update_profile(body: ProfileUpdateBody, user: dict = Depends(_current_user))
 
 
 @app.post("/api/projects")
-async def create_project(body: CreateProjectBody, user: dict = Depends(_current_user)) -> dict:
+def create_project(body: CreateProjectBody, user: dict = Depends(_current_user)) -> dict:
     limit = store.PLAN_LIMITS[user["plan"]]
     if store.count_projects_for_owner(user["id"]) >= limit:
         raise HTTPException(
@@ -225,10 +253,6 @@ async def create_project(body: CreateProjectBody, user: dict = Depends(_current_
         answered_questions=["name"] if body.name else [],
     )
     store.save(profile)
-    
-    # Establish initial audit baseline
-    await _run_owned_audit(profile.project_id, user)
-    
     sm = IntakeStateMachine(profile)
     q = sm.next_question()
     return {"project_id": profile.project_id,
@@ -276,7 +300,7 @@ def get_project_questions(pid: str, user: dict = Depends(_current_user)) -> list
 
 
 @app.post("/api/projects/{pid}/answer")
-async def answer(pid: str, body: AnswerBody, user: dict = Depends(_current_user)) -> dict:
+def answer(pid: str, body: AnswerBody, user: dict = Depends(_current_user)) -> dict:
     profile = _require_owned(pid, user)
     sm = IntakeStateMachine(profile)
     try:
@@ -284,10 +308,6 @@ async def answer(pid: str, body: AnswerBody, user: dict = Depends(_current_user)
     except (KeyError, ValueError) as e:
         raise HTTPException(400, str(e))
     store.save(profile)
-    
-    # Recalculate audit automatically on every answer submission
-    await _run_owned_audit(pid, user)
-    
     q = sm.next_question()
     return {"accepted": True, "next_question": q.to_dict() if q else None,
             "progress": sm.progress(), "intake_complete": profile.intake_complete}
