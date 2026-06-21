@@ -1,19 +1,29 @@
 """Firasa FastAPI application — REST surface over the orchestration layer."""
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
+import re
+import shutil
+from pathlib import Path
 from typing import Any, Optional
+from uuid import uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, File as FastAPIFile, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from . import __version__, store
+from .auth import get_current_user, extract_token
+from .config import settings
 from .schema import ProjectProfile
 from .intake import IntakeStateMachine
 from .orchestrator import run_audit, grounded_assistant_reply
 from .rag.knowledge_base import get_kb
 from .llm import get_llm
+
+_logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Firasa Orientation Engine", version=__version__)
 app.add_middleware(
@@ -24,6 +34,9 @@ app.add_middleware(
 # --------------------------------------------------------------------------- #
 # Request models                                                              #
 # --------------------------------------------------------------------------- #
+_EMAIL_RE = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
+
+
 class CreateProjectBody(BaseModel):
     name: Optional[str] = None
     language: str = "fr"
@@ -38,6 +51,20 @@ class AuthBody(BaseModel):
     phone: Optional[str] = None
     role: Optional[str] = None
     company: Optional[str] = None
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        if not _EMAIL_RE.match(v.strip()):
+            raise ValueError("Invalid email format")
+        return v.strip()
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        if len(v) < 6:
+            raise ValueError("Password must be at least 6 characters")
+        return v
 
 
 class PlanBody(BaseModel):
@@ -65,34 +92,7 @@ class AssistantBody(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
-# Health & metadata                                                           #
-# --------------------------------------------------------------------------- #
-@app.get("/api/health")
-def health() -> dict:
-    kb = get_kb()
-    return {
-        "status": "ok",
-        "version": __version__,
-        "llm_provider": get_llm().name,
-        "llm_model": os.getenv("FIRASA_LLM_MODEL", "qwen3:8b"),
-        "kb_resources": len(kb),
-    }
-
-
-@app.get("/api/kb")
-def kb_overview() -> dict:
-    kb = get_kb()
-    by_institution: dict[str, int] = {}
-    by_horizon: dict[str, int] = {}
-    for c in kb.chunks:
-        by_institution[c.institution] = by_institution.get(c.institution, 0) + 1
-        by_horizon[c.horizon] = by_horizon.get(c.horizon, 0) + 1
-    return {"count": len(kb), "by_institution": by_institution,
-            "by_horizon": by_horizon, "meta": kb.meta}
-
-
-# --------------------------------------------------------------------------- #
-# Adaptive intake                                                            #
+# Helpers                                                                     #
 # --------------------------------------------------------------------------- #
 def _public_user(user: dict) -> dict:
     return {
@@ -110,24 +110,6 @@ def _public_user(user: dict) -> dict:
     }
 
 
-def _extract_token(authorization: str | None) -> str:
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(401, "Authentication required")
-    return authorization.split(" ", 1)[1].strip()
-
-
-def _current_user(authorization: str | None = Header(default=None)) -> dict:
-    token = _extract_token(authorization)
-    user = store.get_user_by_token(token)
-    if user is None:
-        raise HTTPException(401, "Invalid or expired session")
-    return user
-
-
-def _current_token(authorization: str | None = Header(default=None)) -> str:
-    return _extract_token(authorization)
-
-
 def _require(pid: str) -> ProjectProfile:
     p = store.load(pid)
     if p is None:
@@ -142,8 +124,62 @@ def _require_owned(pid: str, user: dict) -> ProjectProfile:
     return profile
 
 
+# --------------------------------------------------------------------------- #
+# Health & metadata                                                           #
+# --------------------------------------------------------------------------- #
+@app.get("/api/health")
+def health() -> dict:
+    kb = get_kb()
+    llm = get_llm()
+    model_names = {
+        "ollama": settings.llm_model,
+        "huggingface": settings.hf_model,
+        "openai": settings.openai_model,
+        "gemini": settings.gemini_model,
+        "stub": "stub",
+    }
+    return {
+        "status": "ok",
+        "version": __version__,
+        "auth_mode": settings.auth_mode,
+        "llm_provider": llm.name,
+        "llm_model": model_names.get(llm.name, "unknown"),
+        "kb_resources": len(kb),
+    }
+
+
+@app.get("/api/kb")
+def kb_overview() -> dict:
+    kb = get_kb()
+    by_institution: dict[str, int] = {}
+    by_horizon: dict[str, int] = {}
+    for c in kb.chunks:
+        by_institution[c.institution] = by_institution.get(c.institution, 0) + 1
+        by_horizon[c.horizon] = by_horizon.get(c.horizon, 0) + 1
+    return {"count": len(kb), "by_institution": by_institution,
+            "by_horizon": by_horizon, "meta": kb.meta}
+
+
+# --------------------------------------------------------------------------- #
+# Auth config discovery                                                       #
+# --------------------------------------------------------------------------- #
+@app.get("/api/auth/config")
+def auth_config() -> dict:
+    """Frontend uses this to discover the active auth mode at runtime."""
+    return {
+        "auth_mode": settings.auth_mode,
+        "supabase_url": settings.supabase_url if settings.is_supabase_auth else None,
+        "supabase_anon_key": settings.supabase_anon_key if settings.is_supabase_auth else None,
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Auth endpoints (local mode only)                                            #
+# --------------------------------------------------------------------------- #
 @app.post("/api/auth/register")
 def register(body: AuthBody) -> dict:
+    if settings.is_supabase_auth:
+        raise HTTPException(404, "Registration is managed by Supabase Auth in production mode.")
     try:
         user = store.create_user(
             body.email,
@@ -163,6 +199,8 @@ def register(body: AuthBody) -> dict:
 
 @app.post("/api/auth/login")
 def login(body: AuthBody) -> dict:
+    if settings.is_supabase_auth:
+        raise HTTPException(404, "Login is managed by Supabase Auth in production mode.")
     user = store.authenticate_user(body.email, body.password)
     if user is None:
         raise HTTPException(401, "Invalid email or password")
@@ -171,18 +209,31 @@ def login(body: AuthBody) -> dict:
 
 
 @app.post("/api/auth/logout")
-def logout(token: str = Depends(_current_token)) -> dict:
-    store.delete_session(token)
+def logout(
+    authorization: str | None = Header(default=None),
+    user: dict = Depends(get_current_user),
+) -> dict:
+    if settings.is_supabase_auth:
+        # In Supabase mode, logout happens client-side (clear JWT).
+        return {"ok": True}
+    try:
+        token = extract_token(authorization)
+        store.delete_session(token)
+    except HTTPException:
+        pass
     return {"ok": True}
 
 
 @app.get("/api/auth/me")
-def me(user: dict = Depends(_current_user)) -> dict:
+def me(user: dict = Depends(get_current_user)) -> dict:
     return {"user": _public_user(user)}
 
 
+# --------------------------------------------------------------------------- #
+# Profile & plan management                                                   #
+# --------------------------------------------------------------------------- #
 @app.patch("/api/me/plan")
-def update_plan(body: PlanBody, user: dict = Depends(_current_user)) -> dict:
+def update_plan(body: PlanBody, user: dict = Depends(get_current_user)) -> dict:
     try:
         updated = store.update_user_plan(user["id"], body.plan)
     except ValueError as exc:
@@ -193,7 +244,7 @@ def update_plan(body: PlanBody, user: dict = Depends(_current_user)) -> dict:
 
 
 @app.patch("/api/me/profile")
-def update_profile(body: ProfileUpdateBody, user: dict = Depends(_current_user)) -> dict:
+def update_profile(body: ProfileUpdateBody, user: dict = Depends(get_current_user)) -> dict:
     updated = store.update_user_profile(
         user_id=user["id"],
         name=body.name,
@@ -210,8 +261,11 @@ def update_profile(body: ProfileUpdateBody, user: dict = Depends(_current_user))
     return {"user": _public_user(updated)}
 
 
+# --------------------------------------------------------------------------- #
+# Projects — CRUD + adaptive intake                                           #
+# --------------------------------------------------------------------------- #
 @app.post("/api/projects")
-async def create_project(body: CreateProjectBody, user: dict = Depends(_current_user)) -> dict:
+async def create_project(body: CreateProjectBody, user: dict = Depends(get_current_user)) -> dict:
     limit = store.PLAN_LIMITS[user["plan"]]
     if store.count_projects_for_owner(user["id"]) >= limit:
         raise HTTPException(
@@ -225,10 +279,10 @@ async def create_project(body: CreateProjectBody, user: dict = Depends(_current_
         answered_questions=["name"] if body.name else [],
     )
     store.save(profile)
-    
+
     # Establish initial audit baseline
     await _run_owned_audit(profile.project_id, user)
-    
+
     sm = IntakeStateMachine(profile)
     q = sm.next_question()
     return {"project_id": profile.project_id,
@@ -237,14 +291,14 @@ async def create_project(body: CreateProjectBody, user: dict = Depends(_current_
 
 
 @app.get("/api/projects/{pid}/next-question")
-def next_question(pid: str, user: dict = Depends(_current_user)) -> dict:
+def next_question(pid: str, user: dict = Depends(get_current_user)) -> dict:
     sm = IntakeStateMachine(_require_owned(pid, user))
     q = sm.next_question()
     return {"next_question": q.to_dict() if q else None, "progress": sm.progress()}
 
 
 @app.get("/api/projects/{pid}/questions")
-def get_project_questions(pid: str, user: dict = Depends(_current_user)) -> list[dict]:
+def get_project_questions(pid: str, user: dict = Depends(get_current_user)) -> list[dict]:
     profile = _require_owned(pid, user)
     res = []
     from .intake.state_machine import QUESTIONS
@@ -256,11 +310,11 @@ def get_project_questions(pid: str, user: dict = Depends(_current_user)) -> list
             for p in parts:
                 if val is not None:
                     val = getattr(val, p, None)
-            
+
             # Serialize enum if needed
             if val is not None and hasattr(val, "value"):
                 val = val.value
-            
+
             res.append({
                 "id": q.id,
                 "prompt_fr": q.prompt_fr,
@@ -276,7 +330,7 @@ def get_project_questions(pid: str, user: dict = Depends(_current_user)) -> list
 
 
 @app.post("/api/projects/{pid}/answer")
-async def answer(pid: str, body: AnswerBody, user: dict = Depends(_current_user)) -> dict:
+async def answer(pid: str, body: AnswerBody, user: dict = Depends(get_current_user)) -> dict:
     profile = _require_owned(pid, user)
     sm = IntakeStateMachine(profile)
     try:
@@ -284,35 +338,84 @@ async def answer(pid: str, body: AnswerBody, user: dict = Depends(_current_user)
     except (KeyError, ValueError) as e:
         raise HTTPException(400, str(e))
     store.save(profile)
-    
-    # Recalculate audit automatically on every answer submission
-    await _run_owned_audit(pid, user)
-    
+
+    # Only auto-run the full audit pipeline when intake is complete
+    # (last question answered). Intermediate answers just update the profile.
+    if profile.intake_complete:
+        await _run_owned_audit(pid, user)
+
     q = sm.next_question()
     return {"accepted": True, "next_question": q.to_dict() if q else None,
             "progress": sm.progress(), "intake_complete": profile.intake_complete}
 
 
+class ProfilePatchBody(BaseModel):
+    """Partial update — every field is optional."""
+    name: Optional[str] = None
+    sector: Optional[str] = None
+    language: Optional[str] = None
+    team_size: Optional[int] = None
+    monthly_revenue_tnd: Optional[float] = None
+    burn_rate_tnd: Optional[float] = None
+    runway_months: Optional[int] = None
+    user_count: Optional[int] = None
+    growth_rate_pct: Optional[float] = None
+    cac_tnd: Optional[float] = None
+    ltv_tnd: Optional[float] = None
+    competitor_names: Optional[list[str]] = None
+    differentiation_narrative: Optional[str] = None
+    incorporation_date: Optional[str] = None
+    fiscal_regime: Optional[str] = None
+    key_hires: Optional[list[str]] = None
+    validation_evidence_narrative: Optional[str] = None
+
+
 @app.get("/api/projects/{pid}")
-def get_project(pid: str, user: dict = Depends(_current_user)) -> dict:
-    return store.redact(_require_owned(pid, user))
+def get_project(pid: str, user: dict = Depends(get_current_user)) -> dict:
+    return store.redact(_require_owned(pid, user), is_owner=True)
+
+
+@app.patch("/api/projects/{pid}")
+def patch_project(pid: str, body: ProfilePatchBody, user: dict = Depends(get_current_user)) -> dict:
+    """Update project profile fields directly (no state machine)."""
+    profile = _require_owned(pid, user)
+    updates = body.model_dump(exclude_none=True)
+    if not updates:
+        raise HTTPException(400, "No fields to update")
+    # Apply updates to the Pydantic model
+    for field, value in updates.items():
+        if hasattr(profile, field):
+            setattr(profile, field, value)
+    profile.updated_at = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+    store.save(profile)
+    return store.redact(profile, is_owner=True)
 
 
 # --------------------------------------------------------------------------- #
-# Audit (full pipeline) & assistant                                          #
+# Audit (full pipeline) & assistant                                           #
 # --------------------------------------------------------------------------- #
 async def _run_owned_audit(pid: str, user: dict) -> dict:
     profile = _require_owned(pid, user)
     result  = await run_audit(profile)
     result_dict = result.to_dict()
 
-    # Persist the new score vector for next-run delta comparisons if intake is complete.
-    if profile.intake_complete:
-        profile.last_score_vector = list(result.scores.vector())
+    # ── Bug fix: honour gap.override_applied — automatically reallocate ────
+    # the declared stage when overestimation is severe (magnitude >= 2).
+    if result.gap.override_applied:
+        from .schema import MaturityStage
+        corrected_stage = MaturityStage(result.diagnostic.classified_stage)
+        profile.self_assessment.declared_stage = corrected_stage
         store.save(profile)
+        # Update the gap report in the already-serialised result so the
+        # frontend renders the corrected state immediately.
+        result_dict["perception_reality_gap"]["override_applied"] = True
+        result_dict["perception_reality_gap"]["corrected_stage"] = result.diagnostic.classified_stage
+
+    # Persist the profile (score vector updated by run_audit) and audit snapshot.
+    store.save(profile)
 
     # Persist the full audit snapshot so history can retrieve it instantly.
-    stage = result.gap.classified_stage if result.gap else None
+    stage = result.gap.classified_stage
     store.save_audit(
         pid        = pid,
         owner_user_id = user["id"],
@@ -326,18 +429,18 @@ async def _run_owned_audit(pid: str, user: dict) -> dict:
 
 
 @app.post("/api/projects/{pid}/audit")
-async def audit(pid: str, user: dict = Depends(_current_user)) -> dict:
+async def audit(pid: str, user: dict = Depends(get_current_user)) -> dict:
     return await _run_owned_audit(pid, user)
 
 
 @app.post("/api/v1/projects/{pid}/diagnose")
-async def diagnose(pid: str, user: dict = Depends(_current_user)) -> dict:
+async def diagnose(pid: str, user: dict = Depends(get_current_user)) -> dict:
     """Compatibility endpoint for the final diagnostic handoff payload."""
     return await _run_owned_audit(pid, user)
 
 
 @app.post("/api/projects/{pid}/assistant")
-async def assistant(pid: str, body: AssistantBody, user: dict = Depends(_current_user)) -> dict:
+async def assistant(pid: str, body: AssistantBody, user: dict = Depends(get_current_user)) -> dict:
     profile = _require_owned(pid, user)
     return await grounded_assistant_reply(profile, body.question)
 
@@ -345,13 +448,13 @@ async def assistant(pid: str, body: AssistantBody, user: dict = Depends(_current
 # ── History / management ──────────────────────────────────────────────────── #
 
 @app.get("/api/projects")
-def list_projects(user: dict = Depends(_current_user)) -> list[dict]:
+def list_projects(user: dict = Depends(get_current_user)) -> list[dict]:
     """Return current user's saved audit summaries (newest first)."""
     return store.list_audits(user["id"])
 
 
 @app.get("/api/projects/{pid}/last-audit")
-def last_audit(pid: str, user: dict = Depends(_current_user)) -> dict:
+def last_audit(pid: str, user: dict = Depends(get_current_user)) -> dict:
     """Return the last persisted audit result without re-running the pipeline."""
     _require_owned(pid, user)          # 404 if profile missing or not owned
     result = store.get_audit(pid)
@@ -361,7 +464,7 @@ def last_audit(pid: str, user: dict = Depends(_current_user)) -> dict:
 
 
 @app.delete("/api/projects/{pid}")
-def delete_project(pid: str, user: dict = Depends(_current_user)) -> dict:
+def delete_project(pid: str, user: dict = Depends(get_current_user)) -> dict:
     _require_owned(pid, user)
     if not store.delete_project(pid):
         raise HTTPException(404, "Projet introuvable")
@@ -371,7 +474,7 @@ def delete_project(pid: str, user: dict = Depends(_current_user)) -> dict:
 # Convenience: audit an ad-hoc profile without the intake flow (for demos/tests).
 @app.post("/api/audit")
 async def audit_adhoc(profile: ProjectProfile) -> dict:
-    if os.getenv("FIRASA_DEBUG", "false").lower() != "true":
+    if not settings.debug:
         raise HTTPException(403, "Ad-hoc debugging audit endpoint is disabled")
     store.save(profile)
     result = await run_audit(profile)
@@ -379,7 +482,7 @@ async def audit_adhoc(profile: ProjectProfile) -> dict:
 
 
 @app.get("/api/eval")
-def get_evaluation_report(user: dict = Depends(_current_user)) -> dict:
+def get_evaluation_report(user: dict = Depends(get_current_user)) -> dict:
     """Run the evaluation protocol suite and return diagnostic, RAG, and scoring consistency scores."""
     from .eval_protocol import eval_diagnostic, eval_rag, eval_scoring_consistency
     return {
@@ -387,3 +490,107 @@ def get_evaluation_report(user: dict = Depends(_current_user)) -> dict:
         "rag_retrieval": eval_rag(),
         "scoring_consistency": eval_scoring_consistency(),
     }
+
+
+# --------------------------------------------------------------------------- #
+# Document upload (supporting evidence for projects)                          #
+# --------------------------------------------------------------------------- #
+_DOCS_DIR = Path(__file__).parent.parent / "_data" / "documents"
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+@app.post("/api/projects/{pid}/documents")
+async def upload_document(
+    pid: str,
+    request: Request,
+    file: UploadFile = FastAPIFile(...),
+    user: dict = Depends(get_current_user),
+) -> dict:
+    """Upload a supporting document (PDF, image, etc.) for a project."""
+    _require_owned(pid, user)
+
+    # Enforce file size limit before reading the body
+    content_length = request.headers.get("Content-Length")
+    if content_length and int(content_length) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "File too large. Maximum size is 10 MB.")
+
+    _DOCS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Sanitize filename and save
+    safe_name = re.sub(r"[^a-zA-Z0-9_.-]", "_", file.filename or "document")
+    doc_id = uuid4().hex[:12]
+    storage_name = f"{pid}_{doc_id}_{safe_name}"
+    file_path = _DOCS_DIR / storage_name
+
+    try:
+        with open(file_path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+    except Exception as e:
+        raise HTTPException(500, f"Failed to save document: {str(e)}")
+
+    # Extract text from PDFs (run in thread executor to avoid blocking)
+    extracted = None
+    if safe_name.lower().endswith(".pdf"):
+        try:
+            import pdfplumber  # noqa: F811
+        except ImportError:
+            pass  # pdfplumber not installed — skip extraction
+        else:
+            try:
+                loop = asyncio.get_running_loop()
+
+                def _extract():
+                    with pdfplumber.open(file_path) as pdf:
+                        pages = [p.extract_text() or "" for p in pdf.pages]
+                        return "\n".join(pages)[:5000]  # cap at 5K chars
+
+                extracted = await loop.run_in_executor(None, _extract)
+            except Exception as exc:
+                _logger.warning("PDF extraction failed for %s: %s", safe_name, exc)
+                extracted = None
+
+    # Store document record
+    store.save_document(
+        doc_id=doc_id,
+        project_id=pid,
+        owner_user_id=user["id"],
+        filename=safe_name,
+        storage_path=str(file_path),
+        extracted_text=extracted,
+    )
+
+    return {
+        "id": doc_id,
+        "filename": safe_name,
+        "extracted_preview": extracted[:200] if extracted else None,
+        "uploaded": True,
+    }
+
+
+@app.get("/api/projects/{pid}/documents")
+def list_documents(pid: str, user: dict = Depends(get_current_user)) -> list[dict]:
+    """List all uploaded documents for a project."""
+    _require_owned(pid, user)
+    return store.list_documents(pid)
+
+
+@app.delete("/api/projects/{pid}/documents/{doc_id}")
+def delete_document(
+    pid: str,
+    doc_id: str,
+    user: dict = Depends(get_current_user),
+) -> dict:
+    """Delete a specific document from a project."""
+    _require_owned(pid, user)
+    doc = store.get_document(doc_id)
+    if doc is None or doc["project_id"] != pid:
+        raise HTTPException(404, "Document introuvable")
+
+    # Remove file from disk
+    try:
+        Path(doc["storage_path"]).unlink(missing_ok=True)
+    except Exception:
+        pass
+
+    store.delete_document(doc_id)
+    return {"deleted": doc_id}

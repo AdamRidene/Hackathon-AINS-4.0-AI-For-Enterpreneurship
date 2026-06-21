@@ -11,6 +11,7 @@ roadmap. One call, one shared state, one audit object.
 """
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 
 from .schema import ProjectProfile
@@ -94,14 +95,23 @@ async def run_audit(profile: ProjectProfile) -> AuditResult:
             "deltas": {d: round(new_vec[i] - prev[i], 1) for i, d in enumerate(dims)},
         }
 
-    # Phase 3 — grounded roadmap (gaps + scores -> RAG) and explanations.
-    roadmap = await build_roadmap(profile, diagnostic, scores, gap)
+    # Phase 3 — grounded roadmap + explanations (all independent, run in parallel).
+    roadmap, scores_expl, gap_expl = await asyncio.gather(
+        build_roadmap(profile, diagnostic, scores, gap),
+        explain.explain_all_scores(scores, lang=profile.language),
+        explain.explain_gap(gap, lang=profile.language),
+    )
     explanations = {
-        "scores": await explain.explain_all_scores(scores, lang=profile.language),
-        "gap": await explain.explain_gap(gap, lang=profile.language),
+        "scores": scores_expl,
+        "gap": gap_expl,
         "pcoh_rationale": pcoh_rationale,
         "diagnostic_rationale": diagnostic.rationale_ar if profile.language == "ar" else diagnostic.rationale_fr,
     }
+
+    # Persist the score vector on the profile so future audits and the
+    # assistant fallback path always compute deltas against the latest run.
+    if profile.intake_complete:
+        profile.last_score_vector = list(scores.vector())
 
     return AuditResult(
         profile=profile, diagnostic=diagnostic, gap=gap, scores=scores,

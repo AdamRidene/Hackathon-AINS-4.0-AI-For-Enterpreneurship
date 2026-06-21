@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { Component, useEffect, useState } from "react";
 import { api } from "./api.js";
+import { auth } from "./auth.js";
 import Landing    from "./components/Landing.jsx";
 import Interview  from "./components/Interview.jsx";
 import Processing from "./components/Processing.jsx";
@@ -7,13 +8,52 @@ import Results    from "./components/Results.jsx";
 import History    from "./components/History.jsx";
 import ProfileModal from "./components/ProfileModal.jsx";
 import ProfilePage from "./components/ProfilePage.jsx";
+import ProjectDashboard from "./components/ProjectDashboard.jsx";
+import MonParcours from "./components/MonParcours.jsx";
 import Topbar from "./components/Topbar.jsx";
 import EvaluationReport from "./components/EvaluationReport.jsx";
+import Toast from "./components/Toast.jsx";
+import ConfirmDialog from "./components/ConfirmDialog.jsx";
+
+
+/** React Error Boundary — prevents white-screen crashes in production. */
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          display: "flex", flexDirection: "column", alignItems: "center",
+          justifyContent: "center", minHeight: "100vh", padding: 40,
+          textAlign: "center", gap: 16,
+        }}>
+          <div style={{ fontSize: "3rem" }}>⚠️</div>
+          <h2 style={{ fontFamily: "var(--f-display)", fontStyle: "italic" }}>
+            Une erreur est survenue
+          </h2>
+          <p style={{ color: "var(--text-sub)", maxWidth: 480 }}>
+            {this.state.error?.message || "Erreur inattendue."}
+          </p>
+          <button className="primary" onClick={() => window.location.reload()}>
+            Recharger la page
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 
 export default function App() {
   /* ── Global state ── */
-  const [phase,  setPhase]  = useState("start");   // start | intake | processing | audit | history
+  const [phase,  setPhase]  = useState("start");   // start | intake | processing | audit | history | dashboard | profile | eval
   const [lang,   setLang]   = useState(() => localStorage.getItem("firasa_lang") || "fr");
   const [health, setHealth] = useState(null);
   const [error,  setError]  = useState(null);
@@ -34,13 +74,18 @@ export default function App() {
 
   const [theme, setTheme] = useState(() => localStorage.getItem("firasa_theme") || "dark");
 
-  const [user, setUser] = useState({ name: "Entrepreneur", plan: "free" });
+  const [user, setUser] = useState(null);
   const [plan, setPlan] = useState("free");
   const [showProfileModal, setShowProfileModal] = useState(false);
-  const [profileReturnPhase, setProfileReturnPhase] = useState("start");
   const [showLimitModal, setShowLimitModal] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [confirmDialog, setConfirmDialog] = useState(null); // { title, message, confirmLabel, cancelLabel, variant, onConfirm }
 
   async function autoLogin() {
+    // Only auto-login in local dev mode — NEVER in production.
+    if (!import.meta.env.DEV || auth.getMode() !== "local") {
+      return;
+    }
     const mockCredentials = {
       email: "mock.developer@firasa.tn",
       password: "password123",
@@ -80,22 +125,35 @@ export default function App() {
   }, [lang]);
 
   useEffect(() => {
-    api.health().then(setHealth).catch(() => setHealth({ status: "down" }));
-    const token = api.getToken();
-    if (token) {
-      api.me()
-        .then((me) => {
+    async function bootstrap() {
+      // Initialise the auth module first (discovers mode from backend)
+      await auth.init();
+
+      // Check health
+      api.health().then(setHealth).catch(() => setHealth({ status: "down" }));
+
+      // Restore session from token or Supabase
+      try {
+        const me = await auth.me();
+        if (me) {
           setUser(me);
           setPlan(me.plan || "free");
-          return refreshHistory();
-        })
-        .catch(() => {
-          api.setToken(null);
-          autoLogin();
-        });
-    } else {
-      autoLogin();
+          await refreshHistory();
+          return;
+        }
+      } catch {
+        // No valid session — continue to autoLogin fallback
+      }
+
+      // DEV ONLY: auto-create mock user for local development
+      await autoLogin();
     }
+    bootstrap().catch((err) => {
+      console.error("Bootstrap failed:", err);
+      setError(lang === "ar"
+        ? "فشل تهيئة التطبيق. يرجى تحديث الصفحة."
+        : "Échec de l'initialisation. Veuillez rafraîchir la page.");
+    });
   }, []);
 
   useEffect(() => {
@@ -133,18 +191,17 @@ export default function App() {
   }
 
   /* ── Phase: start → intake ── */
-  async function handleStart(name) {
+  async function handleStart() {
     if (!user) {
       await autoLogin();
     }
     setBusy(true); setError(null);
     try {
-      const projectName = name || "";
-      const res = await api.createProject(projectName, lang);
+      const res = await api.createProject("", lang);
       setPid(res.project_id);
       setQuestion(res.next_question);
       setProgress(res.progress);
-      saveHistory(res.project_id, projectName || (lang === "ar" ? "مشروع جديد" : "Nouveau Projet"), null);
+      saveHistory(res.project_id, lang === "ar" ? "مشروع جديد" : "Nouveau Projet", null);
       setPhase("intake");
     } catch (err) {
       if (err.message.includes("limit reached") || err.message.includes("Limit reached") || err.message.includes("limite")) {
@@ -156,7 +213,7 @@ export default function App() {
     finally { setBusy(false); }
   }
 
-  /* ── Phase: resume existing ── */
+  /* ── Phase: resume existing (Continue intake) ── */
   async function handleResume(existingId) {
     setBusy(true); setError(null);
     try {
@@ -170,10 +227,59 @@ export default function App() {
         setProgress(qRes.progress);
         setPhase("intake");
       } else {
-        await runAudit(existingId);
+        await runAudit(existingId, "start");
       }
     } catch (err) { setError(err.message); }
     finally { setBusy(false); }
+  }
+
+  /* ── Phase: view project (Dashboard — READ-ONLY) ── */
+  function handleViewProject(projectId) {
+    setPid(projectId);
+    setPhase("dashboard");
+  }
+
+  /* ── Phase: view audit from dashboard ── */
+  function handleViewAuditFromDashboard(projectId, auditData) {
+    setPid(projectId);
+    setAudit(auditData);
+    setPhase("audit");
+  }
+
+  /* ── Phase: continue intake from dashboard ── */
+  async function handleContinueIntake(projectId) {
+    await handleResume(projectId);
+  }
+
+  /* ── Phase: edit project from dashboard ── */
+  async function handleEditProject(projectId) {
+    // Go to intake with the existing project for editing
+    await handleResume(projectId);
+  }
+
+  /* ── Phase: Mon Parcours ── */
+  function handleMonParcours(projectId) {
+    setPid(projectId);
+    setPhase("parcours");
+  }
+
+  /* ── Skip to audit confirmation ── */
+  function handleSkipConfirm() {
+    setConfirmDialog({
+      title: lang === "ar"
+        ? "إطلاق التدقيق الآن؟"
+        : "Lancer l'audit maintenant ?",
+      message: lang === "ar"
+        ? "لم تجِب بعد على بعض الأسئلة. قد تكون المؤشرات منقوصة أو مغلقة:\n\n• مؤشر السوق: قد يُسقف عند 30 بسبب غياب التحقق من العملاء\n• مؤشر القابلية للتوسع: سيظل منخفضًا دون معطيات التكاليف\n• المؤشر البيئي: قد يكون صفرًا دون معطيات الاستدامة\n\nننصح بإكمال الأسئلة للحصول على تشخيص أدق."
+        : "Vous n'avez pas répondu à toutes les questions. Vos scores pourraient être incomplets ou plafonnés :\n\n• Score Marché : peut être plafonné à 30 sans preuve de validation client\n• Score Scalabilité : restera bas sans données de coûts\n• Score Green : peut être à zéro sans données de durabilité\n\nNous vous conseillons de compléter le questionnaire pour un diagnostic plus précis.",
+      confirmLabel: lang === "ar" ? "تدقيق الآن" : "Auditer maintenant",
+      cancelLabel: lang === "ar" ? "متابعة الأسئلة" : "Continuer le questionnaire",
+      variant: "warning",
+      onConfirm: () => {
+        setConfirmDialog(null);
+        runAudit(pid, "intake");
+      },
+    });
   }
 
   /* ── Phase: intake → answer ── */
@@ -187,7 +293,7 @@ export default function App() {
       }
       if (res.intake_complete || !res.next_question) {
         // transition to processing — fire audit in parallel with minimum wait
-        await handleRunAudit();
+        await runAudit(pid, "intake");
       } else {
         setQuestion(res.next_question);
         setProgress(res.progress);
@@ -197,36 +303,25 @@ export default function App() {
   }
 
   /* ── Phase: intake → processing → audit ── */
-  async function handleRunAudit() {
+  async function runAudit(projectId, returnPhase = "start") {
     setPhase("processing");
     setError(null);
     try {
       const [res] = await Promise.all([
-        api.audit(pid),
-        new Promise(r => setTimeout(r, 2800)),  // minimum animation time
-      ]);
-      if (res.scores?.vector) saveVector(pid, res.scores.vector);
-      setAudit(res);
-      setPhase("audit");
-    } catch (err) {
-      setError(err.message);
-      setPhase("intake");  // back to intake on error
-    }
-  }
-
-  async function runAudit(projectId) {
-    setPhase("processing");
-    try {
-      const [res] = await Promise.all([
         api.audit(projectId),
-        new Promise(r => setTimeout(r, 2800)),
+        new Promise(r => setTimeout(r, 2800)),  // minimum animation time
       ]);
       if (res.scores?.vector) saveVector(projectId, res.scores.vector);
       setAudit(res);
       setPhase("audit");
     } catch (err) {
+      if (err.name === "AbortError") {
+        // User navigated away — no error to display
+        setPhase(returnPhase);
+        return;
+      }
       setError(err.message);
-      setPhase("start");
+      setPhase(returnPhase);
     }
   }
 
@@ -242,13 +337,7 @@ export default function App() {
     setQuestion(null); setProgress(null); setError(null);
   }
 
-  /* ── History: load saved audit without re-running pipeline ── */
-  function handleViewFromHistory(projectId, auditData) {
-    setPid(projectId);
-    setAudit(auditData);
-    setPhase("audit");
-  }
-
+  /* ── Project deletion handler ── */
   function handleProjectDeleted(projectId) {
     const nextHistory = history.filter(h => h.project_id !== projectId);
     setHistory(nextHistory);
@@ -266,6 +355,7 @@ export default function App() {
       setQuestion(null);
       setProgress(null);
     }
+    setToast({ message: lang === "ar" ? "تم حذف المشروع" : "Projet supprimé", type: "success" });
   }
 
   function handleAuthUser(nextUser) {
@@ -292,12 +382,12 @@ export default function App() {
       setShowProfileModal(true);
       return;
     }
-    setProfileReturnPhase(phase);
     setPhase("profile");
   }
 
   function closeProfilePage() {
-    setPhase(profileReturnPhase || "start");
+    // Always return to the main landing page — not the previous phase
+    setPhase("start");
   }
 
   function openHistory() {
@@ -313,6 +403,7 @@ export default function App() {
 
   /* ── Render ── */
   return (
+    <ErrorBoundary>
     <>
       {phase !== "processing" && (
         <Topbar
@@ -325,12 +416,13 @@ export default function App() {
           openProfile={openProfilePage}
           health={health}
           onLogoClick={restart}
+          onHome={restart}
           onEvalClick={() => setPhase("eval")}
         />
       )}
 
       {error && (
-        <div className="error-banner" style={{ maxWidth:900, margin:"16px auto", borderRadius:10 }}>
+        <div className="error-banner" role="alert" style={{ maxWidth:900, margin:"16px auto", borderRadius:10 }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
             <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
@@ -352,23 +444,44 @@ export default function App() {
           history={history}
           busy={busy}
           onStart={handleStart}
-          onResume={handleResume}
+          onViewProject={handleViewProject}
           onViewHistory={openHistory}
+        />
+      )}
+
+      {phase === "dashboard" && pid && (
+        <ProjectDashboard
+          pid={pid}
+          lang={lang}
+          api={api}
+          onBack={() => setPhase("history")}
+          onViewAudit={handleViewAuditFromDashboard}
+          onContinueIntake={handleContinueIntake}
+          onEditProject={handleEditProject}
+          onDeleted={handleProjectDeleted}
+          onMonParcours={handleMonParcours}
+        />
+      )}
+
+      {phase === "parcours" && pid && (
+        <MonParcours
+          pid={pid}
+          lang={lang}
+          api={api}
+          onBack={() => setPhase("dashboard")}
+          checkedMilestones={checked}
         />
       )}
 
       {phase === "history" && (
         <History
           lang={lang}
-          theme={theme}
-          setTheme={setTheme}
           user={user}
           plan={plan}
           openProfile={openProfilePage}
           api={api}
           onBack={() => setPhase("start")}
-          onView={handleViewFromHistory}
-          onResume={handleResume}
+          onViewProject={handleViewProject}
           onDeleted={handleProjectDeleted}
         />
       )}
@@ -376,8 +489,6 @@ export default function App() {
       {phase === "intake" && question && (
         <Interview
           lang={lang}
-          theme={theme}
-          setTheme={setTheme}
           user={user}
           plan={plan}
           openProfile={openProfilePage}
@@ -385,7 +496,7 @@ export default function App() {
           progress={progress}
           busy={busy}
           onSubmit={handleAnswer}
-          onSkipToAudit={handleRunAudit}
+          onSkipConfirm={handleSkipConfirm}
           pid={pid}
           api={api}
         />
@@ -400,8 +511,6 @@ export default function App() {
           audit={audit}
           pid={pid}
           lang={lang}
-          theme={theme}
-          setTheme={setTheme}
           user={user}
           plan={plan}
           openProfile={openProfilePage}
@@ -424,9 +533,9 @@ export default function App() {
           onLogout={handleLogout}
           onUserUpdated={handleAuthUser}
           onProjectDeleted={handleProjectDeleted}
-          onResumeProject={async (projectId) => {
+          onViewProject={(projectId) => {
             closeProfilePage();
-            await handleResume(projectId);
+            handleViewProject(projectId);
           }}
         />
       )}
@@ -488,5 +597,18 @@ export default function App() {
         </div>
       )}
     </>
+      <Toast toast={toast} onDismiss={() => setToast(null)} lang={lang} />
+      <ConfirmDialog
+        isOpen={!!confirmDialog}
+        title={confirmDialog?.title || ""}
+        message={confirmDialog?.message || ""}
+        confirmLabel={confirmDialog?.confirmLabel || ""}
+        cancelLabel={confirmDialog?.cancelLabel || ""}
+        variant={confirmDialog?.variant || "warning"}
+        onConfirm={confirmDialog?.onConfirm || (() => setConfirmDialog(null))}
+        onCancel={() => setConfirmDialog(null)}
+        lang={lang}
+      />
+    </ErrorBoundary>
   );
 }

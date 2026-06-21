@@ -13,6 +13,7 @@ Provider selection via env var FIRASA_LLM_PROVIDER:
   - "ollama"      (default) local Ollama, model FIRASA_LLM_MODEL (qwen3:8b)
   - "huggingface" HF Inference API, model FIRASA_HF_MODEL, token FIRASA_HF_TOKEN
   - "openai"      OpenAI-compatible cloud API (Groq, OpenRouter, Gemini, OpenAI)
+  - "gemini"      Google Gemini via generative-ai SDK
   - "stub"        deterministic, no network — always available
 
 Every provider falls back to the deterministic StubProvider on any error, so the
@@ -21,13 +22,38 @@ and justifier therefore always return *something* auditable.
 """
 from __future__ import annotations
 
+import asyncio
 import json
-import os
+import logging
+import random
 import re
+import threading
 from abc import ABC, abstractmethod
 from typing import Optional
 
 import httpx
+
+from ..config import settings
+
+logger = logging.getLogger(__name__)
+
+# Retry configuration
+MAX_RETRIES = 3
+BASE_DELAY = 1.0  # seconds
+MAX_DELAY = 10.0  # seconds
+RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
+
+
+def _backoff(attempt: int) -> float:
+    """Exponential backoff with jitter: delay = min(max, base * 2^attempt) + jitter."""
+    delay = min(MAX_DELAY, BASE_DELAY * (2 ** attempt))
+    jitter = random.uniform(0, delay * 0.5)
+    return delay + jitter
+
+
+async def _retry_sleep(attempt: int) -> None:
+    """Sleep with exponential backoff."""
+    await asyncio.sleep(_backoff(attempt))
 
 
 # --------------------------------------------------------------------------- #
@@ -75,6 +101,40 @@ class LLMProvider(ABC):
     async def _complete(self, prompt: str, max_tokens: int = 400) -> str:
         ...
 
+    async def _complete_with_retry(self, prompt: str, max_tokens: int = 400) -> str:
+        """Call _complete with exponential-backoff retry on transient failures."""
+        last_exc: Optional[Exception] = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                return await self._complete(prompt, max_tokens)
+            except httpx.HTTPStatusError as e:
+                last_exc = e
+                if e.response.status_code in RETRYABLE_STATUSES and attempt < MAX_RETRIES - 1:
+                    logger.warning(
+                        "LLM %s HTTP %s — retry %d/%d",
+                        self.name, e.response.status_code, attempt + 1, MAX_RETRIES,
+                    )
+                    await _retry_sleep(attempt)
+                else:
+                    raise
+            except (httpx.TimeoutException, httpx.ConnectError, httpx.RemoteProtocolError) as e:
+                last_exc = e
+                if attempt < MAX_RETRIES - 1:
+                    logger.warning(
+                        "LLM %s network error: %s — retry %d/%d",
+                        self.name, e, attempt + 1, MAX_RETRIES,
+                    )
+                    await _retry_sleep(attempt)
+                else:
+                    raise
+            except RuntimeError:
+                # StubProvider or other deliberate failures — don't retry
+                raise
+        # Should not be reached, but satisfy type checker
+        if last_exc:
+            raise last_exc
+        raise RuntimeError("_complete_with_retry: unreachable")
+
     # ---- High-level tasks (shared across providers) ---------------------- #
     async def judge_value_proposition(self, narrative: Optional[str]) -> tuple[float, str]:
         """Return (P_coh, rationale). Always deterministic-anchored."""
@@ -89,8 +149,11 @@ class LLMProvider(ABC):
             f"Value proposition:\n\"\"\"{narrative}\"\"\""
         )
         try:
-            raw = await self._complete(prompt, max_tokens=300)
-            m = re.search(r"\{.*\}", raw, re.DOTALL)
+            raw = await self._complete_with_retry(prompt, max_tokens=300)
+            raw = _strip_think(raw)  # remove qwen3-style reasoning blocks
+            # Extract the FIRST complete JSON object (non-greedy) to avoid
+            # capturing multiple objects when the LLM emits extra text.
+            m = re.search(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", raw)
             if m:
                 obj = json.loads(m.group(0))
                 score = float(max(0, min(100, obj.get("score", rubric))))
@@ -116,7 +179,7 @@ class LLMProvider(ABC):
                 "evidence. Do not invent facts.\n\n" + context
             )
         try:
-            completed_str = await self._complete(prompt, max_tokens=220)
+            completed_str = await self._complete_with_retry(prompt, max_tokens=220)
             out = completed_str.strip()
             if out:
                 return _strip_think(out)
@@ -128,10 +191,10 @@ class LLMProvider(ABC):
         """Grounded Q&A: answer ONLY from the structured context provided."""
         if lang == "ar":
             prompt = (
-                "Tu es l'assistant Firasa. Réponds à la question du fondateur en arabe "
-                "(arabe tunisien ou arabe standard moderne simple), en te basant UNIQUEMENT sur le contexte "
-                "structuré (diagnostic, scores, feuille de route). N'invente aucun programme.\n\n"
-                f"Contexte:\n{context}\n\nQuestion: {question}\n\nRéponse:"
+                "أنت مساعد فراسة. أجب على سؤال المؤسس بالعربية "
+                "(العربية التونسية أو العربية الفصحى المبسطة)، معتمداً فقط على السياق "
+                "المنظم (التشخيص، المؤشرات، خارطة الطريق). لا تخترع أي برنامج.\n\n"
+                f"السياق:\n{context}\n\nالسؤال: {question}\n\nالجواب:"
             )
         else:
             prompt = (
@@ -141,7 +204,7 @@ class LLMProvider(ABC):
                 f"Contexte:\n{context}\n\nQuestion: {question}\n\nRéponse:"
             )
         try:
-            completed_str = await self._complete(prompt, max_tokens=300)
+            completed_str = await self._complete_with_retry(prompt, max_tokens=300)
             out = completed_str.strip()
             if out:
                 return _strip_think(out)
@@ -175,7 +238,7 @@ class LLMProvider(ABC):
                 f"Gap: {gap}\n\nSources:\n{joined}"
             )
         try:
-            completed_str = await self._complete(prompt, max_tokens=260)
+            completed_str = await self._complete_with_retry(prompt, max_tokens=260)
             out = completed_str.strip()
             if out:
                 return _strip_think(out)
@@ -203,8 +266,8 @@ class OllamaProvider(LLMProvider):
     name = "ollama"
 
     def __init__(self) -> None:
-        self.host = os.getenv("FIRASA_OLLAMA_HOST", "http://localhost:11434")
-        self.model = os.getenv("FIRASA_LLM_MODEL", "qwen3:8b")
+        self.host = settings.ollama_host
+        self.model = settings.llm_model
 
     async def _complete(self, prompt: str, max_tokens: int = 400) -> str:
         body = {
@@ -213,7 +276,7 @@ class OllamaProvider(LLMProvider):
             "stream": False,
             "options": {"num_predict": max_tokens, "temperature": 0.2},
         }
-        timeout = httpx.Timeout(float(os.getenv("FIRASA_LLM_TIMEOUT", "30")))
+        timeout = httpx.Timeout(float(str(settings.llm_timeout)))
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(f"{self.host}/api/generate", json=body)
             resp.raise_for_status()
@@ -224,8 +287,8 @@ class HuggingFaceProvider(LLMProvider):
     name = "huggingface"
 
     def __init__(self) -> None:
-        self.model = os.getenv("FIRASA_HF_MODEL", "Qwen/Qwen2.5-7B-Instruct")
-        self.token = os.getenv("FIRASA_HF_TOKEN", "")
+        self.model = settings.hf_model
+        self.token = settings.hf_token
         self.url = f"https://api-inference.huggingface.co/models/{self.model}"
 
     async def _complete(self, prompt: str, max_tokens: int = 400) -> str:
@@ -237,7 +300,7 @@ class HuggingFaceProvider(LLMProvider):
         headers = {}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
-        timeout = httpx.Timeout(float(os.getenv("FIRASA_LLM_TIMEOUT", "30")))
+        timeout = httpx.Timeout(float(str(settings.llm_timeout)))
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(self.url, json=body, headers=headers)
             resp.raise_for_status()
@@ -251,9 +314,9 @@ class OpenAIProvider(LLMProvider):
     name = "openai"
 
     def __init__(self) -> None:
-        self.api_key = os.getenv("FIRASA_OPENAI_API_KEY", "")
-        self.api_base = os.getenv("FIRASA_OPENAI_API_BASE", "https://api.openai.com/v1").rstrip("/")
-        self.model = os.getenv("FIRASA_OPENAI_MODEL", "gpt-4o-mini")
+        self.api_key = settings.openai_api_key
+        self.api_base = settings.openai_api_base.rstrip("/")
+        self.model = settings.openai_model
 
     async def _complete(self, prompt: str, max_tokens: int = 400) -> str:
         body = {
@@ -268,7 +331,7 @@ class OpenAIProvider(LLMProvider):
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
-        timeout = httpx.Timeout(float(os.getenv("FIRASA_LLM_TIMEOUT", "30")))
+        timeout = httpx.Timeout(float(str(settings.llm_timeout)))
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(f"{self.api_base}/chat/completions", json=body, headers=headers)
             resp.raise_for_status()
@@ -279,17 +342,76 @@ class OpenAIProvider(LLMProvider):
             return ""
 
 
+class GeminiProvider(LLMProvider):
+    """Google Gemini via the native generative-ai SDK (free tier).
+
+    Free tier: gemini-2.0-flash — 15 RPM, 1M tokens/day.
+    Get an API key at https://aistudio.google.com/apikey
+
+    Thread-safety: a module-level lock serialises calls to genai.configure()
+    (which mutates global SDK state) and a per-instance flag avoids redundant
+    re-configuration when the API key hasn't changed.
+    """
+
+    name = "gemini"
+    _configure_lock = threading.Lock()
+    _configured_key: Optional[str] = None
+
+    def __init__(self) -> None:
+        self.api_key = settings.gemini_api_key
+        self.model = settings.gemini_model
+        self._genai = None
+        try:
+            import google.generativeai as _genai
+            self._genai = _genai
+        except ImportError:
+            pass
+
+    async def _complete(self, prompt: str, max_tokens: int = 400) -> str:
+        if self._genai is None:
+            raise RuntimeError(
+                "google-generativeai is not installed. "
+                "Run: pip install google-generativeai"
+            )
+
+        # Only call configure() when the API key changes (the SDK
+        # configure() mutates global state, so we serialise with a lock).
+        with GeminiProvider._configure_lock:
+            if GeminiProvider._configured_key != self.api_key:
+                self._genai.configure(api_key=self.api_key)
+                GeminiProvider._configured_key = self.api_key
+
+        # The Gemini SDK is synchronous — run in a thread to avoid blocking
+        # the async event loop.
+        loop = asyncio.get_running_loop()
+
+        def _generate():
+            model = self._genai.GenerativeModel(self.model)
+            response = model.generate_content(
+                prompt,
+                generation_config={
+                    "max_output_tokens": max_tokens,
+                    "temperature": 0.2,
+                },
+            )
+            return response.text or ""
+
+        return await loop.run_in_executor(None, _generate)
+
+
 _PROVIDERS = {
     "ollama": OllamaProvider,
     "huggingface": HuggingFaceProvider,
     "openai": OpenAIProvider,
-    "stub": StubProvider
+    "gemini": GeminiProvider,
+    "stub": StubProvider,
 }
 _cache: dict[str, LLMProvider] = {}
 
 
 def get_llm() -> LLMProvider:
-    key = os.getenv("FIRASA_LLM_PROVIDER", "ollama").lower()
+    # Read env at call time so tests can patch os.environ mid-run.
+    key = settings.llm_provider
     if key not in _PROVIDERS:
         key = "stub"
     if key not in _cache:
@@ -298,3 +420,8 @@ def get_llm() -> LLMProvider:
         except Exception:
             _cache[key] = StubProvider()
     return _cache[key]
+
+
+def clear_llm_cache() -> None:
+    """Clear the provider cache so tests can switch providers."""
+    _cache.clear()

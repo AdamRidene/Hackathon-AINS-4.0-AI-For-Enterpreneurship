@@ -60,13 +60,30 @@ class Retriever:
         allowed = set(ROUTING_MATRIX.get(gap_category, ["general"]))
         # Hard metadata filter FIRST (routing matrix), then similarity rank.
         candidates = [c for c in self.kb.chunks if allowed & set(c.gap_categories)]
-        if not candidates:  # graceful fallback, never empty-crash
-            candidates = self.kb.chunks
-        qvec = self.kb.query_vector(query)
-        scored = sorted(
-            ((c, self.kb.cosine(qvec, c.vector)) for c in candidates),
-            key=lambda x: x[1], reverse=True,
-        )[:k]
+        if not candidates:
+            # Return empty result — do NOT fall back to all chunks.
+            # The anti-hallucination routing constraint must be preserved.
+            return RoutedResult(
+                gap_category=gap_category, query=query,
+                chunks=[], scores=[],
+            )
+
+        # Use semantic embeddings if available, otherwise TF-IDF
+        if self.kb.has_embeddings():
+            q_emb = self.kb.query_embedding(query)
+            candidate_embs = [self.kb._embeddings[self.kb.chunks.index(c)] for c in candidates]
+            scored = sorted(
+                ((c, self.kb.cosine_dense(q_emb, c_emb))
+                 for c, c_emb in zip(candidates, candidate_embs)),
+                key=lambda x: x[1], reverse=True,
+            )[:k]
+        else:
+            qvec = self.kb.query_vector(query)
+            scored = sorted(
+                ((c, self.kb.cosine(qvec, c.vector)) for c in candidates),
+                key=lambda x: x[1], reverse=True,
+            )[:k]
+
         return RoutedResult(
             gap_category=gap_category, query=query,
             chunks=[c for c, _ in scored], scores=[s for _, s in scored],

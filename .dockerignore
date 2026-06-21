@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Build output
+frontend/dist/
+*.egg-info/
+build/
+
+# Tests and dev tools
+.pytest_cache/
+.coverage
+htmlcov/
+.git/
+.gitignore
+
+# Local data (never in container)
+backend/_data/
+
+# Environment files (secrets belong in runtime env)
+.env
+.env.*.local

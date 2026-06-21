@@ -1,9 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-
-const SECTOR_LABELS = {
-  fr: { "agri-food":"Agri-food","digital-saas":"SaaS & Numérique","industry":"Industrie","health":"Santé","greentech":"CleanTech","services":"Services","other":"Autre" },
-  ar: { "agri-food":"الصناعات الغذائية","digital-saas":"البرمجيات الرقمية","industry":"الصناعة","health":"الصحة","greentech":"التكنولوجيا الخضراء","services":"الخدمات","other":"قطاع آخر" },
-};
+import { SECTOR_LABELS } from "../constants.js";
 
 function ArabicWindBackground({ theme }) {
   const canvasRef = useRef(null);
@@ -18,10 +14,9 @@ function ArabicWindBackground({ theme }) {
     let height = (canvas.height = window.innerHeight);
 
     const particles = [];
-    const particleCount = 100;
-    const repelRadius = 110;
-    const repelStrength = 4.5;
-    const friction = 0.95;
+    const embers = [];
+    const particleCount = 80;
+    const emberCount = 30;
 
     const mouse = { x: -1000, y: -1000 };
 
@@ -43,64 +38,74 @@ function ArabicWindBackground({ theme }) {
     window.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseleave", handleMouseLeave);
 
-    // brand colors: --orange (cobalt blue), --cyan (cyan), gold/amber
     const isLight = theme === "light";
     const colors = isLight
       ? [
-          "rgba(74, 123, 247, 0.45)", // Cobalt blue
-          "rgba(6, 182, 212, 0.42)",  // Cyan
-          "rgba(180, 110, 0, 0.35)",  // Golden sand
+          "rgba(74, 123, 247, 0.45)",
+          "rgba(6, 182, 212, 0.42)",
+          "rgba(180, 110, 0, 0.35)",
         ]
       : [
-          "rgba(74, 123, 247, 0.35)", // Cobalt blue
-          "rgba(6, 182, 212, 0.3)",   // Cyan
-          "rgba(234, 179, 8, 0.22)",  // Amber Gold
+          "rgba(74, 123, 247, 0.35)",
+          "rgba(6, 182, 212, 0.3)",
+          "rgba(234, 179, 8, 0.22)",
         ];
 
+    // Wind-driven particles
     for (let i = 0; i < particleCount; i++) {
       particles.push({
         x: Math.random() * width,
         y: Math.random() * height,
         vx: (Math.random() - 0.5) * 0.4,
         vy: (Math.random() - 0.5) * 0.2,
-        size: Math.random() * 1.5 + 0.5, // very little dots
+        size: Math.random() * 1.5 + 0.5,
         color: colors[Math.floor(Math.random() * colors.length)],
         angle: Math.random() * Math.PI * 2,
         frequency: Math.random() * 0.008 + 0.003,
       });
     }
 
+    // Rising embers — drift upward slowly, fade in/out
+    for (let i = 0; i < emberCount; i++) {
+      embers.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        size: Math.random() * 2 + 1,
+        speed: Math.random() * 0.4 + 0.15,
+        opacity: Math.random(),
+        phase: Math.random() * Math.PI * 2,
+        pulse: Math.random() * 0.02 + 0.005,
+        color: colors[Math.floor(Math.random() * colors.length)],
+      });
+    }
+
     const animate = () => {
       ctx.clearRect(0, 0, width, height);
 
+      // Wind particles
       for (let i = 0; i < particles.length; i++) {
         const p = particles[i];
-
-        // Wave wind flow
         p.angle += p.frequency;
-        const windX = Math.cos(p.angle) * 0.15 + 0.2; // flow generally rightward
+        const windX = Math.cos(p.angle) * 0.15 + 0.2;
         const windY = Math.sin(p.angle) * 0.08;
-
         p.vx += windX * 0.03;
         p.vy += windY * 0.03;
 
-        // Repel from mouse
         const dx = p.x - mouse.x;
         const dy = p.y - mouse.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (dist < repelRadius && dist > 0) {
-          const force = (repelRadius - dist) / repelRadius;
-          const fx = (dx / dist) * force * repelStrength;
-          const fy = (dy / dist) * force * repelStrength;
+        if (dist < 110 && dist > 0) {
+          const force = (110 - dist) / 110;
+          const fx = (dx / dist) * force * 4.5;
+          const fy = (dy / dist) * force * 4.5;
           p.vx += fx;
           p.vy += fy;
         }
 
         p.x += p.vx;
         p.y += p.vy;
-        p.vx *= friction;
-        p.vy *= friction;
+        p.vx *= 0.95;
+        p.vy *= 0.95;
 
         if (p.x < 0) p.x = width;
         if (p.x > width) p.x = 0;
@@ -110,6 +115,19 @@ function ArabicWindBackground({ theme }) {
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
         ctx.fillStyle = p.color;
+        ctx.fill();
+      }
+
+      // Rising embers
+      for (let i = 0; i < embers.length; i++) {
+        const e = embers[i];
+        e.y -= e.speed;
+        e.phase += e.pulse;
+        if (e.y < -10) { e.y = height + 10; e.x = Math.random() * width; }
+        const alpha = e.opacity * (0.5 + 0.5 * Math.sin(e.phase));
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.size, 0, Math.PI * 2);
+        ctx.fillStyle = e.color.replace(/[\d.]+\)$/, `${alpha.toFixed(2)})`);
         ctx.fill();
       }
 
@@ -137,13 +155,13 @@ function ArabicWindBackground({ theme }) {
         height: "100vh",
         pointerEvents: "none",
         zIndex: 1,
-        opacity: 0.8,
+        opacity: 0.85,
       }}
     />
   );
 }
 
-export default function Landing({ lang, setLang, theme, setTheme, health, history, busy, onStart, onResume, onViewHistory, user, plan, openProfile }) {
+export default function Landing({ lang, setLang, theme, setTheme, health, history, busy, onStart, onViewProject, onViewHistory, user, plan, openProfile }) {
 
   const ar = lang === "ar";
   const t  = TEXTS[lang];
@@ -166,7 +184,7 @@ export default function Landing({ lang, setLang, theme, setTheme, health, histor
 
         <p className="landing-sub">{t.sub}</p>
 
-        {/* Project name form */}
+        {/* CTA buttons — no name input; name is asked as the first intake question */}
         <form
           className="landing-form"
           onSubmit={e => { e.preventDefault(); if (canStart) onStart(); }}
@@ -191,7 +209,7 @@ export default function Landing({ lang, setLang, theme, setTheme, health, histor
             <div className="landing-history-label">{t.recent}</div>
             <div className="landing-chips">
               {history.map((h, i) => (
-                <button key={i} className="landing-chip" onClick={() => onResume(h.project_id)} disabled={busy}>
+                <button key={i} className="landing-chip" onClick={() => onViewProject(h.project_id)} disabled={busy}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                   <span style={{ overflow:"hidden", textOverflow:"ellipsis" }}>{h.name && h.name.trim() && h.name !== "—" ? h.name : (ar ? "مشروع بدون اسم" : "Projet sans nom")}</span>
                   {h.sector && <span style={{ opacity:.5, fontSize:"0.72rem" }}>{SECTOR_LABELS[lang]?.[h.sector] || h.sector}</span>}

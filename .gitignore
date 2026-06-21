@@ -21,12 +21,13 @@ node_modules/
 frontend/node_modules/
 frontend/dist/
 
-# Local database / storage data
+# Uploaded documents / local storage
 backend/_data/
 
-# Environment files
+# Environment files (templates .env.dev/.env.staging/.env.prod are committed)
 .env
 .env.local
+.env.*.local
 
 # IDEs & System files
 .vscode/

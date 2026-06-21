@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import logoSvg from "../../assets/logo_first.svg";
 import { SECTOR_LABELS, STAGE_LABELS } from "../constants.js";
 
 const SHORT_NAMES = {
@@ -76,7 +75,7 @@ function getTriggeredExplanation(triggeredBy, lang) {
     : `Injecté suite à : ${triggeredBy}`;
 }
 
-export default function Interview({ lang, theme, setTheme, question, progress, busy, onSubmit, onSkipToAudit, user, plan, openProfile, pid, api }) {
+export default function Interview({ lang, question, progress, busy, onSubmit, onSkipConfirm, user, plan, openProfile, pid, api }) {
   const [value, setValue]   = useState(() => initial(question));
   const [answeredList, setAnsweredList] = useState([]);
   const ar = lang === "ar";
@@ -113,12 +112,7 @@ export default function Interview({ lang, theme, setTheme, question, progress, b
   }, [busy, question, value, onSubmit]);
 
   const handleSkipClick = () => {
-    const confirmMsg = ar
-      ? "سيؤدي تجاوز الأسئلة إلى تدقيق جزئي بسبب نقص البيانات الأساسية. هل تريد الاستمرار؟"
-      : "Des champs clés manqueront pour votre diagnostic. Voulez-vous continuer et générer l'audit maintenant ?";
-    if (window.confirm(confirmMsg)) {
-      onSkipToAudit();
-    }
+    onSkipConfirm();
   };
 
   // Keyboard shortcuts

@@ -8,9 +8,12 @@ context itself is returned — so an explanation is *never* missing.
 """
 from __future__ import annotations
 
+import asyncio
+
 from .llm import get_llm
 from .scoring.gwlc import ScoreResult, CompositeScores
 from .diagnostic.gap import GapReport
+from .diagnostic.classifier import STAGE_NAMES_AR
 
 
 async def explain_score(s: ScoreResult, lang: str = "fr") -> dict:
@@ -63,7 +66,6 @@ async def explain_gap(gap: GapReport, lang: str = "fr") -> dict:
         )
         kind_map = {"overestimation": "مبالغة في التقدير", "underestimation": "تقدير أقل من الواقع", "aligned": "متوافق"}
         severity_map = {"none": "لا يوجد", "mild": "خفيف", "severe": "شديد"}
-        from .diagnostic.classifier import STAGE_NAMES_AR
         declared_name = STAGE_NAMES_AR.get(gap.declared_stage) if gap.declared_stage else "غير محدد"
         classified_name = STAGE_NAMES_AR.get(gap.classified_stage, "غير محدد")
         context = (
@@ -94,10 +96,18 @@ async def explain_gap(gap: GapReport, lang: str = "fr") -> dict:
 
 
 async def explain_all_scores(scores: CompositeScores, lang: str = "fr") -> dict:
+    # Run all 5 dimension explanations in parallel (independent LLM calls).
+    results = await asyncio.gather(
+        explain_score(scores.market, lang=lang),
+        explain_score(scores.commercial, lang=lang),
+        explain_score(scores.innovation, lang=lang),
+        explain_score(scores.scalability, lang=lang),
+        explain_score(scores.green, lang=lang),
+    )
     return {
-        "market": await explain_score(scores.market, lang=lang),
-        "commercial": await explain_score(scores.commercial, lang=lang),
-        "innovation": await explain_score(scores.innovation, lang=lang),
-        "scalability": await explain_score(scores.scalability, lang=lang),
-        "green": await explain_score(scores.green, lang=lang),
+        "market": results[0],
+        "commercial": results[1],
+        "innovation": results[2],
+        "scalability": results[3],
+        "green": results[4],
     }

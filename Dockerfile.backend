@@ -1,0 +1,29 @@
+# Firasa Backend — Production Dockerfile
+# Python 3.12 + FastAPI on Uvicorn
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install system dependencies needed for psycopg2 and healthcheck
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq-dev gcc curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY backend/ .
+
+# Make entrypoint executable
+RUN chmod +x entrypoint.sh
+
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD curl -f http://localhost:8000/api/health || exit 1
+
+# Entrypoint runs DB init before starting the server
+ENTRYPOINT ["sh", "entrypoint.sh"]

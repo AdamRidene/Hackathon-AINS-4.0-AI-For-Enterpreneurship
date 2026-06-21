@@ -11,12 +11,13 @@ retrieved chunks (grounded); the LLM only rephrases, never invents a program.
 """
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import Optional
 
 from ..llm import get_llm
 from ..schema import ProjectProfile
-from ..diagnostic.classifier import DiagnosticResult
+from ..diagnostic.classifier import DiagnosticResult, STAGE_NAMES_AR as _STAGE_NAMES_AR
 from ..diagnostic.gap import GapReport
 from ..scoring.gwlc import CompositeScores
 from .retriever import Retriever, DOMAIN_TO_GAP
@@ -121,11 +122,10 @@ async def build_roadmap(
     for b in diagnostic.blockers:
         gap_cat = DOMAIN_TO_GAP.get(b["domain"], "general")
         label_fr = f"Débloquer: {b['stage_name']}"
-        from ..diagnostic.classifier import STAGE_NAMES_AR
-        label_ar = f"تفعيل: {STAGE_NAMES_AR.get(b['stage'])}"
-        
+        label_ar = f"تفعيل: {_STAGE_NAMES_AR.get(b['stage'])}"
+
         rat_fr = f"Porte de maturité non franchie ({b['stage_name']}): {b['detail_fr']}"
-        rat_ar = f"بوابة النضج غير مستوفاة ({STAGE_NAMES_AR.get(b['stage'])}): {b['detail_ar']}"
+        rat_ar = f"بوابة النضج غير مستوفاة ({_STAGE_NAMES_AR.get(b['stage'])}): {b['detail_ar']}"
         triggers.append((gap_cat, label_fr, label_ar, rat_fr, rat_ar, b["stage"]))
 
     # 2) Score-driven triggers (cross-module: low/gated scores -> roadmap).
@@ -135,7 +135,8 @@ async def build_roadmap(
     # Order by stage (earliest blocker first); stable for equal stages.
     triggers.sort(key=lambda t: t[5])
 
-    order = 1
+    # Phase 1: Collect all retrievals (no LLM calls yet).
+    trigger_plans: list[dict] = []
     for gap_cat, label_fr, label_ar, rat_fr, rat_ar, _stage in triggers:
         query = f"{label_fr} {rat_fr} secteur {profile.sector.value if profile.sector else ''}"
         routed = retriever.retrieve(gap_cat, query, k=k_per_gap)
@@ -149,37 +150,64 @@ async def build_roadmap(
         sources = [{"institution": c.institution, "title": c.title, "url": c.url,
                     "citation": c.cite(), "horizon": c.horizon} for c in fresh]
         horizon = fresh[0].horizon
-        
-        # Pass language when generating roadmap prose
-        action = await llm.generate_roadmap_prose(
-            gap=f"{label_fr}: {rat_fr}",
-            chunks=[c.content for c in fresh],
-            lang=profile.language
-        )
-        
-        # Stable unique identifier
         milestone_id = f"{gap_cat}_{fresh[0].id}" if fresh else f"{gap_cat}_{label_fr.replace(' ', '_').lower()}"
-        
+        trigger_plans.append({
+            "milestone_id": milestone_id,
+            "gap_cat": gap_cat,
+            "label_fr": label_fr,
+            "label_ar": label_ar,
+            "rat_fr": rat_fr,
+            "rat_ar": rat_ar,
+            "horizon": horizon,
+            "sources": sources,
+            "chunks": [c.content for c in fresh],
+        })
+
+    # Phase 2: Fire ALL LLM prose-generation calls in parallel.
+    async def _generate_action(plan: dict) -> str:
+        return await llm.generate_roadmap_prose(
+            gap=f"{plan['label_fr']}: {plan['rat_fr']}",
+            chunks=plan["chunks"],
+            lang=profile.language,
+        )
+
+    actions = await asyncio.gather(
+        *[_generate_action(p) for p in trigger_plans],
+        return_exceptions=True,
+    )
+
+    # Phase 3: Assemble milestones with their generated prose.
+    order = 1
+    for plan, action in zip(trigger_plans, actions):
+        if isinstance(action, Exception):
+            # LLM call failed — fall back to first chunk with a truncation note
+            raw = plan["chunks"][0] if plan["chunks"] else ""
+            if profile.language == "ar":
+                note = "(تم إنشاؤه بدون مساعدة الذكاء الاصطناعي — فشل نموذج اللغة)"
+            else:
+                note = "(Généré sans aide IA — échec du modèle de langue)"
+            action = f"{note}\n\n{raw[:300]}{'...' if len(raw) > 300 else ''}"
+
         m = Milestone(
-            id=milestone_id,
+            id=plan["milestone_id"],
             order=order,
-            title=label_fr,
-            title_ar=label_ar,
-            rationale_fr=rat_fr,
-            rationale_ar=rat_ar,
-            horizon=horizon,
-            horizon_fr=_HORIZON_FR.get(horizon, horizon),
-            horizon_ar=_HORIZON_AR.get(horizon, horizon),
-            trigger=gap_cat,
-            sources=sources,
+            title=plan["label_fr"],
+            title_ar=plan["label_ar"],
+            rationale_fr=plan["rat_fr"],
+            rationale_ar=plan["rat_ar"],
+            horizon=plan["horizon"],
+            horizon_fr=_HORIZON_FR.get(plan["horizon"], plan["horizon"]),
+            horizon_ar=_HORIZON_AR.get(plan["horizon"], plan["horizon"]),
+            trigger=plan["gap_cat"],
+            sources=plan["sources"],
         )
         if profile.language == "ar":
             m.action_ar = action
-            m.action_fr = ""  # or generate on-demand, but setting correct language prose is sufficient
+            m.action_fr = ""
         else:
             m.action_fr = action
             m.action_ar = ""
-            
+
         milestones.append(m)
         order += 1
 

@@ -164,6 +164,22 @@ class ProjectProfile(BaseModel):
     has_revenue_model: Optional[bool] = None
     repeatable_sales: Optional[bool] = None
 
+    # Deep-dive entrepreneurial data (optional, conditional on stage)
+    team_size: Optional[int] = None
+    monthly_revenue_tnd: Optional[float] = None
+    burn_rate_tnd: Optional[float] = None
+    runway_months: Optional[int] = None
+    user_count: Optional[int] = None
+    growth_rate_pct: Optional[float] = None
+    cac_tnd: Optional[float] = None
+    ltv_tnd: Optional[float] = None
+    competitor_names: list[str] = Field(default_factory=list)
+    differentiation_narrative: Optional[str] = None
+    incorporation_date: Optional[str] = None
+    fiscal_regime: Optional[str] = None
+    key_hires: list[str] = Field(default_factory=list)
+    validation_evidence_narrative: Optional[str] = None
+
     # Bookkeeping
     answered_questions: list[str] = Field(default_factory=list)
     intake_complete: bool = False

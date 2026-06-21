@@ -126,9 +126,9 @@ def greentech_prelabel() -> ProjectProfile:
                             sdg_targets=[7, 9, 11, 12, 13, 15]),
         legal_form=LegalForm.STARTUP_ACT_PRELABEL, has_revenue_model=True,
         months_unit_economics=6, repeatable_sales=False, intake_complete=True,
-        answered_questions=["name", "sector", "declared_stage", "declared_legal_form",
+        answered_questions=["name", "sector", "declared_stage", "legal_form",
                             "problem_statement", "user_segment", "tam", "competitors",
-                            "validation", "revenue", "unit_economics", "mvp"],
+                            "validation", "revenue_model", "unit_economics", "mvp_stage"],
     )
 
 
