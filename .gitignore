@@ -24,10 +24,18 @@ frontend/dist/
 # Uploaded documents / local storage
 backend/_data/
 
-# Environment files (templates .env.dev/.env.staging/.env.prod are committed)
+# Environment files — never commit real env files; only .env.example is tracked
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+
+# Agent working files — local only, never commit or push
+AGENTS.md
+tasks.md
+roadmap.md
+
+# Claude Code local state (worktrees may contain copies of .env)
+.claude/
 
 # IDEs & System files
 .vscode/

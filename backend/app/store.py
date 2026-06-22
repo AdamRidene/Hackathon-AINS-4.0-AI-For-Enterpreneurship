@@ -81,8 +81,12 @@ def _get_sqlite_path() -> str:
             db_path = str(_STORE_DIR / db_path.replace("app/_data/", ""))
         elif db_path.startswith("backend/_data/"):
             db_path = str(_STORE_DIR / db_path.replace("backend/_data/", ""))
+    elif "://" in db_path:
+        # Non-sqlite DSN (e.g. leftover postgres/neon URL) — never feed to
+        # sqlite3.connect(); fall back to the default local file.
+        db_path = ""
     if not db_path:
-        db_path = str(_STORE_DIR / "local.db")
+        db_path = str(_STORE_DIR / "firasa.db")
     return db_path
 
 

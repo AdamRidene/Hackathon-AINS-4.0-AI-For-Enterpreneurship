@@ -1,6 +1,119 @@
 import { useState, useEffect } from "react";
 import { api } from "../api.js";
 
+// ---------------------------------------------------------------------------
+// Grounding formatter — parses the compact grounding string into score chips,
+// labelled sections and a numbered roadmap (pretty render of res.grounding).
+// ---------------------------------------------------------------------------
+const SCORE_META = [
+  { key: "M", label: "Marché",      color: "#06b6d4" }, // cyan
+  { key: "C", label: "Commercial",  color: "#3b82f6" }, // blue
+  { key: "I", label: "Innovation",  color: "#a855f7" }, // purple
+  { key: "S", label: "Scalability", color: "#f97316" }, // orange
+  { key: "G", label: "Green",       color: "#22c55e" }, // green
+];
+
+function ScoreChip({ label, value, color }) {
+  return (
+    <span style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 4,
+      padding: "2px 8px",
+      borderRadius: 99,
+      border: `1px solid ${color}55`,
+      background: `${color}18`,
+      color,
+      fontSize: "0.72rem",
+      fontWeight: 700,
+      marginRight: 4,
+      marginBottom: 4,
+      letterSpacing: "0.02em",
+    }}>
+      {label} <span style={{ opacity: 0.85, fontWeight: 400 }}>{value}</span>
+    </span>
+  );
+}
+
+function formatGrounding(text) {
+  try {
+    if (!text || typeof text !== "string") throw new Error("empty");
+
+    const stadeMatch = text.match(/Stade objectif\s*:\s*([^.]+)\./);
+    const stade = stadeMatch ? stadeMatch[1].trim() : null;
+
+    const ecartMatch = text.match(/[Éé]cart perception[- ]r[ée]alit[ée]\s*:\s*([^.]+\.)/);
+    const ecart = ecartMatch ? ecartMatch[1].replace(/\.\s*$/, "").trim() : null;
+
+    const scoresMatch = text.match(/Scores\s*\(M,C,I,S,G\)\s*:\s*\[([^\]]+)\]/);
+    let scoreChips = null;
+    if (scoresMatch) {
+      const vals = scoresMatch[1].split(",").map((s) => parseFloat(s.trim()));
+      if (vals.length === 5 && vals.every((v) => !isNaN(v))) {
+        scoreChips = vals.map((v, i) => (
+          <ScoreChip key={i} label={SCORE_META[i].key} value={v} color={SCORE_META[i].color} />
+        ));
+      }
+    }
+
+    const feuilleMatch = text.match(/Feuille de route\s*:\s*(.*)/s);
+    let roadmapItems = null;
+    if (feuilleMatch) {
+      const raw = feuilleMatch[1].trim();
+      const items = raw.split(/\s*\|\s*/).filter(Boolean);
+      roadmapItems = items.map((item, i) => {
+        const cleaned = item.replace(/^\d+\.\s*/, "");
+        return (
+          <li key={i} style={{ marginBottom: 4, lineHeight: 1.5 }}>
+            {cleaned}
+          </li>
+        );
+      });
+    }
+
+    if (!stade && !ecart && !scoreChips && !roadmapItems) throw new Error("no fields");
+
+    const sectionStyle = { marginBottom: 10 };
+    const labelStyle = { fontWeight: 700, fontSize: "0.78rem", color: "var(--text-sub, rgba(255,255,255,0.55))", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 };
+    const valueStyle = { fontSize: "0.83rem", lineHeight: 1.5 };
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        {stade && (
+          <div style={sectionStyle}>
+            <div style={labelStyle}>Stade objectif</div>
+            <div style={valueStyle}>{stade}</div>
+          </div>
+        )}
+        {ecart && (
+          <div style={sectionStyle}>
+            <div style={labelStyle}>Écart perception / réalité</div>
+            <div style={valueStyle}>{ecart}</div>
+          </div>
+        )}
+        {scoreChips && (
+          <div style={sectionStyle}>
+            <div style={labelStyle}>Scores (M / C / I / S / G)</div>
+            <div style={{ display: "flex", flexWrap: "wrap", marginTop: 2 }}>
+              {scoreChips}
+            </div>
+          </div>
+        )}
+        {roadmapItems && (
+          <div style={sectionStyle}>
+            <div style={labelStyle}>Feuille de route</div>
+            <ol style={{ margin: 0, paddingLeft: 18, fontSize: "0.83rem" }}>
+              {roadmapItems}
+            </ol>
+          </div>
+        )}
+      </div>
+    );
+  } catch (_) {
+    return <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>{text}</pre>;
+  }
+}
+
 const TEXTS = {
   fr: {
     sub: "Réponses fondées uniquement sur votre audit structuré. Aucune connaissance générale, aucun programme inventé.",
@@ -37,7 +150,7 @@ function BotMessage({ text, grounding, lang }) {
           {showGrounding && (
             <div className="grounding-box" style={{ marginTop: 6 }}>
               <div style={{ fontWeight: 700, marginBottom: 4 }}>{ar ? "المعلومات المسترجعة:" : "Données de grounding :"}</div>
-              <div style={{ opacity: 0.85, whiteSpace: "pre-line" }}>{grounding}</div>
+              <div style={{ opacity: 0.85 }}>{formatGrounding(grounding)}</div>
             </div>
           )}
         </>

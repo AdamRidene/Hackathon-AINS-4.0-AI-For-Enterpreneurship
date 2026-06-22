@@ -15,9 +15,9 @@ class Settings(BaseSettings):
     """All Firasa configuration, sourced from environment variables."""
 
     model_config = SettingsConfigDict(
-        # Load base configs first, then root .env last so local overrides win.
-        # When running from backend/, "../.env" = root .env (DEEPSEEK_API_KEY etc.)
-        env_file=(".env.dev", ".env.prod", ".env.staging", "../.env.dev", "../.env.prod", "../.env.staging", ".env", "../.env"),
+        # Single source of truth: the repo-root .env (gitignored). When running
+        # from backend/, "../.env" resolves to it; from the repo root, ".env" does.
+        env_file=(".env", "../.env"),
         env_file_encoding="utf-8",
         extra="ignore",
         env_prefix="FIRASA_",
