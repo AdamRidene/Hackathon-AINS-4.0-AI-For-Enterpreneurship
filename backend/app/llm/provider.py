@@ -204,18 +204,27 @@ class LLMProvider(ABC):
             prompt = (
                 "أنت مساعد فراسة. أجب على سؤال المؤسس بالعربية "
                 "(العربية التونسية أو العربية الفصحى المبسطة)، معتمداً فقط على السياق "
-                "المنظم (التشخيص، المؤشرات، خارطة الطريق). لا تخترع أي برنامج.\n\n"
+                "المنظم (التشخيص، المؤشرات، خارطة الطريق). لا تخترع أي برنامج.\n"
+                "اجعل جوابك متناسباً مع السؤال: للتحية أو سؤال قصير، أجب بجملة واحدة "
+                "بدون نقاط. للسؤال الحقيقي فقط: جملة تلخيص ثم نقطتان إلى أربع كحد أقصى "
+                "(كل نقطة تبدأ بـ «• »). لا تكرر السياق حرفياً.\n\n"
                 f"السياق:\n{context}\n\nالسؤال: {question}\n\nالجواب:"
             )
         else:
             prompt = (
                 "Tu es l'assistant Firasa. Réponds à la question du fondateur en "
                 "français, en te basant UNIQUEMENT sur le contexte structuré "
-                "(diagnostic, scores, feuille de route). N'invente aucun programme.\n\n"
+                "(diagnostic, scores, feuille de route). N'invente aucun programme.\n"
+                "Adapte la longueur à la question : pour une simple salutation ou une "
+                "question courte, réponds en UNE phrase, sans synthèse ni puces. Pour "
+                "une vraie question seulement : une phrase de synthèse puis 2 à 4 points "
+                "« • » maximum. Ne recopie jamais le contexte mot pour mot.\n\n"
                 f"Contexte:\n{context}\n\nQuestion: {question}\n\nRéponse:"
             )
         try:
-            completed_str = await self._complete_with_retry(prompt, max_tokens=300)
+            # 700 not 300: reasoning models (v4-flash/-pro) spend tokens on
+            # reasoning_content before emitting the answer.
+            completed_str = await self._complete_with_retry(prompt, max_tokens=700)
             out = completed_str.strip()
             if out:
                 return _strip_think(out)
@@ -353,6 +362,59 @@ class OpenAIProvider(LLMProvider):
             return ""
 
 
+class DeepSeekProvider(LLMProvider):
+    """DeepSeek API (OpenAI-compatible endpoint at api.deepseek.com).
+
+    Reads FIRASA_DEEPSEEK_API_KEY (or bare DEEPSEEK_API_KEY) and
+    FIRASA_DEEPSEEK_MODEL (default: deepseek-chat).
+    """
+    name = "deepseek"
+
+    def __init__(self) -> None:
+        import os as _os
+        self.api_key = (
+            _os.getenv("FIRASA_DEEPSEEK_API_KEY")
+            or _os.getenv("DEEPSEEK_API_KEY")
+            or settings.deepseek_api_key
+        )
+        self.model = (
+            _os.getenv("FIRASA_DEEPSEEK_MODEL")
+            or settings.deepseek_model
+            or "deepseek-chat"
+        )
+        self.api_base = "https://api.deepseek.com"
+
+    async def _complete(self, prompt: str, max_tokens: int = 400) -> str:
+        if not self.api_key:
+            raise RuntimeError("DeepSeek API key not set (DEEPSEEK_API_KEY or FIRASA_DEEPSEEK_API_KEY)")
+        body = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": 0.2,
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}",
+        }
+        timeout = httpx.Timeout(_get_timeout())
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(
+                f"{self.api_base}/chat/completions",
+                json=body,
+                headers=headers,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            choices = data.get("choices", [])
+            if choices:
+                msg = choices[0].get("message", {})
+                # Reasoning models (e.g. deepseek-reasoner / *-flash) may leave
+                # `content` empty and put the answer in `reasoning_content`.
+                return msg.get("content") or msg.get("reasoning_content", "") or ""
+            return ""
+
+
 class GeminiProvider(LLMProvider):
     """Google Gemini via the native generative-ai SDK (free tier).
 
@@ -414,6 +476,7 @@ _PROVIDERS = {
     "ollama": OllamaProvider,
     "huggingface": HuggingFaceProvider,
     "openai": OpenAIProvider,
+    "deepseek": DeepSeekProvider,
     "gemini": GeminiProvider,
     "stub": StubProvider,
 }

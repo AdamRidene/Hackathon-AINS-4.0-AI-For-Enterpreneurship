@@ -11,12 +11,17 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import threading
 from collections import Counter
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+
+from ..config import settings
+
+_EMBED_CACHE = Path(__file__).parent.parent.parent / "_data" / "kb_embeddings_cohere.npy"
 
 _KB_PATH = Path(__file__).parent / "data" / "kb.json"
 _FR_STOP = {
@@ -128,6 +133,52 @@ class KnowledgeBase:
                 self._embeddings_loaded = True
 
     def _try_load_embeddings(self) -> None:
+        """Load embeddings. Priority: Cohere API > sentence-transformers > TF-IDF."""
+        cohere_key = settings.cohere_api_key or os.getenv("COHERE_API_KEY", "")
+        if cohere_key:
+            self._try_load_cohere(cohere_key)
+            if self._embeddings is not None:
+                return
+        # Fallback: sentence-transformers (local, no API key needed)
+        self._try_load_sentence_transformers()
+
+    def _try_load_cohere(self, api_key: str) -> None:
+        """Embed all chunks with Cohere embed-multilingual-v3.0 (cached to disk)."""
+        try:
+            import cohere
+            import numpy as np
+        except ImportError:
+            return
+
+        try:
+            kb_mtime = _KB_PATH.stat().st_mtime
+            cache_valid = (
+                _EMBED_CACHE.exists()
+                and _EMBED_CACHE.stat().st_mtime >= kb_mtime
+            )
+            if cache_valid:
+                arr = np.load(str(_EMBED_CACHE), allow_pickle=False)
+            else:
+                co = cohere.Client(api_key)
+                texts = [c.content + " " + c.title for c in self.chunks]
+                resp = co.embed(
+                    texts=texts,
+                    model="embed-multilingual-v3.0",
+                    input_type="search_document",
+                )
+                arr = np.array(resp.embeddings, dtype="float32")
+                _EMBED_CACHE.parent.mkdir(parents=True, exist_ok=True)
+                np.save(str(_EMBED_CACHE), arr)
+
+            self._embeddings = arr
+            self._embedder = ("cohere", api_key)
+            self.meta["embedding_model"] = "cohere/embed-multilingual-v3.0"
+            self.meta["embedding_dim"] = int(arr.shape[1])
+        except Exception:
+            self._embeddings = None
+            self._embedder = None
+
+    def _try_load_sentence_transformers(self) -> None:
         """Load sentence-transformers if available and pre-compute embeddings."""
         try:
             from sentence_transformers import SentenceTransformer
@@ -142,7 +193,6 @@ class KnowledgeBase:
             self.meta["embedding_model"] = "all-MiniLM-L6-v2"
             self.meta["embedding_dim"] = int(self._embeddings[0].shape[0])
         except Exception:
-            # Silently fall back to TF-IDF on any embedding error
             self._embeddings = None
             self._embedder = None
 
@@ -160,15 +210,27 @@ class KnowledgeBase:
         return vec
 
     def query_embedding(self, text: str):
-        """Return a dense embedding vector for semantic search.
-        Requires sentence-transformers. Returns None if unavailable.
-        """
+        """Return a dense embedding vector for semantic search."""
         self._ensure_embeddings()
-        if not self._embeddings or self._embedder is None:
+        if self._embeddings is None or self._embedder is None:
             return None
         import numpy as np
-        emb = self._embedder.encode([text], show_progress_bar=False)[0]
-        return emb
+        # Cohere embedder is stored as ("cohere", api_key) tuple
+        if isinstance(self._embedder, tuple) and self._embedder[0] == "cohere":
+            try:
+                import cohere
+                api_key = self._embedder[1] or settings.cohere_api_key
+                co = cohere.Client(api_key)
+                resp = co.embed(
+                    texts=[text],
+                    model="embed-multilingual-v3.0",
+                    input_type="search_query",
+                )
+                return np.array(resp.embeddings[0], dtype="float32")
+            except Exception:
+                return None
+        # sentence-transformers
+        return self._embedder.encode([text], show_progress_bar=False)[0]
 
     @staticmethod
     def cosine(a: Counter, b: Counter) -> float:

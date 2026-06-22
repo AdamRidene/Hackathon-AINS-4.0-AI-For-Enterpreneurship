@@ -120,6 +120,24 @@ async def run_audit(profile: ProjectProfile) -> AuditResult:
     )
 
 
+def _format_grounding(stage, gap, vector, roadmap_prose, docs_context, lang="fr"):
+    """Build the compact, parseable grounding string.
+
+    Kept as a single-line, French-labelled string on purpose: the frontend
+    (Assistant.jsx `formatGrounding`) parses these fields to render score chips,
+    sections and a numbered roadmap. The LLM also receives this as context.
+    """
+    ctx = (
+        f"Stade objectif: {stage}. "
+        f"Écart perception-réalité: {gap}. "
+        f"Scores (M,C,I,S,G): {vector}. "
+        "Feuille de route: " + " | ".join(roadmap_prose)
+    )
+    if docs_context:
+        ctx += docs_context
+    return ctx
+
+
 async def grounded_assistant_reply(profile: ProjectProfile, question: str) -> dict:
     """Secondary conversational layer — grounded ONLY in structured outputs and uploaded documents.
 
@@ -162,32 +180,28 @@ async def grounded_assistant_reply(profile: ProjectProfile, question: str) -> di
             horizon = m.get("horizon_fr")
             if profile.language == "ar":
                 horizon = m.get("horizon_ar") or horizon
-            srcs = ", ".join(s.get("institution", "") for s in m.get("sources", []))
+            srcs = ", ".join(dict.fromkeys(
+                s.get("institution", "") for s in m.get("sources", []) if s.get("institution")
+            ))
             roadmap_prose.append(f"{order}. {title} ({horizon}) — {srcs}")
-            
-        ctx = (
-            f"Stade objectif: {diag_stage}. "
-            f"Écart perception-réalité: {gap_msg}. "
-            f"Scores (M,C,I,S,G): {vector}. "
-            "Feuille de route: " + " | ".join(roadmap_prose)
-        )
-        if docs_context:
-            ctx += docs_context
+
+        ctx = _format_grounding(diag_stage, gap_msg, vector, roadmap_prose,
+                                docs_context, lang=profile.language)
         sources_used = [s for m in roadmap_items[:5] for s in m.get("sources", [])]
     else:
         # Fallback to running run_audit
         audit = await run_audit(profile)
-        ctx = (
-            f"Stade objectif: {audit.diagnostic.classified_stage_name}. "
-            f"Écart perception-reality: {audit.gap.message_fr}. "
-            f"Scores (M,C,I,S,G): {audit.scores.vector()}. "
-            "Feuille de route: "
-            + " | ".join(f"{m.order}. {m.title} ({m.horizon_fr}) — "
-                         f"{', '.join(s['institution'] for s in m.sources)}"
-                         for m in audit.roadmap[:5])
-        )
-        if docs_context:
-            ctx += docs_context
+        gap_msg = audit.gap.message_ar if profile.language == "ar" else audit.gap.message_fr
+        roadmap_prose = []
+        for m in audit.roadmap[:5]:
+            horizon = getattr(m, "horizon_ar", "") or m.horizon_fr if profile.language == "ar" else m.horizon_fr
+            srcs = ", ".join(dict.fromkeys(
+                s["institution"] for s in m.sources if s.get("institution")
+            ))
+            roadmap_prose.append(f"{m.order}. {m.title} ({horizon}) — {srcs}")
+        ctx = _format_grounding(audit.diagnostic.classified_stage_name, gap_msg,
+                                audit.scores.vector(), roadmap_prose,
+                                docs_context, lang=profile.language)
         sources_used = [s for m in audit.roadmap[:5] for s in m.sources]
         
     reply = await get_llm().chat(question, ctx, lang=profile.language)

@@ -15,44 +15,53 @@ class Settings(BaseSettings):
     """All Firasa configuration, sourced from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=(".env", "../.env.dev", "../.env.prod", "../.env.staging"),
+        # Single source of truth: the repo-root .env (gitignored). When running
+        # from backend/, "../.env" resolves to it; from the repo root, ".env" does.
+        env_file=(".env", "../.env"),
         env_file_encoding="utf-8",
         extra="ignore",
         env_prefix="FIRASA_",
     )
 
-    # ── Auth ──────────────────────────────────────────────────────────────
+    # Auth
     auth_mode: Literal["local", "supabase", "none"] = "local"
     supabase_url: str = ""
     supabase_jwt_secret: str = ""
     supabase_anon_key: str = ""
 
-    # ── Database ──────────────────────────────────────────────────────────
+    # Database
     database_url: str = Field("", validation_alias=AliasChoices("FIRASA_DATABASE_URL", "DATABASE_URL"))
     database_enabled: bool = True  # Set FIRASA_SKIP_DB=true to run without DB
     skip_db: bool = False
 
-    # ── LLM provider ──────────────────────────────────────────────────────
-    llm_provider: Literal["ollama", "huggingface", "openai", "gemini", "stub"] = "ollama"
+    # LLM provider selection
+    llm_provider: Literal["ollama", "huggingface", "openai", "deepseek", "gemini", "stub"] = "ollama"
 
-    # Ollama
+    # Ollama (local)
     ollama_host: str = "http://localhost:11434"
     llm_model: str = "qwen3:8b"
 
-    # Hugging Face
+    # Hugging Face Inference API
     hf_model: str = "Qwen/Qwen2.5-7B-Instruct"
     hf_token: str = ""
 
-    # OpenAI-compatible
+    # OpenAI-compatible (OpenAI, Groq, OpenRouter, Together AI...)
     openai_api_key: str = ""
     openai_api_base: str = "https://api.openai.com/v1"
     openai_model: str = "gpt-4o-mini"
+
+    # DeepSeek (OpenAI-compatible endpoint at api.deepseek.com)
+    deepseek_api_key: str = Field("", validation_alias=AliasChoices("FIRASA_DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY"))
+    deepseek_model: str = Field("deepseek-chat", validation_alias=AliasChoices("FIRASA_DEEPSEEK_MODEL", "DEEPSEEK_MODEL"))
+
+    # Cohere embeddings (optional — enables semantic RAG over TF-IDF)
+    cohere_api_key: str = Field("", validation_alias=AliasChoices("FIRASA_COHERE_API_KEY", "COHERE_API_KEY"))
 
     # Google Gemini
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.0-flash"
 
-    # ── Common ────────────────────────────────────────────────────────────
+    # Common
     llm_timeout: float = 30.0
     debug: bool = False
 
@@ -69,4 +78,3 @@ class Settings(BaseSettings):
 
 # Singleton — import this everywhere instead of os.getenv()
 settings = Settings()
-
