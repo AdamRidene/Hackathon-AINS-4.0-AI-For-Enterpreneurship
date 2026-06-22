@@ -184,7 +184,7 @@ function DocumentsManager({ pid, lang, api }) {
     fr: {
       uploadBtn: "Sélectionner un fichier",
       dragDrop: "ou glisser-déposer le fichier ici",
-      sizeLimit: "Taille maximale : 10 Mo. Format PDF ou TXT.",
+      sizeLimit: "Taille maximale : 10 Mo. Formats PDF, MD ou TXT.",
       uploadedDocs: "Documents de preuve",
       noDocs: "Aucun document associé à ce projet.",
       deleteConfirm: "Supprimer ce document ?",
@@ -200,7 +200,7 @@ function DocumentsManager({ pid, lang, api }) {
     ar: {
       uploadBtn: "اختر ملفاً",
       dragDrop: "أو اسحب وأفلت الملف هنا",
-      sizeLimit: "الحد الأقصى: 10 ميغابايت. صيغة PDF أو TXT.",
+      sizeLimit: "الحد الأقصى: 10 ميغابايت. صيغ PDF أو MD أو TXT.",
       uploadedDocs: "وثائق الإثبات المرفقة",
       noDocs: "لا توجد وثائق مرفقة بهذا المشروع.",
       deleteConfirm: "حذف هذا المستند ؟",
@@ -332,7 +332,7 @@ function DocumentsManager({ pid, lang, api }) {
                 id={`file-upload-${pid}`}
                 type="file"
                 className="sr-only"
-                accept=".pdf,.txt,text/plain,application/pdf"
+                accept=".pdf,.txt,.md,.markdown,text/plain,text/markdown,application/pdf"
                 onChange={(e) => handleFile(e.target.files[0])}
               />
               <span style={{ fontSize: "0.8rem", color: "var(--text-sub)" }}>

@@ -275,15 +275,21 @@ class LLMProvider(ABC):
             f"FIELDS:\n{catalogue}\n\nDOCUMENT:\n\"\"\"{doc_text[:8000]}\"\"\""
         )
         try:
-            raw = _strip_think(await self._complete_with_retry(prompt, max_tokens=1200))
-            m = re.search(r"\{.*\}", raw, re.DOTALL)
-            if not m:
-                return []
-            obj = json.loads(m.group(0))
-            fields = obj.get("fields", [])
-            return [f for f in fields if isinstance(f, dict) and f.get("id")]
+            raw = _strip_think(await self._complete_with_retry(prompt, max_tokens=3000))
         except Exception:
             return []
+        # Parse each field object independently (flat objects, no nested braces).
+        # Resilient to truncation (many fields can exceed the token budget — a
+        # cut-off trailing object is simply skipped) and to ```json fences.
+        items: list[dict] = []
+        for m in re.finditer(r"\{[^{}]*\}", raw):
+            try:
+                obj = json.loads(m.group(0))
+            except Exception:
+                continue
+            if isinstance(obj, dict) and obj.get("id"):
+                items.append(obj)
+        return items
 
     async def propose_probe(
         self, question_prompt: str, answer: str, lang: str = "fr"

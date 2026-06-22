@@ -581,9 +581,10 @@ async def upload_document(
     except Exception as e:
         raise HTTPException(500, f"Failed to save document: {str(e)}")
 
-    # Extract text from PDFs (run in thread executor to avoid blocking)
+    # Extract text. PDFs via pdfplumber; Markdown/plain-text read directly.
     extracted = None
-    if safe_name.lower().endswith(".pdf"):
+    lower = safe_name.lower()
+    if lower.endswith(".pdf"):
         try:
             import pdfplumber  # noqa: F811
         except ImportError:
@@ -601,6 +602,13 @@ async def upload_document(
             except Exception as exc:
                 _logger.warning("PDF extraction failed for %s: %s", safe_name, exc)
                 extracted = None
+    elif lower.endswith((".md", ".markdown", ".txt", ".text")):
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="replace") as fh:
+                extracted = fh.read()[:5000]  # cap at 5K chars
+        except Exception as exc:
+            _logger.warning("Text extraction failed for %s: %s", safe_name, exc)
+            extracted = None
 
     # Store document record
     store.save_document(
