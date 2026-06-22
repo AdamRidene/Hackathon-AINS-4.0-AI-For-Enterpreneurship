@@ -1,4 +1,5 @@
 import { useState } from "react";
+import GraphMap from "./GraphMap.jsx";
 
 /**
  * Agent decision timeline. Renders the per-turn LangGraph node trace returned
@@ -65,6 +66,8 @@ export default function AgentTrace({ trace, value, question, lang }) {
         <span>🧩 {ar ? "مسار قرار الوكيل (LangGraph)" : "Parcours de décision de l'agent (LangGraph)"}</span>
         <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>{open ? "▾" : "▸"}</span>
       </button>
+
+      {open && <GraphMap trace={trace} lang={lang} />}
 
       {open && (
         <ol style={{ listStyle: "none", margin: "8px 0 0 0", padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
