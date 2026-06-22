@@ -241,6 +241,50 @@ class LLMProvider(ABC):
             f"{context}"
         )
 
+    async def extract_fields(
+        self, doc_text: str, fields_spec: list[dict], lang: str = "fr"
+    ) -> list[dict]:
+        """Extract structured intake values from a free-text document.
+
+        Used by the document auto-fill layer: maps a pitch deck / business plan
+        into typed ProjectProfile answers so the founder confirms instead of
+        filling a long form. Returns a list of
+        {id, value, confidence (0-1), evidence (quote)}.
+
+        Returns [] on any failure (StubProvider, timeout, bad JSON) — the caller
+        then falls back to the normal questionnaire. Never raises.
+        """
+        if not doc_text or not doc_text.strip() or not fields_spec:
+            return []
+        # Compact field catalogue the model must extract against.
+        lines = []
+        for f in fields_spec:
+            opt = f" options={f['options']}" if f.get("options") else ""
+            lines.append(f"- id={f['id']} type={f['qtype']}{opt} :: {f.get('prompt','')}")
+        catalogue = "\n".join(lines)
+        prompt = (
+            "You extract structured startup-profile fields from a founder's document "
+            "(pitch deck / business plan). For EACH field you can support from the text, "
+            "return an object {\"id\":..., \"value\":..., \"confidence\":0-1, "
+            "\"evidence\":\"short exact quote from the document\"}.\n"
+            "Rules: only include fields clearly stated in the text; never guess. "
+            "For type=enum, value MUST be exactly one of the listed options. "
+            "For type=bool use true/false. For int/float use a number. "
+            "For tags/sdg use a JSON array. Omit fields not in the document.\n"
+            "Return ONLY a JSON object {\"fields\":[ ... ]}.\n\n"
+            f"FIELDS:\n{catalogue}\n\nDOCUMENT:\n\"\"\"{doc_text[:8000]}\"\"\""
+        )
+        try:
+            raw = _strip_think(await self._complete_with_retry(prompt, max_tokens=1200))
+            m = re.search(r"\{.*\}", raw, re.DOTALL)
+            if not m:
+                return []
+            obj = json.loads(m.group(0))
+            fields = obj.get("fields", [])
+            return [f for f in fields if isinstance(f, dict) and f.get("id")]
+        except Exception:
+            return []
+
     async def propose_probe(
         self, question_prompt: str, answer: str, lang: str = "fr"
     ) -> Optional[str]:

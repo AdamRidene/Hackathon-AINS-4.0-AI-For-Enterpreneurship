@@ -111,6 +111,14 @@ export const api = {
       body: JSON.stringify({ question_id: questionId, value }),
     }),
 
+  // Document-driven auto-fill: propose extracted answers, then apply confirmed
+  autofill: (pid) => req(`/api/projects/${pid}/autofill`, { method: "POST" }),
+  applyAutofill: (pid, confirmed) =>
+    req(`/api/projects/${pid}/autofill/apply`, {
+      method: "POST",
+      body: JSON.stringify({ confirmed }),
+    }),
+
   audit: (pid) => req(`/api/projects/${pid}/audit`, { method: "POST" }),
 
   assistant: (pid, question) =>

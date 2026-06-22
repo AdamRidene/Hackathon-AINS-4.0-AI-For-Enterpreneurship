@@ -19,7 +19,7 @@ from . import __version__, store
 from .auth import get_current_user, extract_token
 from .config import settings
 from .schema import ProjectProfile
-from .intake import IntakeStateMachine, run_intake_turn
+from .intake import IntakeStateMachine, run_intake_turn, propose_autofill, apply_autofill
 from .orchestrator import run_audit, grounded_assistant_reply
 from .rag.knowledge_base import get_kb
 from .llm import get_llm
@@ -363,6 +363,43 @@ async def answer(pid: str, body: AnswerBody, user: dict = Depends(get_current_us
             # Per-turn LangGraph node trace, for the frontend "agent decision
             # timeline" (explainability). e.g. ["answer:name","probe_emitted:..."].
             "trace": turn["trace"]}
+
+
+# --------------------------------------------------------------------------- #
+# Document-driven auto-fill (review-and-confirm instead of a long form)        #
+# --------------------------------------------------------------------------- #
+class AutofillItem(BaseModel):
+    question_id: str
+    value: Any
+
+
+class AutofillApplyBody(BaseModel):
+    confirmed: list[AutofillItem]
+
+
+@app.post("/api/projects/{pid}/autofill")
+async def autofill_propose(pid: str, user: dict = Depends(get_current_user)) -> dict:
+    """Propose intake answers extracted from the project's uploaded documents.
+    Does NOT mutate the profile — the user reviews and confirms first."""
+    profile = _require_owned(pid, user)
+    docs = store.get_documents_text(pid)
+    if not docs:
+        raise HTTPException(400, "Aucun document exploitable. Téléversez d'abord un PDF.")
+    doc_text = "\n\n".join(f"# {d['filename']}\n{d['text']}" for d in docs)
+    proposals = await propose_autofill(profile, doc_text)
+    return {"proposals": proposals, "doc_count": len(docs)}
+
+
+@app.post("/api/projects/{pid}/autofill/apply")
+async def autofill_apply(pid: str, body: AutofillApplyBody,
+                         user: dict = Depends(get_current_user)) -> dict:
+    """Apply the user-confirmed auto-fill proposals, then resume intake."""
+    profile = _require_owned(pid, user)
+    result = apply_autofill(profile, [i.model_dump() for i in body.confirmed])
+    store.save(profile)
+    if profile.intake_complete:
+        await _run_owned_audit(pid, user)
+    return {"accepted": True, **result}
 
 
 class ProfilePatchBody(BaseModel):

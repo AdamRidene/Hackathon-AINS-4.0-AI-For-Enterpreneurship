@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { SECTOR_LABELS, STAGE_LABELS } from "../constants.js";
 import AgentTrace from "./AgentTrace.jsx";
+import AutoFill from "./AutoFill.jsx";
 
 /* ── Helpers ─────────────────────────────────────────────────────────── */
 
@@ -704,6 +705,24 @@ export default function ProjectDashboard({
     }
   }
 
+  // Document auto-fill applied: refresh profile/audit + resume intake.
+  async function handleAutofillApplied(result) {
+    try {
+      const [updatedProj, updatedAudit] = await Promise.all([
+        api.getProject(pid),
+        api.getLastAudit(pid).catch(() => null),
+      ]);
+      setProject(updatedProj);
+      setDraft(updatedProj);
+      setAudit(updatedAudit);
+      setNextQ(result.next_question);
+      setProgress(result.progress);
+      setAgentTrace(null);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   function handleSkipQuestion(questionId) {
     handleAnswerQuestion(questionId, null);
   }
@@ -1017,6 +1036,7 @@ export default function ProjectDashboard({
             {/* Adaptive Intake Card */}
             {nextQ && !editing && (
               <section className="pf-card adaptive-card" style={{ marginBottom: 16 }}>
+                <AutoFill pid={pid} api={api} lang={lang} onApplied={handleAutofillApplied} />
                 <div className="adaptive-header">
                   {nextQ.triggered_by === "ai_probe" ? (
                     <span className="adaptive-badge ai-probe" style={{ background: "rgba(124, 109, 245, 0.10)", border: "1px solid rgba(124, 109, 245, 0.45)", color: "#9b8cff" }}>

@@ -203,3 +203,95 @@ def test_probe_global_cap():
         assert len(p.dynamic_probes) <= MAX_PROBES
     finally:
         restore()
+
+
+# --------------------------------------------------------------------------- #
+# Document-driven auto-fill                                                   #
+# --------------------------------------------------------------------------- #
+import app.intake.autofill as autofill  # noqa: E402
+from app.intake import propose_autofill, apply_autofill  # noqa: E402
+from app.schema import Sector  # noqa: E402
+
+_DOC = (
+    "Projet AgriTrack. Secteur agri-food. Marché adressable estimé à 500000 TND. "
+    "Preuve de validation client: 14 lettres d'intention signées. Concurrents: 3 acteurs."
+)
+
+
+class _FakeExtract(LLMProvider):
+    name = "fake"
+
+    async def _complete(self, prompt, max_tokens=400):
+        return "{}"
+
+    async def extract_fields(self, doc_text, fields_spec, lang="fr"):
+        return [
+            {"id": "sector", "value": "agri-food", "confidence": 0.95, "evidence": "Secteur agri-food"},
+            {"id": "tam", "value": 500000, "confidence": 0.9, "evidence": "500000 TND"},
+            {"id": "validation", "value": True, "confidence": 0.85, "evidence": "14 lettres d'intention signées"},
+            {"id": "tam", "value": 1, "confidence": 0.3, "evidence": "dup"},          # dedupe
+            {"id": "sector", "value": "not-a-sector", "confidence": 0.5, "evidence": "x"},  # would dedupe anyway
+            {"id": "bogus", "value": 1, "confidence": 0.9, "evidence": "x"},          # unknown -> drop
+            {"id": "human_dependency", "value": "trois", "confidence": 0.7, "evidence": "x"},  # not coercible -> drop
+        ]
+
+
+def _with_autofill_llm(provider):
+    original = autofill.get_llm
+    autofill.get_llm = lambda: provider
+    return lambda: setattr(autofill, "get_llm", original)
+
+
+def test_autofill_propose_validates_and_does_not_mutate():
+    restore = _with_autofill_llm(_FakeExtract())
+    try:
+        p = ProjectProfile()
+        proposals = asyncio.run(propose_autofill(p, _DOC))
+        ids = [pr["question_id"] for pr in proposals]
+        assert "sector" in ids and "tam" in ids and "validation" in ids
+        assert "bogus" not in ids                      # unknown question dropped
+        assert "human_dependency" not in ids           # non-coercible dropped
+        assert ids.count("tam") == 1                   # deduped
+        assert p.answered_questions == []              # propose must NOT mutate
+        sector = next(pr for pr in proposals if pr["question_id"] == "sector")
+        assert sector["verified"] is True and sector["recommended"] is True
+    finally:
+        restore()
+
+
+def test_autofill_apply_writes_typed_fields():
+    restore = _with_autofill_llm(_FakeExtract())
+    try:
+        p = ProjectProfile()
+        proposals = asyncio.run(propose_autofill(p, _DOC))
+        confirmed = [{"question_id": pr["question_id"], "value": pr["value"]}
+                     for pr in proposals if pr["recommended"]]
+        res = apply_autofill(p, confirmed)
+        assert p.sector == Sector.AGRI_FOOD
+        assert p.market.estimated_tam_tnd == 500000.0
+        assert p.market.customer_validation_evidence is True
+        assert set(res["applied"]) == {c["question_id"] for c in confirmed}
+        # applied fields are now marked answered (won't be re-asked)
+        assert all(qid in p.answered_questions for qid in res["applied"])
+    finally:
+        restore()
+
+
+def test_autofill_falls_back_to_empty_when_llm_down():
+    restore = _with_autofill_llm(StubProvider())
+    try:
+        assert asyncio.run(propose_autofill(ProjectProfile(), _DOC)) == []
+    finally:
+        restore()
+
+
+def test_autofill_apply_skips_invalid_items():
+    p = ProjectProfile()
+    res = apply_autofill(p, [
+        {"question_id": "sector", "value": "agri-food"},     # ok
+        {"question_id": "bogus", "value": 1},                # unknown -> skipped
+        {"question_id": "human_dependency", "value": "x"},   # not coercible -> skipped
+    ])
+    assert res["applied"] == ["sector"]
+    assert set(res["skipped"]) == {"bogus", "human_dependency"}
+    assert p.sector == Sector.AGRI_FOOD
