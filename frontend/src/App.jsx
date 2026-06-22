@@ -1,4 +1,4 @@
-import { Component, useEffect, useState } from "react";
+import { Component, useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
 import { auth } from "./auth.js";
 import Landing    from "./components/Landing.jsx";
@@ -82,6 +82,30 @@ export default function App() {
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [toast, setToast] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState(null); // { title, message, confirmLabel, cancelLabel, variant, onConfirm }
+
+  /* ── Browser back/forward: sync phase+pid with the history stack so the
+        browser arrows and mouse back/forward buttons navigate views. ── */
+  const restoringNav = useRef(false);
+  const firstNav = useRef(true);
+  useEffect(() => {
+    if (restoringNav.current) { restoringNav.current = false; return; }
+    if (phase === "processing") return;          // transient spinner — no history entry
+    const entry = { phase, pid };
+    if (firstNav.current) { firstNav.current = false; window.history.replaceState(entry, ""); }
+    else window.history.pushState(entry, "");
+  }, [phase, pid]);
+  useEffect(() => {
+    const onPop = (e) => {
+      restoringNav.current = true;
+      const s = e.state || {};
+      setPid(s.pid ?? null);
+      setPhase(s.phase || "start");
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  // ponytail: views restored from in-memory state; refresh/deep-link to a
+  // sub-view isn't supported — that needs a real router with URL paths.
 
   async function autoLogin() {
     // Only auto-login in dev mode with local/none auth — NEVER in production.
