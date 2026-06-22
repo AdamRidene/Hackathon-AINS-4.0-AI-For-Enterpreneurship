@@ -61,6 +61,8 @@ export default function App() {
   /* ── Project / intake state ── */
   const [pid,      setPid]      = useState(null);
   const [question, setQuestion] = useState(null);
+  // {trace, value} from the last POST /answer — drives the agent decision timeline
+  const [agentTrace, setAgentTrace] = useState(null);
   const [progress, setProgress] = useState(null);
   const [audit,    setAudit]    = useState(null);
   const [busy,     setBusy]     = useState(false);
@@ -298,6 +300,7 @@ export default function App() {
       } else {
         setQuestion(res.next_question);
         setProgress(res.progress);
+        setAgentTrace({ trace: res.trace, value });
       }
     } catch (err) { setError(err.message); }
     finally { setBusy(false); }
@@ -503,6 +506,7 @@ export default function App() {
           onSkipConfirm={handleSkipConfirm}
           pid={pid}
           api={api}
+          agentTrace={agentTrace}
         />
       )}
 

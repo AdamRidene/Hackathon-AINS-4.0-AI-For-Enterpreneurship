@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { SECTOR_LABELS, STAGE_LABELS } from "../constants.js";
+import AgentTrace from "./AgentTrace.jsx";
+import AutoFill from "./AutoFill.jsx";
 
 /* ── Helpers ─────────────────────────────────────────────────────────── */
 
@@ -182,7 +184,7 @@ function DocumentsManager({ pid, lang, api }) {
     fr: {
       uploadBtn: "Sélectionner un fichier",
       dragDrop: "ou glisser-déposer le fichier ici",
-      sizeLimit: "Taille maximale : 10 Mo. Format PDF ou TXT.",
+      sizeLimit: "Taille maximale : 10 Mo. Formats PDF, MD ou TXT.",
       uploadedDocs: "Documents de preuve",
       noDocs: "Aucun document associé à ce projet.",
       deleteConfirm: "Supprimer ce document ?",
@@ -198,7 +200,7 @@ function DocumentsManager({ pid, lang, api }) {
     ar: {
       uploadBtn: "اختر ملفاً",
       dragDrop: "أو اسحب وأفلت الملف هنا",
-      sizeLimit: "الحد الأقصى: 10 ميغابايت. صيغة PDF أو TXT.",
+      sizeLimit: "الحد الأقصى: 10 ميغابايت. صيغ PDF أو MD أو TXT.",
       uploadedDocs: "وثائق الإثبات المرفقة",
       noDocs: "لا توجد وثائق مرفقة بهذا المشروع.",
       deleteConfirm: "حذف هذا المستند ؟",
@@ -330,7 +332,7 @@ function DocumentsManager({ pid, lang, api }) {
                 id={`file-upload-${pid}`}
                 type="file"
                 className="sr-only"
-                accept=".pdf,.txt,text/plain,application/pdf"
+                accept=".pdf,.txt,.md,.markdown,text/plain,text/markdown,application/pdf"
                 onChange={(e) => handleFile(e.target.files[0])}
               />
               <span style={{ fontSize: "0.8rem", color: "var(--text-sub)" }}>
@@ -618,6 +620,7 @@ export default function ProjectDashboard({
 
   // States for adaptive intake card
   const [nextQ, setNextQ] = useState(null);
+  const [agentTrace, setAgentTrace] = useState(null);
   const [progress, setProgress] = useState(null);
   const [qValue, setQValue] = useState("");
   const [answering, setAnswering] = useState(false);
@@ -694,10 +697,29 @@ export default function ProjectDashboard({
       setAudit(updatedAudit);
       setNextQ(res.next_question);
       setProgress(res.progress);
+      if (res.next_question) setAgentTrace({ trace: res.trace, value: val });
     } catch (err) {
       setError(err.message);
     } finally {
       setAnswering(false);
+    }
+  }
+
+  // Document auto-fill applied: refresh profile/audit + resume intake.
+  async function handleAutofillApplied(result) {
+    try {
+      const [updatedProj, updatedAudit] = await Promise.all([
+        api.getProject(pid),
+        api.getLastAudit(pid).catch(() => null),
+      ]);
+      setProject(updatedProj);
+      setDraft(updatedProj);
+      setAudit(updatedAudit);
+      setNextQ(result.next_question);
+      setProgress(result.progress);
+      setAgentTrace(null);
+    } catch (err) {
+      setError(err.message);
     }
   }
 
@@ -1014,15 +1036,26 @@ export default function ProjectDashboard({
             {/* Adaptive Intake Card */}
             {nextQ && !editing && (
               <section className="pf-card adaptive-card" style={{ marginBottom: 16 }}>
+                <AutoFill pid={pid} api={api} lang={lang} onApplied={handleAutofillApplied} />
                 <div className="adaptive-header">
-                  <span className="adaptive-badge">⚡ {ar ? "سؤال تكيفي مقترح" : "Question adaptative recommandée"}</span>
+                  {nextQ.triggered_by === "ai_probe" ? (
+                    <span className="adaptive-badge ai-probe" style={{ background: "rgba(124, 109, 245, 0.10)", border: "1px solid rgba(124, 109, 245, 0.45)", color: "#9b8cff" }}>
+                      🤖 {ar ? "متابعة بالذكاء الاصطناعي" : "Suivi IA"}
+                    </span>
+                  ) : (
+                    <span className="adaptive-badge">⚡ {ar ? "سؤال تكيفي مقترح" : "Question adaptative recommandée"}</span>
+                  )}
                   {progress && (
                     <span style={{ fontSize: "0.8rem", color: "var(--text-sub)" }}>
                       {progress.answered} / {progress.total} {ar ? "إجابة" : "réponses"} ({Math.round((progress.answered / progress.total) * 100)}%)
                     </span>
                   )}
                 </div>
-                
+
+                {agentTrace && (
+                  <AgentTrace trace={agentTrace.trace} value={agentTrace.value} question={nextQ} lang={lang} />
+                )}
+
                 <div style={{ margin: "12px 0" }}>
                   <h2 className="adaptive-prompt" style={{ fontSize: "1.1rem", fontWeight: 600, margin: "0 0 6px 0" }}>
                     {ar && nextQ.prompt_ar ? nextQ.prompt_ar : nextQ.prompt_fr}

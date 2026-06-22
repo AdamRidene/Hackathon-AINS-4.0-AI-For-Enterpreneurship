@@ -102,3 +102,196 @@ def test_model_validation_null_lists():
     assert profile.scalability.cross_border_zones == []
     assert profile.green.sdg_targets == []
     assert profile.competitor_names == []
+
+
+# --------------------------------------------------------------------------- #
+# LangGraph adaptive-intake layer (content-aware AI probes)                   #
+# --------------------------------------------------------------------------- #
+import asyncio  # noqa: E402
+
+import app.intake.graph as graph  # noqa: E402
+from app.intake import run_intake_turn, MAX_PROBES  # noqa: E402
+from app.llm.provider import LLMProvider, StubProvider  # noqa: E402
+
+
+class _FakeProbe(LLMProvider):
+    """Always proposes a follow-up probe for any free-text answer."""
+    name = "fake"
+
+    async def _complete(self, prompt, max_tokens=400):
+        return "{}"
+
+    async def propose_probe(self, question_prompt, answer, lang="fr"):
+        return "Quel segment client précis, avec quelle preuve chiffrée ?"
+
+
+def _with_llm(provider):
+    """Swap the graph's runtime LLM lookup; returns a restore() callable."""
+    original = graph.get_llm
+    graph.get_llm = lambda: provider
+    return lambda: setattr(graph, "get_llm", original)
+
+
+def test_probe_injected_for_text_answer():
+    restore = _with_llm(_FakeProbe())
+    try:
+        p = ProjectProfile()
+        turn = asyncio.run(run_intake_turn(p, "name", "un truc un peu vague"))
+        nq = turn["next_question"]
+        assert nq["triggered_by"] == "ai_probe"
+        assert nq["qtype"] == "text"
+        assert len(p.dynamic_probes) == 1 and p.dynamic_probes[0]["answer"] is None
+        assert turn["intake_complete"] is False
+    finally:
+        restore()
+
+
+def test_probe_answer_recorded_then_deterministic_next():
+    restore = _with_llm(_FakeProbe())
+    try:
+        p = ProjectProfile()
+        turn = asyncio.run(run_intake_turn(p, "name", "vague"))
+        probe_id = turn["next_question"]["id"]
+        turn = asyncio.run(run_intake_turn(p, probe_id, "B2B, 12 LOIs signées"))
+        assert p.dynamic_probes[0]["answer"] == "B2B, 12 LOIs signées"
+        # backbone resumes: the deterministic next question is served
+        assert turn["next_question"]["id"] == "sector"
+        assert turn["next_question"]["triggered_by"] != "ai_probe"
+    finally:
+        restore()
+
+
+def test_no_probe_when_llm_unavailable():
+    # StubProvider.name == "stub" => llm_available False => pure state machine.
+    restore = _with_llm(StubProvider())
+    try:
+        p = ProjectProfile()
+        turn = asyncio.run(run_intake_turn(p, "name", "un truc vague"))
+        assert p.dynamic_probes == []
+        assert turn["next_question"]["id"] == "sector"
+        assert "deterministic_next" in turn["trace"]
+    finally:
+        restore()
+
+
+def test_one_probe_per_trigger():
+    restore = _with_llm(_FakeProbe())
+    try:
+        p = ProjectProfile()
+        asyncio.run(run_intake_turn(p, "name", "vague"))          # emits probe #1
+        probe_id = p.dynamic_probes[0]["id"]
+        asyncio.run(run_intake_turn(p, probe_id, "détails"))      # answer it
+        turn = asyncio.run(run_intake_turn(p, "name", "encore vague"))  # same trigger
+        assert turn["next_question"]["triggered_by"] != "ai_probe"
+        assert len(p.dynamic_probes) == 1
+    finally:
+        restore()
+
+
+def test_probe_global_cap():
+    restore = _with_llm(_FakeProbe())
+    try:
+        p = ProjectProfile()
+        for qid in ("name", "vp_narrative", "differentiation", "validation_proof"):
+            try:
+                turn = asyncio.run(run_intake_turn(p, qid, "réponse libre vague"))
+            except (KeyError, ValueError):
+                continue  # question not applicable to this profile state
+            nq = turn["next_question"]
+            if nq and nq.get("triggered_by") == "ai_probe":
+                asyncio.run(run_intake_turn(p, nq["id"], "détails concrets"))
+        assert len(p.dynamic_probes) <= MAX_PROBES
+    finally:
+        restore()
+
+
+# --------------------------------------------------------------------------- #
+# Document-driven auto-fill                                                   #
+# --------------------------------------------------------------------------- #
+import app.intake.autofill as autofill  # noqa: E402
+from app.intake import propose_autofill, apply_autofill  # noqa: E402
+from app.schema import Sector  # noqa: E402
+
+_DOC = (
+    "Projet AgriTrack. Secteur agri-food. Marché adressable estimé à 500000 TND. "
+    "Preuve de validation client: 14 lettres d'intention signées. Concurrents: 3 acteurs."
+)
+
+
+class _FakeExtract(LLMProvider):
+    name = "fake"
+
+    async def _complete(self, prompt, max_tokens=400):
+        return "{}"
+
+    async def extract_fields(self, doc_text, fields_spec, lang="fr"):
+        return [
+            {"id": "sector", "value": "agri-food", "confidence": 0.95, "evidence": "Secteur agri-food"},
+            {"id": "tam", "value": 500000, "confidence": 0.9, "evidence": "500000 TND"},
+            {"id": "validation", "value": True, "confidence": 0.85, "evidence": "14 lettres d'intention signées"},
+            {"id": "tam", "value": 1, "confidence": 0.3, "evidence": "dup"},          # dedupe
+            {"id": "sector", "value": "not-a-sector", "confidence": 0.5, "evidence": "x"},  # would dedupe anyway
+            {"id": "bogus", "value": 1, "confidence": 0.9, "evidence": "x"},          # unknown -> drop
+            {"id": "human_dependency", "value": "trois", "confidence": 0.7, "evidence": "x"},  # not coercible -> drop
+        ]
+
+
+def _with_autofill_llm(provider):
+    original = autofill.get_llm
+    autofill.get_llm = lambda: provider
+    return lambda: setattr(autofill, "get_llm", original)
+
+
+def test_autofill_propose_validates_and_does_not_mutate():
+    restore = _with_autofill_llm(_FakeExtract())
+    try:
+        p = ProjectProfile()
+        proposals = asyncio.run(propose_autofill(p, _DOC))
+        ids = [pr["question_id"] for pr in proposals]
+        assert "sector" in ids and "tam" in ids and "validation" in ids
+        assert "bogus" not in ids                      # unknown question dropped
+        assert "human_dependency" not in ids           # non-coercible dropped
+        assert ids.count("tam") == 1                   # deduped
+        assert p.answered_questions == []              # propose must NOT mutate
+        sector = next(pr for pr in proposals if pr["question_id"] == "sector")
+        assert sector["verified"] is True and sector["recommended"] is True
+    finally:
+        restore()
+
+
+def test_autofill_apply_writes_typed_fields():
+    restore = _with_autofill_llm(_FakeExtract())
+    try:
+        p = ProjectProfile()
+        proposals = asyncio.run(propose_autofill(p, _DOC))
+        confirmed = [{"question_id": pr["question_id"], "value": pr["value"]}
+                     for pr in proposals if pr["recommended"]]
+        res = apply_autofill(p, confirmed)
+        assert p.sector == Sector.AGRI_FOOD
+        assert p.market.estimated_tam_tnd == 500000.0
+        assert p.market.customer_validation_evidence is True
+        assert set(res["applied"]) == {c["question_id"] for c in confirmed}
+        # applied fields are now marked answered (won't be re-asked)
+        assert all(qid in p.answered_questions for qid in res["applied"])
+    finally:
+        restore()
+
+
+def test_autofill_falls_back_to_empty_when_llm_down():
+    restore = _with_autofill_llm(StubProvider())
+    try:
+        assert asyncio.run(propose_autofill(ProjectProfile(), _DOC)) == []
+    finally:
+        restore()
+
+
+def test_autofill_apply_skips_invalid_items():
+    p = ProjectProfile()
+    res = apply_autofill(p, [
+        {"question_id": "sector", "value": "agri-food"},     # ok
+        {"question_id": "bogus", "value": 1},                # unknown -> skipped
+        {"question_id": "human_dependency", "value": "x"},   # not coercible -> skipped
+    ])
+    assert res["applied"] == ["sector"]
+    assert set(res["skipped"]) == {"bogus", "human_dependency"}
+    assert p.sector == Sector.AGRI_FOOD

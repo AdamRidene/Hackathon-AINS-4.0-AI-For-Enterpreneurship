@@ -739,6 +739,23 @@ def list_documents(project_id: str) -> list[dict]:
         ]
 
 
+def get_documents_text(project_id: str) -> list[dict]:
+    """Return full extracted text per document for a project (auto-fill source).
+    Unlike list_documents (preview only), this returns the complete text."""
+    if _DB_ENABLED:
+        with db_session() as conn:
+            rows = conn.execute(
+                """SELECT filename, extracted_text FROM project_documents
+                   WHERE project_id = ? ORDER BY uploaded_at DESC""",
+                (project_id,),
+            ).fetchall()
+        return [{"filename": r["filename"], "text": r["extracted_text"] or ""}
+                for r in rows if r["extracted_text"]]
+    return [{"filename": d["filename"], "text": d.get("extracted_text") or ""}
+            for d in _mem_docs.values()
+            if d["project_id"] == project_id and d.get("extracted_text")]
+
+
 def get_document(doc_id: str) -> dict | None:
     if _DB_ENABLED:
         with db_session() as conn:

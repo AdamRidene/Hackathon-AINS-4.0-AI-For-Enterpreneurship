@@ -361,6 +361,18 @@ def _set_path(profile: ProjectProfile, path: str, value: Any) -> None:
     setattr(obj, parts[-1], value)
 
 
+def coerce_value(question_id: str, value: Any) -> Any:
+    """Public, non-mutating typed coercion for a question's raw answer.
+
+    Used by the document auto-fill layer to validate a proposed value before
+    showing it to the user. Raises KeyError (unknown question) or ValueError /
+    TypeError (value not coercible to the field type)."""
+    q = QUESTION_INDEX.get(question_id)
+    if q is None:
+        raise KeyError(f"Unknown question '{question_id}'")
+    return _coerce(q, value)
+
+
 class IntakeStateMachine:
     """Serves the next applicable, unanswered question and applies typed answers."""
 

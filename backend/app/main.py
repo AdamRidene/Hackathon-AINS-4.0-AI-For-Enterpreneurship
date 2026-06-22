@@ -19,7 +19,7 @@ from . import __version__, store
 from .auth import get_current_user, extract_token
 from .config import settings
 from .schema import ProjectProfile
-from .intake import IntakeStateMachine
+from .intake import IntakeStateMachine, run_intake_turn, propose_autofill, apply_autofill
 from .orchestrator import run_audit, grounded_assistant_reply
 from .rag.knowledge_base import get_kb
 from .llm import get_llm
@@ -340,21 +340,67 @@ def get_project_questions(pid: str, user: dict = Depends(get_current_user)) -> l
 @app.post("/api/projects/{pid}/answer")
 async def answer(pid: str, body: AnswerBody, user: dict = Depends(get_current_user)) -> dict:
     profile = _require_owned(pid, user)
-    sm = IntakeStateMachine(profile)
+    # Run one adaptive-intake turn through the LangGraph layer: applies the
+    # answer (deterministic), then may inject a content-aware AI follow-up probe
+    # before serving the deterministic next question. LLM failure falls back to
+    # the pure state machine — intake never depends on the model.
     try:
-        sm.apply_answer(body.question_id, body.value)
+        turn = await run_intake_turn(profile, body.question_id, body.value)
     except (KeyError, ValueError) as e:
         raise HTTPException(400, str(e))
+    profile = turn["profile"]
     store.save(profile)
 
     # Only auto-run the full audit pipeline when intake is complete
-    # (last question answered). Intermediate answers just update the profile.
+    # (last question answered, no pending probe). Intermediate answers just
+    # update the profile.
     if profile.intake_complete:
         await _run_owned_audit(pid, user)
 
-    q = sm.next_question()
-    return {"accepted": True, "next_question": q.to_dict() if q else None,
-            "progress": sm.progress(), "intake_complete": profile.intake_complete}
+    return {"accepted": True, "next_question": turn["next_question"],
+            "progress": IntakeStateMachine(profile).progress(),
+            "intake_complete": profile.intake_complete,
+            # Per-turn LangGraph node trace, for the frontend "agent decision
+            # timeline" (explainability). e.g. ["answer:name","probe_emitted:..."].
+            "trace": turn["trace"]}
+
+
+# --------------------------------------------------------------------------- #
+# Document-driven auto-fill (review-and-confirm instead of a long form)        #
+# --------------------------------------------------------------------------- #
+class AutofillItem(BaseModel):
+    question_id: str
+    value: Any
+
+
+class AutofillApplyBody(BaseModel):
+    confirmed: list[AutofillItem]
+
+
+@app.post("/api/projects/{pid}/autofill")
+async def autofill_propose(pid: str, user: dict = Depends(get_current_user)) -> dict:
+    """Propose intake answers extracted from the project's uploaded documents.
+    Does NOT mutate the profile — the user reviews and confirms first."""
+    profile = _require_owned(pid, user)
+    docs = store.get_documents_text(pid)
+    if not docs:
+        raise HTTPException(400, "Aucun document exploitable. Importez d'abord un document "
+                                 "(PDF, MD ou TXT) dans la section « Documents justificatifs ».")
+    doc_text = "\n\n".join(f"# {d['filename']}\n{d['text']}" for d in docs)
+    proposals = await propose_autofill(profile, doc_text)
+    return {"proposals": proposals, "doc_count": len(docs)}
+
+
+@app.post("/api/projects/{pid}/autofill/apply")
+async def autofill_apply(pid: str, body: AutofillApplyBody,
+                         user: dict = Depends(get_current_user)) -> dict:
+    """Apply the user-confirmed auto-fill proposals, then resume intake."""
+    profile = _require_owned(pid, user)
+    result = apply_autofill(profile, [i.model_dump() for i in body.confirmed])
+    store.save(profile)
+    if profile.intake_complete:
+        await _run_owned_audit(pid, user)
+    return {"accepted": True, **result}
 
 
 class ProfilePatchBody(BaseModel):
@@ -536,9 +582,10 @@ async def upload_document(
     except Exception as e:
         raise HTTPException(500, f"Failed to save document: {str(e)}")
 
-    # Extract text from PDFs (run in thread executor to avoid blocking)
+    # Extract text. PDFs via pdfplumber; Markdown/plain-text read directly.
     extracted = None
-    if safe_name.lower().endswith(".pdf"):
+    lower = safe_name.lower()
+    if lower.endswith(".pdf"):
         try:
             import pdfplumber  # noqa: F811
         except ImportError:
@@ -556,6 +603,13 @@ async def upload_document(
             except Exception as exc:
                 _logger.warning("PDF extraction failed for %s: %s", safe_name, exc)
                 extracted = None
+    elif lower.endswith((".md", ".markdown", ".txt", ".text")):
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="replace") as fh:
+                extracted = fh.read()[:5000]  # cap at 5K chars
+        except Exception as exc:
+            _logger.warning("Text extraction failed for %s: %s", safe_name, exc)
+            extracted = None
 
     # Store document record
     store.save_document(

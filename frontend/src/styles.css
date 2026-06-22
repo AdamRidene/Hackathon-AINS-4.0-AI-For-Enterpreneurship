@@ -4289,6 +4289,29 @@ label {
   align-items: center;
 }
 
+/* ── Auto-fill processing progress (indeterminate) ── */
+.autofill-progress {
+  width: 100%;
+  height: 4px;
+  margin-top: 8px;
+  background: rgba(124, 109, 245, 0.15);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.autofill-progress-bar {
+  height: 100%;
+  width: 40%;
+  background: #9b8cff;
+  border-radius: 999px;
+  animation: autofill-indeterminate 1.1s ease-in-out infinite;
+}
+
+@keyframes autofill-indeterminate {
+  0%   { margin-left: -40%; }
+  100% { margin-left: 100%; }
+}
+
 /* ── Documents Manager Styles ── */
 
 .doc-manager-wrap {

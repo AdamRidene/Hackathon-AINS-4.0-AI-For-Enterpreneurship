@@ -241,6 +241,102 @@ class LLMProvider(ABC):
             f"{context}"
         )
 
+    async def extract_fields(
+        self, doc_text: str, fields_spec: list[dict], lang: str = "fr"
+    ) -> list[dict]:
+        """Extract structured intake values from a free-text document.
+
+        Used by the document auto-fill layer: maps a pitch deck / business plan
+        into typed ProjectProfile answers so the founder confirms instead of
+        filling a long form. Returns a list of
+        {id, value, confidence (0-1), evidence (quote)}.
+
+        Returns [] on any failure (StubProvider, timeout, bad JSON) — the caller
+        then falls back to the normal questionnaire. Never raises.
+        """
+        if not doc_text or not doc_text.strip() or not fields_spec:
+            return []
+        # Compact field catalogue the model must extract against.
+        lines = []
+        for f in fields_spec:
+            opt = f" options={f['options']}" if f.get("options") else ""
+            lines.append(f"- id={f['id']} type={f['qtype']}{opt} :: {f.get('prompt','')}")
+        catalogue = "\n".join(lines)
+        prompt = (
+            "You extract structured startup-profile fields from a founder's document "
+            "(pitch deck / business plan). For EACH field you can support from the text, "
+            "return an object {\"id\":..., \"value\":..., \"confidence\":0-1, "
+            "\"evidence\":\"short exact quote from the document\"}.\n"
+            "Rules: only include fields clearly stated in the text; never guess. "
+            "For type=enum, value MUST be exactly one of the listed options. "
+            "For type=bool use true/false. For int/float use a number. "
+            "For tags/sdg use a JSON array. Omit fields not in the document.\n"
+            "Return ONLY a JSON object {\"fields\":[ ... ]}.\n\n"
+            f"FIELDS:\n{catalogue}\n\nDOCUMENT:\n\"\"\"{doc_text[:8000]}\"\"\""
+        )
+        try:
+            raw = _strip_think(await self._complete_with_retry(prompt, max_tokens=3000))
+        except Exception:
+            return []
+        # Parse each field object independently (flat objects, no nested braces).
+        # Resilient to truncation (many fields can exceed the token budget — a
+        # cut-off trailing object is simply skipped) and to ```json fences.
+        items: list[dict] = []
+        for m in re.finditer(r"\{[^{}]*\}", raw):
+            try:
+                obj = json.loads(m.group(0))
+            except Exception:
+                continue
+            if isinstance(obj, dict) and obj.get("id"):
+                items.append(obj)
+        return items
+
+    async def propose_probe(
+        self, question_prompt: str, answer: str, lang: str = "fr"
+    ) -> Optional[str]:
+        """Read a free-text intake answer and propose ONE sharper follow-up probe.
+
+        Used by the LangGraph adaptive-intake layer to add content-aware
+        questioning the deterministic state machine cannot express. Returns the
+        probe text, or None when the answer is already specific / on any error
+        (StubProvider, timeout, empty) — None makes the graph fall back to the
+        deterministic next question, so intake never depends on the LLM.
+        """
+        if not answer or not answer.strip():
+            return None
+        if lang == "ar":
+            prompt = (
+                "أنت تجري مقابلة تشخيصية مع مقاول تونسي. هذا سؤال وإجابته الحرة:\n"
+                f"السؤال: {question_prompt}\n"
+                f"الإجابة: \"\"\"{answer}\"\"\"\n\n"
+                "إن كانت الإجابة غامضة أو تنقصها أرقام/أدلة ملموسة، اقترح سؤال "
+                "متابعة واحداً قصيراً (جملة واحدة) يطلب دليلاً محدداً. إن كانت "
+                "الإجابة محددة بالفعل، لا تقترح شيئاً. "
+                "أعد فقط كائن JSON {\"probe\": \"<السؤال أو فارغ>\"}."
+            )
+        else:
+            prompt = (
+                "You are running a diagnostic interview with a Tunisian entrepreneur. "
+                "Here is one question and its free-text answer:\n"
+                f"Question: {question_prompt}\n"
+                f"Answer: \"\"\"{answer}\"\"\"\n\n"
+                "If the answer is vague or lacks concrete numbers/evidence, propose ONE "
+                "short follow-up question (single sentence) that asks for specific "
+                "evidence. If the answer is already specific, propose nothing. "
+                "Return ONLY a JSON object {\"probe\": \"<question or empty>\"}."
+            )
+        try:
+            raw = _strip_think(await self._complete_with_retry(prompt, max_tokens=160))
+            m = re.search(r"\{[^{}]*\}", raw)
+            if m:
+                probe = str(json.loads(m.group(0)).get("probe", "")).strip()
+                # Guard against the model echoing the original question verbatim.
+                if probe and probe.strip() != question_prompt.strip():
+                    return probe
+        except Exception:
+            pass
+        return None
+
     async def generate_roadmap_prose(self, gap: str, chunks: list[str], lang: str = "fr") -> str:
         joined = "\n---\n".join(chunks) if chunks else ""
         if lang == "ar":

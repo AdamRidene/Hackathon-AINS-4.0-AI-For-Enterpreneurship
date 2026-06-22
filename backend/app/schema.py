@@ -206,6 +206,10 @@ class ProjectProfile(BaseModel):
 
     # Bookkeeping
     answered_questions: list[str] = Field(default_factory=list)
+    # Content-aware follow-up probes injected by the LangGraph intake layer.
+    # Each entry: {"id", "trigger_qid", "prompt_fr"/"prompt_ar", "answer"}.
+    # answer is None while pending; a pending probe blocks intake_complete.
+    dynamic_probes: list[dict] = Field(default_factory=list)
     intake_complete: bool = False
     # Score vector (M,C,I,S,G) of the last persisted audit, for score-evolution
     # deltas across successive audits of the same project.
@@ -220,7 +224,8 @@ class ProjectProfile(BaseModel):
     @classmethod
     def normalize_lists(cls, data: Any) -> Any:
         if isinstance(data, dict):
-            for f in ("competitor_names", "key_hires", "answered_questions"):
+            for f in ("competitor_names", "key_hires", "answered_questions",
+                      "dynamic_probes"):
                 if data.get(f) is None:
                     data[f] = []
         return data

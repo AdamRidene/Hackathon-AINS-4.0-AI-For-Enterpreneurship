@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { SECTOR_LABELS, STAGE_LABELS } from "../constants.js";
+import AgentTrace from "./AgentTrace.jsx";
 
 const SHORT_NAMES = {
   fr: {
@@ -50,6 +51,11 @@ function optLabel(q, opt, lang) {
 function getTriggeredExplanation(triggeredBy, lang) {
   if (!triggeredBy) return "";
   const ar = lang === "ar";
+  if (triggeredBy === "ai_probe") {
+    return ar
+      ? "سؤال متابعة وَلّده الذكاء الاصطناعي من إجابتك النصية لاستخراج دليل أدق"
+      : "Question de suivi générée par l'IA à partir de votre réponse libre, pour obtenir une preuve plus précise";
+  }
   if (triggeredBy.includes("declared_stage>=Fundraising")) {
     return ar 
       ? "تم إدراجه لأنك صرحت بمرحلة تمويل أو أعلى" 
@@ -75,7 +81,7 @@ function getTriggeredExplanation(triggeredBy, lang) {
     : `Injecté suite à : ${triggeredBy}`;
 }
 
-export default function Interview({ lang, question, progress, busy, onSubmit, onSkipConfirm, user, plan, openProfile, pid, api }) {
+export default function Interview({ lang, question, progress, busy, onSubmit, onSkipConfirm, user, plan, openProfile, pid, api, agentTrace }) {
   const [value, setValue]   = useState(() => initial(question));
   const [answeredList, setAnsweredList] = useState([]);
   const ar = lang === "ar";
@@ -196,14 +202,28 @@ export default function Interview({ lang, question, progress, busy, onSubmit, on
           )}
         </div>
 
-        {question?.triggered_by && (
-          <div className="interview-probe-badge" style={{ display: "inline-flex", flexDirection: "column", gap: 4, padding: "8px 12px", background: "var(--orange-soft)", border: "1px solid var(--orange-border)", borderRadius: "var(--r-sm)", marginBottom: 16 }}>
-            <span style={{ color: "var(--orange)", fontWeight: 700, fontSize: "0.76rem" }}>⚡ {T.probe}</span>
-            <span style={{ color: "var(--text-sub)", fontSize: "0.72rem" }}>
-              {getTriggeredExplanation(question.triggered_by, lang)}
-            </span>
-          </div>
+        {agentTrace && (
+          <AgentTrace
+            trace={agentTrace.trace}
+            value={agentTrace.value}
+            question={question}
+            lang={lang}
+          />
         )}
+
+        {question?.triggered_by && (() => {
+          const isAi = question.triggered_by === "ai_probe";
+          return (
+            <div className={`interview-probe-badge${isAi ? " ai-probe" : ""}`} style={{ display: "inline-flex", flexDirection: "column", gap: 4, padding: "8px 12px", background: isAi ? "rgba(124, 109, 245, 0.10)" : "var(--orange-soft)", border: `1px solid ${isAi ? "rgba(124, 109, 245, 0.45)" : "var(--orange-border)"}`, borderRadius: "var(--r-sm)", marginBottom: 16 }}>
+              <span style={{ color: isAi ? "#9b8cff" : "var(--orange)", fontWeight: 700, fontSize: "0.76rem" }}>
+                {isAi ? `🤖 ${T.aiProbe}` : `⚡ ${T.probe}`}
+              </span>
+              <span style={{ color: "var(--text-sub)", fontSize: "0.72rem" }}>
+                {getTriggeredExplanation(question.triggered_by, lang)}
+              </span>
+            </div>
+          );
+        })()}
 
         {/* key forces animation replay on question change */}
         <div key={question?.id} className="interview-question-block" style={{ marginTop: 10 }}>
@@ -317,6 +337,7 @@ const COPY = {
   fr: {
     skip: "Auditer maintenant →",
     probe: "Sonde ciblée",
+    aiProbe: "Suivi IA",
     yes: "Oui", no: "Non",
     tagsPlaceholder: "Séparez par des virgules",
     sdgNone: "Aucun sélectionné",
@@ -326,6 +347,7 @@ const COPY = {
   ar: {
     skip: "← تدقيق الآن",
     probe: "سؤال مخصص",
+    aiProbe: "متابعة بالذكاء الاصطناعي",
     yes: "نعم", no: "لا",
     tagsPlaceholder: "افصل بفواصل",
     sdgNone: "لم يتم الاختيار",
