@@ -241,6 +241,52 @@ class LLMProvider(ABC):
             f"{context}"
         )
 
+    async def propose_probe(
+        self, question_prompt: str, answer: str, lang: str = "fr"
+    ) -> Optional[str]:
+        """Read a free-text intake answer and propose ONE sharper follow-up probe.
+
+        Used by the LangGraph adaptive-intake layer to add content-aware
+        questioning the deterministic state machine cannot express. Returns the
+        probe text, or None when the answer is already specific / on any error
+        (StubProvider, timeout, empty) — None makes the graph fall back to the
+        deterministic next question, so intake never depends on the LLM.
+        """
+        if not answer or not answer.strip():
+            return None
+        if lang == "ar":
+            prompt = (
+                "أنت تجري مقابلة تشخيصية مع مقاول تونسي. هذا سؤال وإجابته الحرة:\n"
+                f"السؤال: {question_prompt}\n"
+                f"الإجابة: \"\"\"{answer}\"\"\"\n\n"
+                "إن كانت الإجابة غامضة أو تنقصها أرقام/أدلة ملموسة، اقترح سؤال "
+                "متابعة واحداً قصيراً (جملة واحدة) يطلب دليلاً محدداً. إن كانت "
+                "الإجابة محددة بالفعل، لا تقترح شيئاً. "
+                "أعد فقط كائن JSON {\"probe\": \"<السؤال أو فارغ>\"}."
+            )
+        else:
+            prompt = (
+                "You are running a diagnostic interview with a Tunisian entrepreneur. "
+                "Here is one question and its free-text answer:\n"
+                f"Question: {question_prompt}\n"
+                f"Answer: \"\"\"{answer}\"\"\"\n\n"
+                "If the answer is vague or lacks concrete numbers/evidence, propose ONE "
+                "short follow-up question (single sentence) that asks for specific "
+                "evidence. If the answer is already specific, propose nothing. "
+                "Return ONLY a JSON object {\"probe\": \"<question or empty>\"}."
+            )
+        try:
+            raw = _strip_think(await self._complete_with_retry(prompt, max_tokens=160))
+            m = re.search(r"\{[^{}]*\}", raw)
+            if m:
+                probe = str(json.loads(m.group(0)).get("probe", "")).strip()
+                # Guard against the model echoing the original question verbatim.
+                if probe and probe.strip() != question_prompt.strip():
+                    return probe
+        except Exception:
+            pass
+        return None
+
     async def generate_roadmap_prose(self, gap: str, chunks: list[str], lang: str = "fr") -> str:
         joined = "\n---\n".join(chunks) if chunks else ""
         if lang == "ar":

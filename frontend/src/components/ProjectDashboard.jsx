@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { SECTOR_LABELS, STAGE_LABELS } from "../constants.js";
+import AgentTrace from "./AgentTrace.jsx";
 
 /* ── Helpers ─────────────────────────────────────────────────────────── */
 
@@ -618,6 +619,7 @@ export default function ProjectDashboard({
 
   // States for adaptive intake card
   const [nextQ, setNextQ] = useState(null);
+  const [agentTrace, setAgentTrace] = useState(null);
   const [progress, setProgress] = useState(null);
   const [qValue, setQValue] = useState("");
   const [answering, setAnswering] = useState(false);
@@ -694,6 +696,7 @@ export default function ProjectDashboard({
       setAudit(updatedAudit);
       setNextQ(res.next_question);
       setProgress(res.progress);
+      if (res.next_question) setAgentTrace({ trace: res.trace, value: val });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1015,14 +1018,24 @@ export default function ProjectDashboard({
             {nextQ && !editing && (
               <section className="pf-card adaptive-card" style={{ marginBottom: 16 }}>
                 <div className="adaptive-header">
-                  <span className="adaptive-badge">⚡ {ar ? "سؤال تكيفي مقترح" : "Question adaptative recommandée"}</span>
+                  {nextQ.triggered_by === "ai_probe" ? (
+                    <span className="adaptive-badge ai-probe" style={{ background: "rgba(124, 109, 245, 0.10)", border: "1px solid rgba(124, 109, 245, 0.45)", color: "#9b8cff" }}>
+                      🤖 {ar ? "متابعة بالذكاء الاصطناعي" : "Suivi IA"}
+                    </span>
+                  ) : (
+                    <span className="adaptive-badge">⚡ {ar ? "سؤال تكيفي مقترح" : "Question adaptative recommandée"}</span>
+                  )}
                   {progress && (
                     <span style={{ fontSize: "0.8rem", color: "var(--text-sub)" }}>
                       {progress.answered} / {progress.total} {ar ? "إجابة" : "réponses"} ({Math.round((progress.answered / progress.total) * 100)}%)
                     </span>
                   )}
                 </div>
-                
+
+                {agentTrace && (
+                  <AgentTrace trace={agentTrace.trace} value={agentTrace.value} question={nextQ} lang={lang} />
+                )}
+
                 <div style={{ margin: "12px 0" }}>
                   <h2 className="adaptive-prompt" style={{ fontSize: "1.1rem", fontWeight: 600, margin: "0 0 6px 0" }}>
                     {ar && nextQ.prompt_ar ? nextQ.prompt_ar : nextQ.prompt_fr}
