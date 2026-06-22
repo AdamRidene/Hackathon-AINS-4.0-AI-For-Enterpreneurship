@@ -9,8 +9,10 @@ import { useState } from "react";
  */
 const T = {
   fr: {
-    cta: "✨ Remplir depuis un document",
-    hint: "Importez un pitch deck ou business plan (PDF) ci-dessus, puis laissez l'IA pré-remplir le formulaire.",
+    upload: "📄 Importer un document",
+    uploading: "Téléversement…",
+    analyzeExisting: "✨ Analyser un document déjà importé",
+    hint: "Importez un pitch deck / business plan (PDF, MD ou TXT). L'IA pré-remplit le formulaire — vous validez avant d'appliquer.",
     analyzing: "Analyse du document…",
     title: "Champs extraits — vérifiez avant d'appliquer",
     none: "Aucun champ exploitable trouvé. Répondez aux questions manuellement.",
@@ -23,8 +25,10 @@ const T = {
     yes: "Oui", no: "Non",
   },
   ar: {
-    cta: "✨ التعبئة من وثيقة",
-    hint: "حمّل عرضاً تقديمياً أو خطة عمل (PDF) أعلاه، ثم دع الذكاء الاصطناعي يملأ النموذج.",
+    upload: "📄 تحميل وثيقة",
+    uploading: "جارٍ الرفع…",
+    analyzeExisting: "✨ تحليل وثيقة محمّلة مسبقاً",
+    hint: "حمّل عرضاً تقديمياً أو خطة عمل (PDF أو MD أو TXT). يملأ الذكاء الاصطناعي النموذج — وتؤكّد قبل التطبيق.",
     analyzing: "تحليل الوثيقة…",
     title: "الحقول المستخرجة — تحقق قبل التطبيق",
     none: "لم يُعثر على حقول قابلة للاستخدام. أجب على الأسئلة يدوياً.",
@@ -46,6 +50,18 @@ export default function AutoFill({ pid, api, lang, onApplied }) {
   const [checked, setChecked] = useState({}); // qid -> bool
   const [values, setValues] = useState({});   // qid -> edited value
   const [error, setError] = useState(null);
+
+  async function handleUpload(file) {
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { setError("Fichier > 10 Mo."); return; }
+    setPhase("uploading"); setError(null);
+    try {
+      await api.uploadDocument(pid, file);
+      await analyze();           // upload done (text extracted server-side) -> propose
+    } catch (err) {
+      setError(err.message); setPhase("idle");
+    }
+  }
 
   async function analyze() {
     setPhase("loading"); setError(null);
@@ -102,14 +118,25 @@ export default function AutoFill({ pid, api, lang, onApplied }) {
     return <input value={display} onChange={(e) => set(e.target.value)} style={base} />;
   }
 
-  if (phase === "idle" || phase === "loading") {
+  if (phase === "idle" || phase === "loading" || phase === "uploading") {
+    const busy = phase !== "idle";
+    const inputId = `autofill-upload-${pid}`;
+    const btn = { fontSize: "0.82rem", padding: "8px 14px", border: "1px solid rgba(124,109,245,0.45)", color: "#9b8cff", borderRadius: "var(--r-sm)", background: "rgba(124,109,245,0.06)", cursor: busy ? "default" : "pointer", display: "inline-block" };
     return (
       <div style={{ marginBottom: 14 }} dir={ar ? "rtl" : "ltr"}>
-        <button className="ghost" onClick={analyze} disabled={phase === "loading"}
-          style={{ fontSize: "0.82rem", padding: "8px 14px", border: "1px solid rgba(124,109,245,0.45)", color: "#9b8cff", borderRadius: "var(--r-sm)", background: "rgba(124,109,245,0.06)" }}>
-          {phase === "loading" ? t.analyzing : t.cta}
-        </button>
-        <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", marginTop: 4 }}>{t.hint}</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <label htmlFor={inputId} style={{ ...btn, fontWeight: 700, opacity: busy ? 0.6 : 1 }}>
+            {phase === "uploading" ? t.uploading : (phase === "loading" ? t.analyzing : t.upload)}
+          </label>
+          <input id={inputId} type="file" style={{ display: "none" }} disabled={busy}
+            accept=".pdf,.txt,.md,.markdown,text/plain,text/markdown,application/pdf"
+            onChange={(e) => handleUpload(e.target.files[0])} />
+          <button className="ghost" onClick={analyze} disabled={busy}
+            style={{ ...btn, opacity: busy ? 0.6 : 1 }}>
+            {t.analyzeExisting}
+          </button>
+        </div>
+        <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", marginTop: 6 }}>{t.hint}</div>
         {error && <div style={{ fontSize: "0.72rem", color: "var(--danger, #e66)", marginTop: 4 }}>{error}</div>}
       </div>
     );

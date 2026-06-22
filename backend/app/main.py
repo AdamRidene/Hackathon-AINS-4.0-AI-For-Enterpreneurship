@@ -384,7 +384,8 @@ async def autofill_propose(pid: str, user: dict = Depends(get_current_user)) -> 
     profile = _require_owned(pid, user)
     docs = store.get_documents_text(pid)
     if not docs:
-        raise HTTPException(400, "Aucun document exploitable. Téléversez d'abord un PDF.")
+        raise HTTPException(400, "Aucun document exploitable. Importez d'abord un document "
+                                 "(PDF, MD ou TXT) dans la section « Documents justificatifs ».")
     doc_text = "\n\n".join(f"# {d['filename']}\n{d['text']}" for d in docs)
     proposals = await propose_autofill(profile, doc_text)
     return {"proposals": proposals, "doc_count": len(docs)}
