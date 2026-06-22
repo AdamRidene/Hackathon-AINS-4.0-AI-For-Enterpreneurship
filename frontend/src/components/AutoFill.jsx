@@ -98,7 +98,7 @@ export default function AutoFill({ pid, api, lang, onApplied }) {
   function valueEditor(p) {
     const v = values[p.question_id];
     const set = (nv) => setValues((s) => ({ ...s, [p.question_id]: nv }));
-    const base = { fontSize: "0.8rem", padding: "4px 8px", background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: "var(--r-sm)", width: "100%" };
+    const base = { fontSize: "0.8rem", padding: "4px 8px", background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: "var(--r-sm)", width: "100%", boxSizing: "border-box", textAlign: "start" };
     if (p.qtype === "enum") {
       return (
         <select value={v ?? ""} onChange={(e) => set(e.target.value)} style={base}>
@@ -123,7 +123,7 @@ export default function AutoFill({ pid, api, lang, onApplied }) {
     const inputId = `autofill-upload-${pid}`;
     const btn = { fontSize: "0.82rem", padding: "8px 14px", border: "1px solid rgba(124,109,245,0.45)", color: "#9b8cff", borderRadius: "var(--r-sm)", background: "rgba(124,109,245,0.06)", cursor: busy ? "default" : "pointer", display: "inline-block" };
     return (
-      <div style={{ marginBottom: 14 }} dir={ar ? "rtl" : "ltr"}>
+      <div style={{ marginBottom: 14, width: "100%", boxSizing: "border-box" }} dir={ar ? "rtl" : "ltr"}>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <label htmlFor={inputId} style={{ ...btn, fontWeight: 700, opacity: busy ? 0.6 : 1 }}>
             {phase === "uploading" ? t.uploading : (phase === "loading" ? t.analyzing : t.upload)}
@@ -136,7 +136,14 @@ export default function AutoFill({ pid, api, lang, onApplied }) {
             {t.analyzeExisting}
           </button>
         </div>
-        <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", marginTop: 6 }}>{t.hint}</div>
+        {busy && (
+          <div className="autofill-progress" aria-label="processing">
+            <div className="autofill-progress-bar" />
+          </div>
+        )}
+        <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", marginTop: 6 }}>
+          {phase === "uploading" ? t.uploading : (phase === "loading" ? t.analyzing : t.hint)}
+        </div>
         {error && <div style={{ fontSize: "0.72rem", color: "var(--danger, #e66)", marginTop: 4 }}>{error}</div>}
       </div>
     );
@@ -145,20 +152,20 @@ export default function AutoFill({ pid, api, lang, onApplied }) {
   const nChecked = proposals.filter((p) => checked[p.question_id]).length;
 
   return (
-    <div dir={ar ? "rtl" : "ltr"} style={{ marginBottom: 16, padding: "12px", background: "rgba(124,109,245,0.05)", border: "1px solid rgba(124,109,245,0.25)", borderRadius: "var(--r-sm)" }}>
+    <div dir={ar ? "rtl" : "ltr"} style={{ marginBottom: 16, padding: "12px", width: "100%", boxSizing: "border-box", textAlign: "start", background: "rgba(124,109,245,0.05)", border: "1px solid rgba(124,109,245,0.25)", borderRadius: "var(--r-sm)" }}>
       <div style={{ fontWeight: 700, fontSize: "0.8rem", color: "#9b8cff", marginBottom: 8 }}>🤖 {t.title}</div>
       {proposals.length === 0 ? (
         <div style={{ fontSize: "0.78rem", color: "var(--text-sub)" }}>{t.none}</div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
           {proposals.map((p) => (
-            <div key={p.question_id} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
+            <div key={p.question_id} style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 10, alignItems: "start", width: "100%", padding: "6px 0", borderBottom: "1px solid var(--border)", boxSizing: "border-box" }}>
               <input type="checkbox" checked={!!checked[p.question_id]} style={{ marginTop: 4 }}
                 onChange={(e) => setChecked((s) => ({ ...s, [p.question_id]: e.target.checked }))} />
-              <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ minWidth: 0, textAlign: "start" }}>
                 <div style={{ fontSize: "0.78rem", color: "var(--text)", marginBottom: 4 }}>{prompt(p)}</div>
                 {valueEditor(p)}
-                <div style={{ fontSize: "0.66rem", color: "var(--text-dim)", marginTop: 3, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <div style={{ fontSize: "0.66rem", color: "var(--text-dim)", marginTop: 3, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                   <span>{Math.round(p.confidence * 100)}%</span>
                   <span style={{ color: p.verified ? "#7bd88f" : "var(--text-dim)" }}>
                     {p.verified ? "✓ " + t.verified : "• " + t.unverified}
