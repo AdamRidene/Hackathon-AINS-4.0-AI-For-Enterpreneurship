@@ -2095,6 +2095,32 @@ label {
   font-weight: 600;
 }
 
+.score-improvement {
+  background: rgba(74, 123, 247, .07);
+  border-left: 3px solid var(--orange);
+  border-radius: var(--r-sm);
+  padding: 10px 14px;
+  margin-top: 12px;
+}
+
+.score-improvement-label {
+  font-size: .72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--orange);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.score-improvement-text {
+  font-size: .83rem;
+  color: var(--text);
+  line-height: 1.6;
+  margin: 0;
+}
+
+
 .contrib-row {
   display: flex;
   align-items: flex-start;
@@ -2269,6 +2295,13 @@ label {
   border-right: 2px solid var(--orange);
   border-radius: var(--r-sm) 0 0 var(--r-sm);
 }
+
+[dir="rtl"] .score-pourquoi,
+[dir="rtl"] .score-improvement {
+  border-left: none;
+  border-right: 3px solid var(--primary);
+}
+
 
 .ms-sources {
   display: flex;

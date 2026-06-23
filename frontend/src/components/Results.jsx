@@ -319,37 +319,37 @@ function ScoresTab({ audit, lang, T, plan, openProfile, explanations }) {
               </div>
 
               {open && (
-                <div className="score-detail">
-                  {/* Pourquoi ce score — LLM prose from explain_all_scores */}
-                  {explanations?.[key]?.natural_language && (
+            <div className="score-detail">
+                {/* Pourquoi ce score — LLM prose from explain_all_scores */}
+                {explanations?.[key]?.natural_language && (
                     <div className="score-pourquoi">
-                      <span className="score-pourquoi-label">{T.pourquoi}</span>
-                      <p className="score-pourquoi-text">{explanations[key].natural_language}</p>
+                        <span className="score-pourquoi-label">{T.pourquoi}</span>
+                        <p className="score-pourquoi-text">{explanations[key].natural_language}</p>
                     </div>
-                  )}
-                  <div className="score-anchor">{T.anchor} : {res.anchor}</div>
-                  {res.gate_triggered && res.gate_reason && (
+                )}
+                <div className="score-anchor">{T.anchor} : {res.anchor}</div>
+                {res.gate_triggered && res.gate_reason && (
                     <div className="score-gate-msg">⚠ {T.gateRule} : {res.gate_reason}</div>
-                  )}
-                  {res.contributions.map((c, i) => (
+                )}
+                {res.contributions.map((c, i) => (
                     <div key={i} className="contrib-row">
-                      <span className="contrib-name">{c.criterion}</span>
-                      <span className="contrib-detail">{c.detail}</span>
-                      <span className="contrib-w mono">w:{c.weight}</span>
-                      <span className="contrib-score mono">{c.weighted}</span>
+                        <span className="contrib-name">{c.criterion}</span>
+                        <span className="contrib-detail">{c.detail}</span>
+                        <span className="contrib-w mono">w:{c.weight}</span>
+                        <span className="contrib-score mono">{c.weighted}</span>
                     </div>
-                  ))}
-                  {res.missing_inputs?.length > 0 && (
+                ))}
+                {res.missing_inputs?.length > 0 && (
                     <div className="score-missing muted">⚠ {T.missing} : {res.missing_inputs.join(", ")}</div>
-                  )}
-                  {/* What-if CTA */}
-                  {res.what_if_hint && (
+                )}
+                {/* What-if CTA */}
+                {res.what_if_hint && (
                     <div className="score-whatif">
-                      ▲ {T.whatIf(res.what_if_hint.criterion, res.what_if_hint.potential_gain)}
+                        ▲ {T.whatIf(res.what_if_hint.criterion, res.what_if_hint.potential_gain)}
                     </div>
-                  )}
-                </div>
-              )}
+                )}
+            </div>
+        )}
             </div>
           );
         })}

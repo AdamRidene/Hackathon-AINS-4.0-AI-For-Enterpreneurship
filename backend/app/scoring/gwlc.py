@@ -46,13 +46,17 @@ class ScoreResult:
     base_score: float
     final_score: float
     gate_triggered: bool
-    gate_reason: Optional[str]
+    gate_reason_fr: Optional[str] = None
+    gate_reason_ar: Optional[str] = None
     contributions: list[Contribution] = field(default_factory=list)
     missing_inputs: list[str] = field(default_factory=list)
-    anchor: str = ""
+    anchor_fr: str = ""
+    anchor_ar: str = ""
     # Anomaly-derived confidence notes (Section 10: don't mutate scores,
     # attach confidence annotations for downstream decision support).
     anomaly_notes: list[str] = field(default_factory=list)
+    improvement_guidance_fr: Optional[str] = None
+    improvement_guidance_ar: Optional[str] = None
 
     def to_dict(self) -> dict:
         what_if = None
@@ -66,11 +70,15 @@ class ScoreResult:
             "base_score": round(self.base_score, 1),
             "final_score": round(self.final_score, 1),
             "gate_triggered": self.gate_triggered,
-            "gate_reason": self.gate_reason,
-            "anchor": self.anchor,
+            "gate_reason_fr": self.gate_reason_fr,
+            "gate_reason_ar": self.gate_reason_ar,
+            "anchor_fr": self.anchor_fr,
+            "anchor_ar": self.anchor_ar,
             "missing_inputs": self.missing_inputs,
             "anomaly_notes": self.anomaly_notes,
             "what_if_hint": what_if,
+            "improvement_guidance_fr": self.improvement_guidance_fr,
+            "improvement_guidance_ar": self.improvement_guidance_ar,
             "contributions": [
                 {
                     "criterion": c.criterion,
@@ -176,20 +184,47 @@ def score_market(p: ProjectProfile) -> ScoreResult:
     gate_triggered = ve is not True  # absent or False both trigger the cap
     if gate_triggered:
         final = min(base, W.GATES["market_validation_cap"])
-        reason = (
-            "Customer-validation evidence absent (V_e != 1): Market Score "
-            f"hard-capped at {W.GATES['market_validation_cap']:.0f} regardless of TAM "
-            "(Lean Startup: no validated learning licenses no market signal)."
+        reason_fr = (
+            "Preuve de validation client absente (V_e != 1) : Score Marché "
+            f"plafonné à {W.GATES['market_validation_cap']:.0f} indépendamment du TAM "
+            "(Lean Startup : pas d'apprentissage validé, pas de signal marché)."
+        )
+        reason_ar = (
+            "دليل التحقق من العملاء غير موجود (V_e != 1): يتم تقييد "
+            f"السوق إلى {W.GATES['market_validation_cap']:.0f} بغض النظر عن حجم السوق "
+            "(Lean Startup: بدون تعلم موثق، لا توجد إشارة سوق)."
         )
     else:
         final = base
-        reason = None
+        reason_fr = None
+        reason_ar = None
+
+    # Improvement guidance
+    guidance_fr_lines = []
+    guidance_ar_lines = []
+    if "customer_validation_evidence" in missing or gate_triggered:
+        guidance_fr_lines.append("Priorité la plus haute : Collectez des preuves de validation client (témoignages, interviews, paiements initiaux) — cela débloquera votre score marché.")
+        guidance_ar_lines.append("الأعلى الأولوية: اجمع أدلة التحقق من العملاء (شهادات، مقابلات، مدفوعات أولية) — هذا سيفتح نقاط سوقك.")
+    if "estimated_tam_tnd" in missing:
+        guidance_fr_lines.append("Estimez votre marché adressable total (TAM) en dinars tunisiens — cela renforcera la crédibilité de votre potentiel de croissance.")
+        guidance_ar_lines.append("قدّر حجم السوق المستهدف الكلّي (TAM) بالدينار التونسي — هذا يعزز مصداقية إمكانيات نموك.")
+    if "competitor_headcount" in missing:
+        guidance_fr_lines.append("Indiquez le nombre approximatif d'employés de vos principaux concurrents — cela aide à calibrer la saturation du marché.")
+        guidance_ar_lines.append("أذكر عدد موظفي منافسيك الرئيسيين تقريبًا — هذا يساعد في تقييم تشبع السوق.")
+    if "has_revenue_model" in missing:
+        guidance_fr_lines.append("Déclarez clairement votre modèle de revenus — cela est essentiel pour montrer comment vous monétisez votre marché.")
+        guidance_ar_lines.append("أعلن بوضوح عن نموذج إيراداتك — هذا ضروري لإظهار كيف تقوم بإيراد سوقك.")
+    guidance_fr = "\n".join(guidance_fr_lines) if guidance_fr_lines else None
+    guidance_ar = "\n".join(guidance_ar_lines) if guidance_ar_lines else None
 
     return ScoreResult(
         dimension="Market", base_score=base, final_score=final,
-        gate_triggered=gate_triggered, gate_reason=reason,
+        gate_triggered=gate_triggered, gate_reason_fr=reason_fr, gate_reason_ar=reason_ar,
         contributions=contribs, missing_inputs=missing,
-        anchor="Lean Startup validated learning (Ries, 2011)",
+        anchor_fr="Apprentissage validé Lean Startup (Ries, 2011)",
+        anchor_ar="التعلم الموثق Lean Startup (Ries, 2011)",
+        improvement_guidance_fr=guidance_fr,
+        improvement_guidance_ar=guidance_ar,
     )
 
 
@@ -241,12 +276,31 @@ def score_commercial(p: ProjectProfile, pcoh: Optional[float] = None) -> ScoreRe
                      w["pricing"] * price_raw, price_detail),
     ]
     base = sum(c_.weighted for c_ in contribs)
+    
+    # Improvement guidance
+    guidance_fr_lines = []
+    guidance_ar_lines = []
+    if "value_proposition_narrative" in missing:
+        guidance_fr_lines.append("Rédigez une proposition de valeur claire qui explique comment vous résolvez un problème pour vos clients.")
+        guidance_ar_lines.append("اكتب عرض قيمة واضح يشرح كيف تحل مشكلة لعملائك.")
+    if "mvp_stage" in missing:
+        guidance_fr_lines.append("Définissez clairement votre stade MVP pour montrer la préparation de votre offre.")
+        guidance_ar_lines.append("حدّد بوضوح مرحلة MVP لإظهار استعداد عرضك.")
+    if "pricing_framework" in missing:
+        guidance_fr_lines.append("Documentez votre stratégie de tarification — cela renforce la cohérence de votre offre commerciale.")
+        guidance_ar_lines.append("وثّق استراتيجية التسعير — هذا يحسن تناسق عرضك التجاري.")
+    guidance_fr = "\n".join(guidance_fr_lines) if guidance_fr_lines else None
+    guidance_ar = "\n".join(guidance_ar_lines) if guidance_ar_lines else None
+    
     # No gate: commercial-offer signals are continuous, not binary.
     return ScoreResult(
         dimension="Commercial Offer", base_score=base, final_score=base,
-        gate_triggered=False, gate_reason=None,
+        gate_triggered=False, gate_reason_fr=None, gate_reason_ar=None,
         contributions=contribs, missing_inputs=missing,
-        anchor="Value Proposition Canvas (Strategyzer)",
+        anchor_fr="Value Proposition Canvas (Strategyzer)",
+        anchor_ar="لوحة عرض القيمة (Strategyzer)",
+        improvement_guidance_fr=guidance_fr,
+        improvement_guidance_ar=guidance_ar,
     )
 
 
@@ -292,11 +346,30 @@ def score_innovation(p: ProjectProfile) -> ScoreResult:
                      w["ip_status"] * ip_raw, ip_detail),
     ]
     base = sum(c.weighted for c in contribs)
+    
+    # Improvement guidance
+    guidance_fr_lines = []
+    guidance_ar_lines = []
+    if "geo_novelty" in missing:
+        guidance_fr_lines.append("Indiquez le niveau de nouveauté géographique de votre offre — locale, régionale, nationale ou internationale.")
+        guidance_ar_lines.append("أذكر مستوى التجديد الجغرافي لعرضك — محلي، إقليمي، وطني أو دولي.")
+    if "tech_stack" in missing:
+        guidance_fr_lines.append("Documentez votre pile technologique — plus vous en mentionnez, plus cela renforce votre score d'innovation.")
+        guidance_ar_lines.append("وثّق كومة تقنياتك — كلما زادت التقنيات المذكورة، زادت نقاط ابتكارك.")
+    if "ip_status" in missing:
+        guidance_fr_lines.append("Définissez le statut de votre propriété intellectuelle — cela protège votre avantage compétitif.")
+        guidance_ar_lines.append("حدّد حالة ملكيتك الفكرية — هذا يحمي ميزتك التنافسية.")
+    guidance_fr = "\n".join(guidance_fr_lines) if guidance_fr_lines else None
+    guidance_ar = "\n".join(guidance_ar_lines) if guidance_ar_lines else None
+    
     return ScoreResult(
         dimension="Innovation", base_score=base, final_score=base,
-        gate_triggered=False, gate_reason=None,
+        gate_triggered=False, gate_reason_fr=None, gate_reason_ar=None,
         contributions=contribs, missing_inputs=missing,
-        anchor="OECD Oslo Manual 2018",
+        anchor_fr="Manuel d'Oslo de l'OCDE 2018",
+        anchor_ar="دليل أوسلو للمنظمة التعاون الاقتصادي والتنمية 2018",
+        improvement_guidance_fr=guidance_fr,
+        improvement_guidance_ar=guidance_ar,
     )
 
 
@@ -368,25 +441,49 @@ def score_scalability(p: ProjectProfile) -> ScoreResult:
         missing.append("human_dependency")
         gate_triggered = False
         final = base
-        reason = None
+        reason_fr = None
+        reason_ar = None
     elif dman > W.GATES["human_dependency_threshold"]:
         gate_triggered = True
         final = W.GATES["scalability_penalty"] * base
-        reason = (
-            f"Human dependency D_man = {dman} > 7: Scalability Score multiplied by "
-            f"{W.GATES['scalability_penalty']} (venture does not scale without "
-            "proportional headcount — VC marginal-cost decoupling fails)."
+        reason_fr = (
+            f"Dépendance humaine D_man = {dman} > 7 : Score Scalabilité multiplié par "
+            f"{W.GATES['scalability_penalty']} (le projet ne s'adapte pas sans "
+            "proportionnellement plus de personnel — principe de découplage des coûts marginaux du VC échoue)."
+        )
+        reason_ar = (
+            f"الاعتماد البشري D_man = {dman} > 7: يتم ضرب قابلية التوسع في "
+            f"{W.GATES['scalability_penalty']} (المشروع لا يتوسع دون زيادة متناسبة في عدد الموظفين — مبدأ فصل التكاليف الهامشية لشركات رأس المال الاستثماري غير مقبول)."
         )
     else:
         gate_triggered = False
         final = base
-        reason = None
+        reason_fr = None
+        reason_ar = None
+        
+    # Improvement guidance
+    guidance_fr_lines = []
+    guidance_ar_lines = []
+    if "monthly_overhead" in missing:
+        guidance_fr_lines.append("Estimez vos charges mensuelles récurrentes — moins elles sont élevées, plus votre score de scalabilité est fort.")
+        guidance_ar_lines.append("قدّر تكاليفك الشهرية المتكررة — كلما كانت أقل، زادت نقاط قابلية التوسع.")
+    if "cross_border_zones" in missing:
+        guidance_fr_lines.append("Indiquez les zones géographiques ciblées pour votre expansion — plus vous en avez, plus votre score augmente.")
+        guidance_ar_lines.append("أذكر المناطق الجغرافية المستهدفة لتوسعك — كلما زادت المناطق، زادت النقاط.")
+    if "human_dependency" in missing or (dman is not None and dman > 7):
+        guidance_fr_lines.append("Réduisez votre dépendance humaine pour améliorer votre capacité à évoluer sans augmentation proportionnelle des effectifs.")
+        guidance_ar_lines.append("قلل من اعتمادك البشري لتحسين قدرتك على التوسع دون زيادة متناسبة في عدد الموظفين.")
+    guidance_fr = "\n".join(guidance_fr_lines) if guidance_fr_lines else None
+    guidance_ar = "\n".join(guidance_ar_lines) if guidance_ar_lines else None
 
     return ScoreResult(
         dimension="Scalability", base_score=base, final_score=final,
-        gate_triggered=gate_triggered, gate_reason=reason,
+        gate_triggered=gate_triggered, gate_reason_fr=reason_fr, gate_reason_ar=reason_ar,
         contributions=contribs, missing_inputs=missing,
-        anchor="VC marginal-cost decoupling principle",
+        anchor_fr="Principe de découplage des coûts marginaux du VC",
+        anchor_ar="مبدأ فصل التكاليف الهامشية لشركات رأس المال الاستثماري",
+        improvement_guidance_fr=guidance_fr,
+        improvement_guidance_ar=guidance_ar,
     )
 
 
@@ -428,11 +525,30 @@ def score_green(p: ProjectProfile) -> ScoreResult:
         Contribution("sdg", w["sdg"], sdg_raw, w["sdg"] * sdg_raw, sdg_detail),
     ]
     base = sum(c.weighted for c in contribs)
+    
+    # Improvement guidance
+    guidance_fr_lines = []
+    guidance_ar_lines = []
+    if "footprint_category" in missing:
+        guidance_fr_lines.append("Définissez la catégorie de votre empreinte carbone/environnementale — cela est la base de votre score vert.")
+        guidance_ar_lines.append("حدّد فئة بصمتك الكربونية/البيئية — هذا أساس نقاطك الخضراء.")
+    if "circular_recycling" in missing:
+        guidance_fr_lines.append("Indiquez si vous intégrez des principes de réutilisation ou de recyclage — cela améliore votre score d'économie circulaire.")
+        guidance_ar_lines.append("أذكر إن كنت تدمج مبادئ إعادة الاستخدام أو التدوير — هذا يحسن نقاطك في الاقتصاد الدائري.")
+    if "sdg_targets" in missing or n_sdg == 0:
+        guidance_fr_lines.append("Choisissez des Objectifs de Développement Durable (ODD) pertinents pour votre projet — plus vous en ciblez, plus votre score augmente.")
+        guidance_ar_lines.append("اختر أهداف التنمية المستدامة (ODD) ذات صلة بمشروعك — كلما زادت الأهداف المستهدفة، زادت النقاط.")
+    guidance_fr = "\n".join(guidance_fr_lines) if guidance_fr_lines else None
+    guidance_ar = "\n".join(guidance_ar_lines) if guidance_ar_lines else None
+    
     return ScoreResult(
         dimension="Green", base_score=base, final_score=base,
-        gate_triggered=False, gate_reason=None,
+        gate_triggered=False, gate_reason_fr=None, gate_reason_ar=None,
         contributions=contribs, missing_inputs=missing,
-        anchor="UN SDG Indicators / World Bank ESG",
+        anchor_fr="Indicateurs ODD des Nations Unies / ESG de la Banque mondiale",
+        anchor_ar="مؤشرات أهداف التنمية المستدامة للأمم المتحدة / ESG للبنك الدولي",
+        improvement_guidance_fr=guidance_fr,
+        improvement_guidance_ar=guidance_ar,
     )
 
 

@@ -32,9 +32,9 @@ async def explain_score(s: ScoreResult, lang: str = "fr") -> dict:
         )
         context = (
             f"البعد {dim_ar}. النتيجة الأساسية {s.base_score:.1f}، "
-            f"النتيجة النهائية {s.final_score:.1f}. الركيزة: {s.anchor}. "
+            f"النتيجة النهائية {s.final_score:.1f}. الركيزة: {s.anchor_ar}. "
             f"المساهمات: {contrib_lines}. "
-            + (f"تم تفعيل البوابة: {s.gate_reason}" if s.gate_triggered else "لم يتم تفعيل أي بوابة.")
+            + (f"تم تفعيل البوابة: {s.gate_reason_ar}" if s.gate_triggered else "لم يتم تفعيل أي بوابة.")
             + (f" البيانات المفقودة: {', '.join(s.missing_inputs)}." if s.missing_inputs else "")
         )
     else:
@@ -44,9 +44,9 @@ async def explain_score(s: ScoreResult, lang: str = "fr") -> dict:
         )
         context = (
             f"Dimension {s.dimension}. Score de base {s.base_score:.1f}, "
-            f"score final {s.final_score:.1f}. Ancrage: {s.anchor}. "
+            f"score final {s.final_score:.1f}. Ancrage: {s.anchor_fr}. "
             f"Contributions: {contrib_lines}. "
-            + (f"PORTE déclenchée: {s.gate_reason}" if s.gate_triggered else "Aucune porte déclenchée.")
+            + (f"PORTE déclenchée: {s.gate_reason_fr}" if s.gate_triggered else "Aucune porte déclenchée.")
             + (f" Données manquantes: {', '.join(s.missing_inputs)}." if s.missing_inputs else "")
         )
     return {
