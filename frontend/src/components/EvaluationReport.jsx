@@ -74,17 +74,35 @@ const STEP_LABELS = {
   ar: ["محرك التشخيص", "محرك RAG", "اتساق التقييم"],
 };
 
+const LS_KEY = "firasa_eval_job";
+
 export default function EvaluationReport({ lang, api, onBack }) {
-  const [partialData, setPartialData] = useState({});  // populated step by step
-  const [progress, setProgress] = useState(0);          // 0-3
+  const [partialData, setPartialData] = useState({});
+  const [progress, setProgress] = useState(0);
   const [running, setRunning]   = useState(false);
   const [error, setError]       = useState(null);
-  const [jobId, setJobId]       = useState(null);
+  const [jobId, setJobId]       = useState(() => {
+    // Resume job if one was running when user navigated away
+    try { return localStorage.getItem(LS_KEY) || null; } catch { return null; }
+  });
 
   const ar = lang === "ar";
   const t  = TEXTS[lang] || TEXTS.fr;
   const stepLabels = STEP_LABELS[lang] || STEP_LABELS.fr;
   const done = progress === 3;
+
+  // Warn before leaving page while eval is running
+  useEffect(() => {
+    if (!running) return;
+    const handler = e => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [running]);
+
+  // On mount with a stored jobId, start polling immediately
+  useEffect(() => {
+    if (jobId && !done && !error) setRunning(true);
+  }, []);
 
   // Poll backend every 3s while job is running
   useEffect(() => {
@@ -92,20 +110,26 @@ export default function EvaluationReport({ lang, api, onBack }) {
     const iv = setInterval(async () => {
       try {
         const job = await api.evalStatus(jobId);
-        // Merge newly completed steps into partialData
         if (job.result) {
           setPartialData(prev => ({ ...prev, ...job.result }));
           setProgress(job.progress);
         }
         if (job.status === "done") {
           setRunning(false);
+          try { localStorage.removeItem(LS_KEY); } catch {}
           clearInterval(iv);
         } else if (job.status === "failed") {
           setError(job.error || "Evaluation failed");
           setRunning(false);
+          try { localStorage.removeItem(LS_KEY); } catch {}
           clearInterval(iv);
         }
       } catch (e) {
+        // 404 = job expired (server restart) — clear and let user retry
+        if (e.message?.includes("404") || e.message?.includes("expired")) {
+          try { localStorage.removeItem(LS_KEY); } catch {}
+          setJobId(null);
+        }
         setError(e.message);
         setRunning(false);
         clearInterval(iv);
@@ -121,7 +145,11 @@ export default function EvaluationReport({ lang, api, onBack }) {
     setProgress(0);
     setJobId(null);
     api.evalStart()
-      .then(res => setJobId(res.job_id))
+      .then(res => {
+        setJobId(res.job_id);
+        try { localStorage.setItem(LS_KEY, res.job_id); } catch {}
+        // Cached result → already done, poll once to get data
+      })
       .catch(err => { setError(err.message); setRunning(false); });
   }
 
