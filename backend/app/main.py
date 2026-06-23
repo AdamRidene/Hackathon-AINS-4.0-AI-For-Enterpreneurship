@@ -376,6 +376,21 @@ def next_question(pid: str, user: dict = Depends(get_current_user)) -> dict:
     return {"next_question": q.to_dict() if q else None, "progress": sm.progress()}
 
 
+@app.get("/api/projects/{pid}/provisional-diagnosis")
+def provisional_diagnosis(pid: str, user: dict = Depends(get_current_user)) -> dict:
+    """Lightweight in-progress diagnosis used during intake before full audit."""
+    profile = _require_owned(pid, user)
+    from .diagnostic import classify
+
+    diagnostic = classify(profile)
+    return {
+        "project_id": pid,
+        "intake_complete": profile.intake_complete,
+        "answered_questions": len(profile.answered_questions),
+        "diagnostic": diagnostic.to_dict(),
+    }
+
+
 @app.get("/api/projects/{pid}/questions")
 def get_project_questions(pid: str, user: dict = Depends(get_current_user)) -> list[dict]:
     profile = _require_owned(pid, user)

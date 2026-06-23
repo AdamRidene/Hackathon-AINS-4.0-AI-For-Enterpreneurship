@@ -102,6 +102,7 @@ export const api = {
     }),
 
   getQuestions: (pid) => req(`/api/projects/${pid}/questions`),
+  provisionalDiagnosis: (pid) => req(`/api/projects/${pid}/provisional-diagnosis`),
 
   nextQuestion: (pid) => req(`/api/projects/${pid}/next-question`),
 

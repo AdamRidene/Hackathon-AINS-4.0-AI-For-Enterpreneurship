@@ -13,6 +13,14 @@ const DIM_NAMES = {
 
 const SECTORS = ["agri-food","digital-saas","industry","health","greentech","services","other"];
 const STAGES = [1,2,3,4,5,6];
+const INTAKE_GROUPS = [
+  { id: "context", labelFr: "Contexte", labelAr: "السياق", qids: ["name", "sector", "location", "declared_stage", "legal_form", "problem_statement", "user_segment", "revenue_model", "accompaniment_history"] },
+  { id: "market", labelFr: "Marché", labelAr: "السوق", qids: ["tam", "competitors", "validation", "validation_proof", "user_count", "growth_rate", "cac", "ltv", "competitor_names", "differentiation"] },
+  { id: "commercial", labelFr: "Offre", labelAr: "العرض", qids: ["vp_narrative", "mvp_stage", "pricing", "repeatable_sales"] },
+  { id: "innovation", labelFr: "Innovation", labelAr: "الابتكار", qids: ["geo_novelty", "tech_stack", "ip_status"] },
+  { id: "scalability", labelFr: "Scalabilite", labelAr: "التوسع", qids: ["human_dependency", "equipment_cost", "monthly_overhead", "cross_border", "team_size", "key_hires", "monthly_revenue", "burn_rate", "runway_months", "unit_economics"] },
+  { id: "green", labelFr: "Green / ESG", labelAr: "البيئة", qids: ["agri_footprint", "agri_circular", "digital_footprint", "footprint", "circular", "sdg"] },
+];
 
 function formatDate(iso, lang) {
   if (!iso) return "";
@@ -507,6 +515,11 @@ const TEXTS = {
     questionsAnswered: "réponses",
     adaptiveTitle: "Diagnostic adaptatif : Question recommandée",
     adaptiveSub: "Répondez aux questions adaptatives pour affiner la précision de votre audit de maturité.",
+    provisionalStage: "Diagnostic provisoire",
+    provisionalSub: "Estimation en direct basée sur les réponses déjà collectées.",
+    nextGate: "Prochaine porte à débloquer",
+    activeArea: "Zone active",
+    answerBasis: "Base actuelle",
     valider: "Valider la réponse",
     passer: "Passer cette question",
     auditNow: "Lancer l'audit maintenant",
@@ -591,6 +604,11 @@ const TEXTS = {
     questionsAnswered: "إجابة",
     adaptiveTitle: "التشخيص التكيفي: سؤال مقترح",
     adaptiveSub: "أجب عن الأسئلة التكيفية لتحسين دقة تقرير تدقيق النضج الخاص بك.",
+    provisionalStage: "تشخيص أولي",
+    provisionalSub: "تقدير مباشر بناءً على الإجابات التي تم جمعها حتى الآن.",
+    nextGate: "البوابة التالية المطلوب فتحها",
+    activeArea: "المجال النشط",
+    answerBasis: "الأساس الحالي",
     valider: "تأكيد الإجابة",
     passer: "تخطي هذا السؤال",
     auditNow: "إطلاق التدقيق الآن",
@@ -622,6 +640,8 @@ export default function ProjectDashboard({
   const [nextQ, setNextQ] = useState(null);
   const [agentTrace, setAgentTrace] = useState(null);
   const [progress, setProgress] = useState(null);
+  const [questions, setQuestions] = useState([]);
+  const [provisional, setProvisional] = useState(null);
   const [qValue, setQValue] = useState("");
   const [answering, setAnswering] = useState(false);
 
@@ -652,21 +672,32 @@ export default function ProjectDashboard({
     return opt;
   }
 
+  async function refreshProjectState() {
+    const [proj, lastAudit, nextQRes, qList, provisionalDiag] = await Promise.all([
+      api.getProject(pid),
+      api.getLastAudit(pid).catch(() => null),
+      api.nextQuestion(pid).catch(() => null),
+      api.getQuestions(pid).catch(() => []),
+      api.provisionalDiagnosis(pid).catch(() => null),
+    ]);
+    setProject(proj);
+    setAudit(lastAudit);
+    setDraft(proj);
+    setQuestions(qList);
+    setProvisional(provisionalDiag);
+    if (nextQRes) {
+      setNextQ(nextQRes.next_question);
+      setProgress(nextQRes.progress);
+    } else {
+      setNextQ(null);
+      setProgress(null);
+    }
+  }
+
   useEffect(() => {
     async function load() {
       try {
-        const [proj, lastAudit, nextQRes] = await Promise.all([
-          api.getProject(pid),
-          api.getLastAudit(pid).catch(() => null),
-          api.nextQuestion(pid).catch(() => null),
-        ]);
-        setProject(proj);
-        setAudit(lastAudit);
-        setDraft(proj);  // initialise draft from server data
-        if (nextQRes) {
-          setNextQ(nextQRes.next_question);
-          setProgress(nextQRes.progress);
-        }
+        await refreshProjectState();
       } catch (err) {
         setError(err.message);
       } finally {
@@ -688,15 +719,7 @@ export default function ProjectDashboard({
     setAnswering(true);
     try {
       const res = await api.answer(pid, questionId, val);
-      const [updatedProj, updatedAudit] = await Promise.all([
-        api.getProject(pid),
-        api.getLastAudit(pid).catch(() => null),
-      ]);
-      setProject(updatedProj);
-      setDraft(updatedProj);
-      setAudit(updatedAudit);
-      setNextQ(res.next_question);
-      setProgress(res.progress);
+      await refreshProjectState();
       if (res.next_question) setAgentTrace({ trace: res.trace, value: val });
     } catch (err) {
       setError(err.message);
@@ -708,15 +731,7 @@ export default function ProjectDashboard({
   // Document auto-fill applied: refresh profile/audit + resume intake.
   async function handleAutofillApplied(result) {
     try {
-      const [updatedProj, updatedAudit] = await Promise.all([
-        api.getProject(pid),
-        api.getLastAudit(pid).catch(() => null),
-      ]);
-      setProject(updatedProj);
-      setDraft(updatedProj);
-      setAudit(updatedAudit);
-      setNextQ(result.next_question);
-      setProgress(result.progress);
+      await refreshProjectState();
       setAgentTrace(null);
     } catch (err) {
       setError(err.message);
@@ -762,19 +777,7 @@ export default function ProjectDashboard({
       if (Object.keys(patch).length > 0) {
         await api.updateProject(pid, patch);
       }
-      // Reload fresh data
-      const [updatedProj, updatedAudit, nextQRes] = await Promise.all([
-        api.getProject(pid),
-        api.getLastAudit(pid).catch(() => null),
-        api.nextQuestion(pid).catch(() => null),
-      ]);
-      setProject(updatedProj);
-      setDraft(updatedProj);
-      setAudit(updatedAudit);
-      if (nextQRes) {
-        setNextQ(nextQRes.next_question);
-        setProgress(nextQRes.progress);
-      }
+      await refreshProjectState();
       setEditing(false);
     } catch (err) {
       setError(err.message);
@@ -807,15 +810,36 @@ export default function ProjectDashboard({
   }
 
   const sectorName = project?.sector ? (SECTOR_LABELS[lang]?.[project.sector] || project.sector) : null;
-  const classifiedStage = audit?.diagnostic?.classified_stage;
-  const declaredStage = audit?.perception_reality_gap?.declared_stage;
-  const classifiedName = classifiedStage ? STAGE_LABELS[lang]?.[classifiedStage] : "—";
+  const effectiveDiagnostic = audit?.diagnostic || provisional?.diagnostic || null;
+  const classifiedStage = effectiveDiagnostic?.classified_stage;
+  const declaredStage = audit?.perception_reality_gap?.declared_stage || project?.self_assessment?.declared_stage;
+  const classifiedName = classifiedStage
+    ? (STAGE_LABELS[lang]?.[classifiedStage] || effectiveDiagnostic?.classified_stage_name || `Stade ${classifiedStage}`)
+    : "—";
   const declaredName = declaredStage ? STAGE_LABELS[lang]?.[declaredStage] : "—";
   const scoreVector = audit?.scores?.vector;
   const hasAudit = !!audit;
   const intakeComplete = project?.intake_complete;
   const answeredCount = project?.answered_questions?.length || 0;
-  const intakePct = Math.round((answeredCount / 31) * 100);
+  const intakePct = progress?.total ? Math.round((progress.answered / progress.total) * 100) : Math.round((answeredCount / 31) * 100);
+  const confidencePct = Math.round((effectiveDiagnostic?.confidence || 0) * 100);
+  const nextBlockingGate = effectiveDiagnostic?.next_blocking_gate || null;
+  const diagnosisRationale = ar ? effectiveDiagnostic?.rationale_ar : effectiveDiagnostic?.rationale_fr;
+  const intakeGroups = INTAKE_GROUPS
+    .map((group) => {
+      const items = questions.filter((q) => group.qids.includes(q.id));
+      if (!items.length) return null;
+      const answered = items.filter((q) => q.answered).length;
+      return {
+        id: group.id,
+        label: ar ? group.labelAr : group.labelFr,
+        answered,
+        total: items.length,
+        active: !!nextQ && group.qids.includes(nextQ.id),
+      };
+    })
+    .filter(Boolean);
+  const activeGroup = intakeGroups.find((group) => group.active) || null;
 
   const sectorOpts = SECTORS.map(s => ({ value: s, label: SECTOR_LABELS[lang]?.[s] || s }));
   const stageOpts = STAGES.map(s => ({ value: s, label: `${STAGE_LABELS[lang]?.[s] || `Stage ${s}`} (${s}/6)` }));
@@ -971,9 +995,14 @@ export default function ProjectDashboard({
               <h3 className="pf-card-title">{t.stage}</h3>
               <div className="dash-stage-row" style={{ gridTemplateColumns: "1fr" }}>
                 <div className="dash-stage-card">
-                  <div className="dash-stage-label">{t.classified}</div>
+                  <div className="dash-stage-label">{hasAudit ? t.classified : t.provisionalStage}</div>
                   <div className="dash-stage-name">{classifiedName}</div>
                   <div className="dash-stage-num">{classifiedStage ? `Stade ${classifiedStage}/6` : "—"}</div>
+                  {!hasAudit && effectiveDiagnostic && (
+                    <div style={{ marginTop: 8, fontSize: "0.78rem", color: "var(--text-sub)" }}>
+                      {confidencePct}%
+                    </div>
+                  )}
                 </div>
                 {declaredStage && (
                   <div className="dash-stage-card declared">
@@ -982,7 +1011,7 @@ export default function ProjectDashboard({
                     <div className="dash-stage-num">Stade {declaredStage}/6</div>
                   </div>
                 )}
-                {!hasAudit && (
+                {!hasAudit && !effectiveDiagnostic && (
                   <div className="dash-stage-card empty">
                     <div className="dash-stage-name">{t.noAudit}</div>
                   </div>
@@ -1060,6 +1089,66 @@ export default function ProjectDashboard({
                     </span>
                   )}
                 </div>
+
+                {!!intakeGroups.length && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, margin: "14px 0 10px" }}>
+                    {intakeGroups.map((group) => {
+                      const pct = Math.round((group.answered / Math.max(group.total, 1)) * 100);
+                      return (
+                        <div
+                          key={group.id}
+                          style={{
+                            padding: 10,
+                            borderRadius: 12,
+                            border: group.active ? "1px solid var(--orange-border)" : "1px solid var(--border)",
+                            background: group.active ? "var(--orange-soft)" : "rgba(255,255,255,0.02)",
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+                            <span style={{ fontSize: "0.8rem", fontWeight: 700, color: group.active ? "var(--orange)" : "var(--text)" }}>{group.label}</span>
+                            <span style={{ fontSize: "0.72rem", color: "var(--text-sub)" }}>{group.answered}/{group.total}</span>
+                          </div>
+                          <div style={{ height: 6, borderRadius: 999, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+                            <div style={{ width: `${pct}%`, height: "100%", background: group.active ? "var(--orange)" : "var(--cyan)" }} />
+                          </div>
+                          {group.active && (
+                            <div style={{ marginTop: 6, fontSize: "0.7rem", color: "var(--orange)" }}>{t.activeArea}</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {effectiveDiagnostic && !intakeComplete && (
+                  <div style={{ margin: "10px 0 16px", padding: 14, borderRadius: 12, border: "1px solid var(--orange-border)", background: "rgba(245, 158, 11, 0.08)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                      <div>
+                        <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--orange)" }}>{t.provisionalStage}</div>
+                        <div style={{ fontSize: "0.78rem", color: "var(--text-sub)", marginTop: 4 }}>{t.provisionalSub}</div>
+                      </div>
+                      <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text)" }}>{classifiedName} · {confidencePct}%</div>
+                    </div>
+                    {nextBlockingGate && (
+                      <div style={{ marginTop: 10, fontSize: "0.82rem", color: "var(--text)" }}>
+                        <strong>{t.nextGate}:</strong>{" "}
+                        {STAGE_LABELS[lang]?.[nextBlockingGate.stage] || nextBlockingGate.name}
+                        {" — "}
+                        {ar ? nextBlockingGate.evidence_ar || nextBlockingGate.evidence : nextBlockingGate.evidence}
+                      </div>
+                    )}
+                    {diagnosisRationale && (
+                      <div style={{ marginTop: 8, fontSize: "0.78rem", color: "var(--text-sub)", lineHeight: 1.5 }}>
+                        <strong>{t.answerBasis}:</strong> {diagnosisRationale}
+                      </div>
+                    )}
+                    {activeGroup && (
+                      <div style={{ marginTop: 8, fontSize: "0.78rem", color: "var(--text-sub)" }}>
+                        {t.activeArea}: <strong style={{ color: "var(--text)" }}>{activeGroup.label}</strong>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {agentTrace && (
                   <AgentTrace trace={agentTrace.trace} value={agentTrace.value} question={nextQ} lang={lang} />

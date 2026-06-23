@@ -49,6 +49,19 @@ const DIMS = [
   ["scalability", "Scalabilité", "توسع"],
   ["green", "Green / ESG", "بيئة"],
 ];
+const ROADMAP_TRIGGER_BY_SCORE = {
+  market: "missing_market_validation",
+  commercial: "tech_hype",
+  innovation: "tech_hype",
+  scalability: "scalability",
+  green: "green",
+};
+
+function findRoadmapMatch(roadmap, scoreKey) {
+  const trigger = ROADMAP_TRIGGER_BY_SCORE[scoreKey];
+  if (!trigger || !Array.isArray(roadmap)) return null;
+  return roadmap.find((item) => item.trigger === trigger) || null;
+}
 
 function barColor(v, gated) {
   if (gated) return "var(--red)";
@@ -90,6 +103,7 @@ const COPY = {
     grounding: "Contexte de grounding",
     pourquoi: "Pourquoi ce score ?",
     whatIf: (criterion, gain) => `+${gain} pts si vous ajoutez : ${CRITERION_LABELS_FR[criterion] || criterion}`,
+    viewAction: "Voir l'action liée",
   },
   ar: {
     newAudit: "تدقيق جديد",
@@ -117,6 +131,7 @@ const COPY = {
     grounding: "السياق التوثيقي",
     pourquoi: "لماذا هذا المؤشر؟",
     whatIf: (criterion, gain) => `+${gain} نقطة إذا أضفت: ${CRITERION_LABELS_AR[criterion] || criterion}`,
+    viewAction: "عرض الإجراء المرتبط",
   },
 };
 
@@ -257,7 +272,7 @@ function DiagnosticTab({ audit, lang, T, onFixGate }) {
 /* ══════════════════════════════════════════════════════════════
    SCORES TAB
 ══════════════════════════════════════════════════════════════ */
-function ScoresTab({ audit, lang, T, plan, openProfile, explanations }) {
+function ScoresTab({ audit, lang, T, plan, openProfile, explanations, onJumpToRoadmap }) {
   const [expanded, setExpanded] = useState(null);
   const [selectedScore, setSelectedScore] = useState(null);
   const ar = lang === "ar";
@@ -306,6 +321,7 @@ function ScoresTab({ audit, lang, T, plan, openProfile, explanations }) {
             const label = ar ? labelAr : labelFr;
             const color = barColor(res.final_score, res.gate_triggered);
             const delta = audit.score_deltas?.deltas?.[key];
+            const roadmapMatch = findRoadmapMatch(audit.roadmap, key);
 
             return (
               <div key={key} className="score-row">
@@ -365,10 +381,25 @@ function ScoresTab({ audit, lang, T, plan, openProfile, explanations }) {
                     {res.missing_inputs?.length > 0 && (
                       <div className="score-missing muted">⚠ {T.missing} : {res.missing_inputs.join(", ")}</div>
                     )}
+                    {(res.improvement_guidance_fr || res.improvement_guidance_ar) && (
+                      <div className="score-pourquoi" style={{ marginTop: 12 }}>
+                        <span className="score-pourquoi-label">{ar ? "الإجراء الأولوي" : "Action prioritaire"}</span>
+                        <p className="score-pourquoi-text">{ar ? res.improvement_guidance_ar : res.improvement_guidance_fr}</p>
+                      </div>
+                    )}
                     {/* What-if CTA */}
                     {res.what_if_hint && (
-                      <div className="score-whatif">
-                        ▲ {T.whatIf(res.what_if_hint.criterion, res.what_if_hint.potential_gain)}
+                      <div className="score-whatif" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                        <span>▲ {T.whatIf(res.what_if_hint.criterion, res.what_if_hint.potential_gain)}</span>
+                        {roadmapMatch && (
+                          <button
+                            className="ghost"
+                            onClick={() => onJumpToRoadmap(roadmapMatch.id)}
+                            style={{ border: "1px solid var(--orange-border)", color: "var(--orange)", borderRadius: "var(--r-sm)", padding: "6px 12px", cursor: "pointer" }}
+                          >
+                            {T.viewAction} →
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -392,7 +423,7 @@ function ScoresTab({ audit, lang, T, plan, openProfile, explanations }) {
 /* ══════════════════════════════════════════════════════════════
    ROADMAP TAB
 ══════════════════════════════════════════════════════════════ */
-function RoadmapTab({ audit, pid, lang, T, checked, onToggle, plan, openProfile }) {
+function RoadmapTab({ audit, pid, lang, T, checked, onToggle, plan, openProfile, highlightedMilestoneId }) {
   const ar = lang === "ar";
   if (!audit.roadmap) return null;
 
@@ -435,13 +466,18 @@ function RoadmapTab({ audit, pid, lang, T, checked, onToggle, plan, openProfile 
         {audit.roadmap.map((m, i) => {
           const key = `${pid}_${m.id}`;
           const done = !!checked[key];
+          const highlighted = highlightedMilestoneId === m.id;
           const horizon = ar ? m.horizon_ar || m.horizon_fr : m.horizon_fr;
           const timeline = ar ? m.timeline_ar || m.timeline_fr : m.timeline_fr || m.timeline_ar;
           const rat = ar ? m.rationale_ar || m.rationale_fr : m.rationale_fr;
           const action = ar ? m.action_ar || m.action_fr : m.action_fr;
 
           return (
-            <div key={i} className={`milestone${done ? " done" : ""}`}>
+            <div
+              key={i}
+              className={`milestone${done ? " done" : ""}`}
+              style={highlighted ? { borderColor: "var(--orange-border)", boxShadow: "0 0 0 1px var(--orange-border) inset" } : undefined}
+            >
               <div className="ms-side">
                 <div className={`ms-check${done ? " done" : ""}`} onClick={() => onToggle(m.id)} title={T.checkDone}>
                   {done && "✓"}
@@ -482,12 +518,17 @@ export default function Results({ audit, pid, lang, onNewAudit, onBackToDashboar
   const [activeTab, setActiveTab] = useState(0);
   const [showEditor, setShowEditor] = useState(false);
   const [focusQuestion, setFocusQuestion] = useState(null);
+  const [highlightedMilestoneId, setHighlightedMilestoneId] = useState(null);
   const ar = lang === "ar";
   const T = COPY[lang];
 
   const handleFixGate = (questionId) => {
     setFocusQuestion(questionId);
     setShowEditor(true);
+  };
+  const handleJumpToRoadmap = (milestoneId) => {
+    setHighlightedMilestoneId(milestoneId);
+    setActiveTab(2);
   };
 
   const anomalyCount = audit.anomalies?.length || 0;
@@ -566,7 +607,15 @@ export default function Results({ audit, pid, lang, onNewAudit, onBackToDashboar
 
         {activeTab === 1 && (
           <div className="results-section">
-            <ScoresTab audit={audit} lang={lang} T={T} plan={plan} openProfile={openProfile} explanations={audit.explanations} />
+            <ScoresTab
+              audit={audit}
+              lang={lang}
+              T={T}
+              plan={plan}
+              openProfile={openProfile}
+              explanations={audit.explanations}
+              onJumpToRoadmap={handleJumpToRoadmap}
+            />
           </div>
         )}
 
@@ -581,6 +630,7 @@ export default function Results({ audit, pid, lang, onNewAudit, onBackToDashboar
               onToggle={onToggleMilestone}
               plan={plan}
               openProfile={openProfile}
+              highlightedMilestoneId={highlightedMilestoneId}
             />
           </div>
         )}

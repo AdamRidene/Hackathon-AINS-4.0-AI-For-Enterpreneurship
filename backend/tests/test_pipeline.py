@@ -98,3 +98,38 @@ def test_diagnose_endpoint_returns_full_handoff_payload():
     assert "perception_reality_gap" in payload
     assert "scores" in payload
     assert "roadmap" in payload
+
+
+def test_provisional_diagnosis_endpoint_returns_in_progress_classification():
+    from fastapi.testclient import TestClient
+    from uuid import uuid4
+    from app.main import app
+
+    client = TestClient(app)
+    email = f"provisional-{uuid4().hex}@firasa.test"
+    registered = client.post(
+        "/api/auth/register",
+        json={"email": email, "password": "secret123", "name": "Founder"},
+    )
+    assert registered.status_code == 200, registered.text
+    headers = {"Authorization": f"Bearer {registered.json()['token']}"}
+
+    created = client.post("/api/projects", json={"name": "Progressive audit", "language": "fr"}, headers=headers)
+    assert created.status_code == 200, created.text
+    pid = created.json()["project_id"]
+
+    answered = client.post(
+        f"/api/projects/{pid}/answer",
+        json={"question_id": "sector", "value": "services"},
+        headers=headers,
+    )
+    assert answered.status_code == 200, answered.text
+
+    provisional = client.get(f"/api/projects/{pid}/provisional-diagnosis", headers=headers)
+    assert provisional.status_code == 200, provisional.text
+    payload = provisional.json()
+    assert payload["project_id"] == pid
+    assert payload["intake_complete"] is False
+    assert payload["answered_questions"] >= 2
+    assert payload["diagnostic"]["classified_stage"] >= 1
+    assert "confidence" in payload["diagnostic"]
