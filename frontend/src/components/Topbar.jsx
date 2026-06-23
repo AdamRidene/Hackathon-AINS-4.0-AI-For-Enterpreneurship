@@ -46,6 +46,15 @@ export default function Topbar({ lang, setLang, theme, setTheme, user, plan, ope
           )}
         </button>
 
+        {/* Eval report button */}
+        {onEvalClick && (
+          <button className="topbar-home-btn" onClick={onEvalClick} title={ar ? "تقرير التقييم" : "Rapport d'évaluation"}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+          </button>
+        )}
+
         {/* Profile button */}
         <button className="profile-btn" onClick={openProfile}>
           {user && user.photo ? (
