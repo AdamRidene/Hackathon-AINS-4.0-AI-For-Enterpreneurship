@@ -108,6 +108,16 @@ class AssistantBody(BaseModel):
     question: str
     lang: Optional[str] = None
 
+    @field_validator("lang")
+    @classmethod
+    def validate_lang(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            v = v.strip().lower()
+            if v not in ("fr", "ar"):
+                raise ValueError(f"lang must be 'fr' or 'ar', got {v}")
+            return v
+        return v
+
 
 # --------------------------------------------------------------------------- #
 # Helpers                                                                     #

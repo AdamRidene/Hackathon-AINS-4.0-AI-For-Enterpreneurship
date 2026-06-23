@@ -281,7 +281,10 @@ async def grounded_assistant_reply(profile: ProjectProfile, question: str, lang:
     This satisfies the 'assistant is a layer, not the product' requirement.
     """
     # Use the provided lang if available, otherwise fall back to project language
-    effective_lang = lang or profile.language
+    effective_lang = (lang or profile.language).strip().lower()
+    # Ensure valid language
+    if effective_lang not in ("fr", "ar"):
+        effective_lang = "fr"
 
     # Skip grounding for small talk / general questions — no project keywords detected
     if not _needs_grounding(question):
