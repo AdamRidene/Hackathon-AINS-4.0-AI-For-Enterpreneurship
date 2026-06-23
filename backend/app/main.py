@@ -469,11 +469,82 @@ async def autofill_apply(pid: str, body: AutofillApplyBody,
     return {"accepted": True, **result}
 
 
+FLAT_TO_DOTTED_PATH = {
+    # Self-assessment
+    "declared_stage": "self_assessment.declared_stage",
+    "declared_revenue": "self_assessment.declared_revenue",
+    "declared_legal_form": "self_assessment.declared_legal_form",
+    # Market
+    "estimated_tam_tnd": "market.estimated_tam_tnd",
+    "competitor_headcount": "market.competitor_headcount",
+    "customer_validation_evidence": "market.customer_validation_evidence",
+    # Commercial
+    "value_proposition_narrative": "commercial.value_proposition_narrative",
+    "mvp_stage": "commercial.mvp_stage",
+    "pricing_framework": "commercial.pricing_framework",
+    "pricing_coherence": "commercial.pricing_coherence",
+    # Innovation
+    "geo_novelty": "innovation.geo_novelty",
+    "tech_stack": "innovation.tech_stack",
+    "ip_status": "innovation.ip_status",
+    # Scalability
+    "human_dependency": "scalability.human_dependency",
+    "equipment_cost": "scalability.equipment_cost",
+    "monthly_overhead": "scalability.monthly_overhead",
+    "cross_border_zones": "scalability.cross_border_zones",
+    # Green
+    "footprint_category": "green.footprint_category",
+    "circular_recycling": "green.circular_recycling",
+    "sdg_targets": "green.sdg_targets",
+}
+
+
 class ProfilePatchBody(BaseModel):
     """Partial update — every field is optional."""
     name: Optional[str] = None
     sector: Optional[str] = None
     language: Optional[str] = None
+
+    # Self-assessment
+    declared_stage: Optional[int] = None
+    declared_revenue: Optional[bool] = None
+    declared_legal_form: Optional[str] = None
+
+    # Market
+    estimated_tam_tnd: Optional[float] = Field(None, ge=0.0)
+    competitor_headcount: Optional[int] = Field(None, ge=0)
+    customer_validation_evidence: Optional[bool] = None
+
+    # Commercial
+    value_proposition_narrative: Optional[str] = None
+    mvp_stage: Optional[str] = None
+    pricing_framework: Optional[str] = None
+    pricing_coherence: Optional[float] = None
+
+    # Innovation
+    geo_novelty: Optional[str] = None
+    tech_stack: Optional[list[str]] = None
+    ip_status: Optional[str] = None
+
+    # Scalability
+    human_dependency: Optional[int] = Field(None, ge=1, le=10)
+    equipment_cost: Optional[float] = Field(None, ge=0.0)
+    monthly_overhead: Optional[float] = Field(None, ge=0.0)
+    cross_border_zones: Optional[list[str]] = None
+
+    # Green
+    footprint_category: Optional[str] = None
+    circular_recycling: Optional[bool] = None
+    sdg_targets: Optional[list[int]] = None
+
+    # Flat top-level fields
+    legal_form: Optional[str] = None
+    has_problem_statement: Optional[bool] = None
+    user_segment_identified: Optional[bool] = None
+    months_unit_economics: Optional[int] = Field(None, ge=0)
+    has_revenue_model: Optional[bool] = None
+    repeatable_sales: Optional[bool] = None
+
     team_size: Optional[int] = Field(None, ge=0)
     monthly_revenue_tnd: Optional[float] = Field(None, ge=0.0)
     burn_rate_tnd: Optional[float] = Field(None, ge=0.0)
@@ -496,18 +567,38 @@ def get_project(pid: str, user: dict = Depends(get_current_user)) -> dict:
 
 
 @app.patch("/api/projects/{pid}")
-def patch_project(pid: str, body: ProfilePatchBody, user: dict = Depends(get_current_user)) -> dict:
+async def patch_project(pid: str, body: ProfilePatchBody, user: dict = Depends(get_current_user)) -> dict:
     """Update project profile fields directly (no state machine)."""
     profile = _require_owned(pid, user)
     updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(400, "No fields to update")
+
+    from .intake.state_machine import find_question_for_field, coerce_field_value, sync_profile_state, _set_path
+
     # Apply updates to the Pydantic model
     for field, value in updates.items():
-        if hasattr(profile, field):
-            setattr(profile, field, value)
+        dotted_path = FLAT_TO_DOTTED_PATH.get(field)
+        if dotted_path:
+            q = find_question_for_field(field)
+            coerced_value = coerce_field_value(q, value) if q else value
+            _set_path(profile, dotted_path, coerced_value)
+        else:
+            q = find_question_for_field(field)
+            coerced_value = coerce_field_value(q, value) if q else value
+            if hasattr(profile, field):
+                setattr(profile, field, coerced_value)
+
     profile.updated_at = datetime.now(timezone.utc)
+    
+    # Run synchronization to update answered_questions and clean stale dependencies
+    sync_profile_state(profile)
+    
     store.save(profile)
+
+    # Immediately re-run audit pipeline to persist history and update scores
+    await _run_owned_audit(pid, user)
+
     return store.redact(profile, is_owner=True)
 
 
@@ -650,6 +741,11 @@ async def milestone_complete(
                     pass
             setattr(obj, field_name, value)
         profile.updated_at = datetime.now(timezone.utc)
+        
+        # Run synchronization to update answered_questions and clean stale dependencies
+        from .intake.state_machine import sync_profile_state
+        sync_profile_state(profile)
+        
         store.save(profile)
 
         result = await run_audit(profile)

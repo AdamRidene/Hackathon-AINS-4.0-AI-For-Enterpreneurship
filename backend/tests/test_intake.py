@@ -295,3 +295,84 @@ def test_autofill_apply_skips_invalid_items():
     assert res["applied"] == ["sector"]
     assert set(res["skipped"]) == {"bogus", "human_dependency"}
     assert p.sector == Sector.AGRI_FOOD
+
+
+def test_sync_profile_state_sector_transition():
+    from app.intake.state_machine import sync_profile_state, IntakeStateMachine
+    from app.schema import FootprintCategory
+
+    # Start with agri-food
+    p = ProjectProfile()
+    sm = IntakeStateMachine(p)
+    sm.apply_answer("sector", "agri-food")
+    sm.apply_answer("agri_footprint", "Agri Waste")
+    sm.apply_answer("agri_circular", True)
+
+    assert p.green.footprint_category == FootprintCategory.AGRI_WASTE
+    assert p.green.circular_recycling is True
+    assert "agri_footprint" in p.answered_questions
+    assert "agri_circular" in p.answered_questions
+
+    # Transition to digital-saas
+    p.sector = Sector.DIGITAL_SAAS
+    sync_profile_state(p)
+
+    # Footprint should be cleared (it is now invalid for digital-saas)
+    assert p.green.footprint_category is None
+    assert p.green.circular_recycling is None
+    assert "agri_footprint" not in p.answered_questions
+    assert "agri_circular" not in p.answered_questions
+
+
+def test_sync_profile_state_stage_transition():
+    from app.intake.state_machine import sync_profile_state, IntakeStateMachine
+
+    # Start with advanced stage Fundraising (4)
+    p = ProjectProfile()
+    sm = IntakeStateMachine(p)
+    sm.apply_answer("declared_stage", "4")
+    sm.apply_answer("monthly_revenue", 12000.0)
+    sm.apply_answer("burn_rate", 5000.0)
+    sm.apply_answer("runway_months", 18)
+
+    assert p.self_assessment.declared_stage == MaturityStage.FUNDRAISING
+    assert p.monthly_revenue_tnd == 12000.0
+    assert "monthly_revenue" in p.answered_questions
+
+    # Lower stage to Ideation (1)
+    p.self_assessment.declared_stage = MaturityStage.IDEATION
+    sync_profile_state(p)
+
+    # Financial details should be cleared
+    assert p.monthly_revenue_tnd is None
+    assert p.burn_rate_tnd is None
+    assert p.runway_months is None
+    assert "monthly_revenue" not in p.answered_questions
+    assert "burn_rate" not in p.answered_questions
+    assert "runway_months" not in p.answered_questions
+
+
+def test_sync_profile_state_validation_transition():
+    from app.intake.state_machine import sync_profile_state, IntakeStateMachine
+
+    # Start with validation evidence
+    p = ProjectProfile()
+    sm = IntakeStateMachine(p)
+    sm.apply_answer("validation", True)
+    sm.apply_answer("user_count", 150)
+    sm.apply_answer("growth_rate", 12.5)
+
+    assert p.market.customer_validation_evidence is True
+    assert p.user_count == 150
+    assert "user_count" in p.answered_questions
+
+    # Validation evidence becomes False
+    p.market.customer_validation_evidence = False
+    sync_profile_state(p)
+
+    # Metrics should be cleared
+    assert p.user_count is None
+    assert p.growth_rate_pct is None
+    assert "user_count" not in p.answered_questions
+    assert "growth_rate" not in p.answered_questions
+

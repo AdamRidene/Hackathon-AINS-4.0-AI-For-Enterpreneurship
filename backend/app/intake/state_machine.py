@@ -386,6 +386,88 @@ def coerce_value(question_id: str, value: Any) -> Any:
     return _coerce(q, value)
 
 
+
+def find_question_for_field(key: str) -> Optional[Question]:
+    """Find a question matching the flat field name or ID."""
+    q = QUESTION_INDEX.get(key)
+    if q:
+        return q
+    for q in QUESTIONS:
+        if q.field_path == key:
+            return q
+    for q in QUESTIONS:
+        if q.field_path.endswith("." + key):
+            return q
+    return None
+
+
+def coerce_field_value(q: Question, value: Any) -> Any:
+    """Coerce value using the question's type."""
+    return _coerce(q, value)
+
+
+def sync_profile_state(profile: ProjectProfile) -> None:
+    """Synchronize answered_questions and clean stale answers based on current profile state."""
+    # 1. Clean stale answers (questions that no longer apply)
+    to_remove_qids = []
+    for q in QUESTIONS:
+        if q.id in profile.answered_questions:
+            if not q.applies(profile):
+                to_remove_qids.append(q.id)
+                _set_path(profile, q.field_path, None)
+
+    for qid in to_remove_qids:
+        if qid in profile.answered_questions:
+            profile.answered_questions.remove(qid)
+
+    # Clean up stale dynamic probes
+    active_qids = set(profile.answered_questions)
+    profile.dynamic_probes = [
+        p for p in profile.dynamic_probes
+        if p.get("trigger_qid") in active_qids
+    ]
+
+    # 2. Add question IDs for fields that have been populated but are not yet in answered_questions
+    for q in QUESTIONS:
+        if q.applies(profile):
+            # Read value from profile
+            parts = q.field_path.split(".")
+            val: Any = profile
+            for p in parts:
+                if val is not None:
+                    val = getattr(val, p, None)
+            
+            if q.id not in profile.answered_questions:
+                # Check if not empty
+                is_empty = (
+                    val is None or
+                    (isinstance(val, str) and not val.strip()) or
+                    (isinstance(val, list) and not val) or
+                    (hasattr(val, "value") and val.value == "None")
+                )
+                if not is_empty:
+                    profile.answered_questions.append(q.id)
+            else:
+                # Only remove if it was truly cleared (set to None or empty string)
+                if val is None or (isinstance(val, str) and not val.strip()):
+                    profile.answered_questions.remove(q.id)
+
+    # 3. Check if intake is complete
+    has_next = False
+    for q in QUESTIONS:
+        if q.id not in profile.answered_questions and q.applies(profile):
+            has_next = True
+            break
+
+    has_pending_probe = False
+    for p in profile.dynamic_probes:
+        if p.get("answer") is None:
+            has_pending_probe = True
+            break
+
+    profile.intake_complete = (not has_next) and (not has_pending_probe)
+
+
 class IntakeStateMachine:
     """Serves the next applicable, unanswered question and applies typed answers."""
 
@@ -408,8 +490,8 @@ class IntakeStateMachine:
         if question_id not in self.profile.answered_questions:
             self.profile.answered_questions.append(question_id)
         self.profile.touch()
-        if self.next_question() is None:
-            self.profile.intake_complete = True
+        # Synchronize profile state (stale cleaning, answer status sync, completion re-calc)
+        sync_profile_state(self.profile)
         return self.profile
 
     def progress(self) -> dict:
@@ -417,3 +499,4 @@ class IntakeStateMachine:
         answered = [q for q in applicable if q.id in self.profile.answered_questions]
         return {"answered": len(answered), "total": len(applicable),
                 "complete": self.profile.intake_complete}
+
