@@ -133,6 +133,8 @@ export const api = {
   getAuditHistory: (pid) => req(`/api/projects/${pid}/audit-history`),
   deleteProject: (pid) => req(`/api/projects/${pid}`, { method: "DELETE" }),
   eval: () => req("/api/eval"),
+  evalStart: () => req("/api/eval/start", { method: "POST" }),
+  evalStatus: (jobId) => req(`/api/eval/status/${jobId}`),
 
   completeMilestone: (pid, mid, trigger) =>
     req(`/api/project/${pid}/milestone/${mid}/complete`, {

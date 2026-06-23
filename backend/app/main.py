@@ -795,9 +795,53 @@ async def audit_adhoc(profile: ProjectProfile) -> dict:
     return result.to_dict()
 
 
+_eval_jobs: dict = {}  # job_id → {status, progress, result, error}
+
+async def _run_eval_job(job_id: str) -> None:
+    from .eval_protocol import eval_diagnostic, eval_rag, eval_scoring_consistency
+    try:
+        loop = asyncio.get_running_loop()
+        _eval_jobs[job_id]["result"] = {}
+
+        diag = await asyncio.wait_for(loop.run_in_executor(None, eval_diagnostic), timeout=180)
+        _eval_jobs[job_id]["result"]["diagnostic"] = diag
+        _eval_jobs[job_id]["progress"] = 1
+
+        rag = await asyncio.wait_for(loop.run_in_executor(None, eval_rag), timeout=180)
+        _eval_jobs[job_id]["result"]["rag_retrieval"] = rag
+        _eval_jobs[job_id]["progress"] = 2
+
+        scoring = await asyncio.wait_for(loop.run_in_executor(None, eval_scoring_consistency), timeout=180)
+        _eval_jobs[job_id]["result"]["scoring_consistency"] = scoring
+        _eval_jobs[job_id]["progress"] = 3
+        _eval_jobs[job_id]["status"] = "done"
+    except asyncio.TimeoutError:
+        _eval_jobs[job_id]["status"] = "failed"
+        _eval_jobs[job_id]["error"] = "Timeout — evaluation exceeded 3 min per step"
+    except Exception as exc:
+        _eval_jobs[job_id]["status"] = "failed"
+        _eval_jobs[job_id]["error"] = str(exc)
+
+
+@app.post("/api/eval/start")
+async def eval_start(user: dict = Depends(get_current_user)) -> dict:
+    job_id = uuid4().hex[:8]
+    _eval_jobs[job_id] = {"status": "running", "progress": 0, "result": {}, "error": None}
+    asyncio.create_task(_run_eval_job(job_id))
+    return {"job_id": job_id}
+
+
+@app.get("/api/eval/status/{job_id}")
+def eval_status(job_id: str, user: dict = Depends(get_current_user)) -> dict:
+    job = _eval_jobs.get(job_id)
+    if not job:
+        raise HTTPException(404, "Job not found")
+    return job
+
+
 @app.get("/api/eval")
 def get_evaluation_report(user: dict = Depends(get_current_user)) -> dict:
-    """Run the evaluation protocol suite and return diagnostic, RAG, and scoring consistency scores."""
+    """Legacy sync endpoint — kept for backwards compat."""
     from .eval_protocol import eval_diagnostic, eval_rag, eval_scoring_consistency
     return {
         "diagnostic": eval_diagnostic(),
