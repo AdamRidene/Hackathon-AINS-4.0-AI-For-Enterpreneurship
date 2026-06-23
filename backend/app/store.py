@@ -167,6 +167,17 @@ def _init_db_conn(conn) -> None:
             audited_at TEXT NOT NULL
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS audit_history (
+            id            TEXT PRIMARY KEY,
+            pid           TEXT NOT NULL,
+            owner_user_id TEXT,
+            stage         INTEGER,
+            vector        TEXT,
+            audit_json    TEXT NOT NULL,
+            audited_at    TEXT NOT NULL
+        )
+    """)
     columns = {
         row["name"] for row in conn.execute("PRAGMA table_info(audits)").fetchall()
     }
@@ -595,6 +606,77 @@ def get_audit(pid: str) -> dict | None:
     else:
         entry = _mem_audits.get(pid)
         return entry["audit_json"] if entry else None
+
+
+def append_audit_history(
+    pid: str, owner_user_id: str | None,
+    stage: int | None, vector: list[float] | None, audit_dict: dict,
+) -> None:
+    """Append one audit snapshot to the audit history (never overwrites)."""
+    now = datetime.now(timezone.utc).isoformat()
+    hid = uuid4().hex[:16]
+    with _lock:
+        if _DB_ENABLED:
+            with db_session() as conn:
+                conn.execute(
+                    """INSERT INTO audit_history
+                       (id, pid, owner_user_id, stage, vector, audit_json, audited_at)
+                       VALUES (?,?,?,?,?,?,?)""",
+                    (hid, pid, owner_user_id, stage,
+                     json.dumps(vector) if vector else None,
+                     json.dumps(audit_dict), now),
+                )
+        else:
+            key = f"{pid}:{now}"
+            _mem_audits.setdefault("__history__", {})[key] = {
+                "pid": pid, "stage": stage, "vector": vector,
+                "audit_json": audit_dict, "audited_at": now,
+            }
+
+
+def get_audit_history(pid: str, limit: int = 10) -> list[dict]:
+    """Return the N most-recent audit snapshots for a project (newest first)."""
+    if _DB_ENABLED:
+        with db_session() as conn:
+            rows = conn.execute(
+                """SELECT stage, vector, audit_json, audited_at
+                   FROM audit_history WHERE pid = ?
+                   ORDER BY audited_at DESC LIMIT ?""",
+                (pid, limit),
+            ).fetchall()
+        return [
+            {
+                "stage": r["stage"],
+                "vector": json.loads(r["vector"]) if r["vector"] else None,
+                "audited_at": r["audited_at"],
+                "roadmap": json.loads(r["audit_json"]).get("roadmap", []),
+                "diagnostic": json.loads(r["audit_json"]).get("diagnostic", {}),
+                "scores": json.loads(r["audit_json"]).get("scores", {}),
+                "perception_reality_gap": json.loads(r["audit_json"]).get(
+                    "perception_reality_gap", {}
+                ),
+            }
+            for r in rows
+        ]
+    else:
+        history = _mem_audits.get("__history__", {})
+        project_history = [
+            v for v in history.values() if v["pid"] == pid
+        ]
+        project_history.sort(key=lambda x: x["audited_at"], reverse=True)
+        return [
+            {
+                "stage": h["stage"],
+                "vector": h["vector"],
+                "audited_at": h["audited_at"],
+                "roadmap": h["audit_json"].get("roadmap", []),
+                "diagnostic": h["audit_json"].get("diagnostic", {}),
+                "scores": h["audit_json"].get("scores", {}),
+                "perception_reality_gap": h["audit_json"].get("perception_reality_gap", {}),
+            }
+            for h in project_history[:limit]
+        ]
+
 
 
 def list_audits(owner_user_id: str | None = None) -> list[dict]:

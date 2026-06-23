@@ -11,3 +11,6 @@ pydantic-settings>=2.2
 cohere>=7.0
 pdfplumber>=0.11
 langgraph>=0.2  # adaptive-intake orchestration (LLM probe layer over the state machine)
+slowapi>=0.1.9
+python-multipart>=0.0.9
+

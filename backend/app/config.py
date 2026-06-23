@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     skip_db: bool = False
 
     # LLM provider selection
-    llm_provider: Literal["ollama", "huggingface", "openai", "groq", "deepseek", "gemini", "stub"] = "ollama"
+    llm_provider: Literal["ollama", "huggingface", "openai", "groq", "deepseek", "gemini", "stub"] = "stub"
 
     # Ollama (local)
     ollama_host: str = "http://localhost:11434"

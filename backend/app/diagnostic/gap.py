@@ -36,6 +36,7 @@ from enum import Enum
 from typing import Optional
 
 from ..schema import ProjectProfile, IPStatus, Sector
+from ..llm import get_llm
 from .classifier import DiagnosticResult, STAGE_NAMES, STAGE_NAMES_AR
 
 
@@ -682,18 +683,54 @@ async def _validate_ambiguous_semantic(
 ) -> Anomaly:
     """Run semantic LLM validation for an ambiguous anomaly.
 
-    Only called for anomalies where the deterministic pre-filter returned
-    confidence=MEDIUM or the code is in the semantic-validation allowlist.
-    Currently a conservative stub: keeps the deterministic result as-is
-    with confidence unchanged. A full implementation would call the LLM
-    to verify sector/tech coherence or SDG plausibility.
-
-    Design principle (Section 10): LLM validation only for ambiguous
-    business-language cases. Never the primary anomaly source.
+    Currently validates:
+    - tech_sector_mismatch: Is the tech stack appropriate for Digital-SaaS?
+    - Other ambiguous anomalies in the future
     """
-    # Stub: return unchanged — conservative deterministic fallback.
-    # Future: call get_llm().validate_anomaly(anomaly, profile) for codes
-    # like "tech_sector_mismatch" where rigid rules are brittle.
+    llm = get_llm()
+    
+    # Validate tech_sector_mismatch
+    if anomaly.code == "tech_sector_mismatch":
+        tech_stack = p.innovation.tech_stack if p.innovation.tech_stack else []
+        sector = p.sector
+        
+        prompt = (
+            "You are an anomaly validator for a Tunisian startup diagnostic system.\n"
+            f"Sector declared: {sector.value}\n"
+            f"Tech stack declared: {', '.join(tech_stack)}\n\n"
+            "Task: Is this tech stack appropriate for a Digital-SaaS startup?\n"
+            "Return ONLY a JSON object with:\n"
+            "- \"is_anomaly\": boolean (true if mismatch, false if appropriate)\n"
+            "- \"confidence\": \"high\" | \"medium\" | \"low\"\n"
+            "- \"detail_fr\": short French explanation if anomaly\n"
+            "- \"detail_ar\": short Arabic explanation if anomaly\n"
+        )
+        
+        try:
+            raw = await llm._complete_with_retry(prompt, max_tokens=300)
+            # Parse the JSON
+            from ..llm.provider import parse_llm_json
+            result = parse_llm_json(raw, {})
+            
+            if result.get("is_anomaly"):
+                # Keep the anomaly, update confidence and details
+                anomaly.confidence = result.get("confidence", "medium")
+                anomaly.source = AnomalySource.SEMANTIC_LLM
+                if result.get("detail_fr"):
+                    anomaly.detail_fr = result["detail_fr"]
+                if result.get("detail_ar"):
+                    anomaly.detail_ar = result["detail_ar"]
+                anomaly.validated = True
+            else:
+                # No anomaly - return None (we'll handle this in validate_anomalies_semantic)
+                return None
+        except Exception:
+            # LLM failed - keep the original deterministic anomaly with fallback source
+            anomaly.source = AnomalySource.FALLBACK
+            anomaly.confidence = AnomalyConfidence.LOW
+    
+    # TODO: Add validation for other ambiguous anomalies in the future (SDG plausibility, etc.)
+    
     return anomaly
 
 
@@ -779,7 +816,8 @@ async def validate_anomalies_semantic(
 
         try:
             result = await _validate_ambiguous_semantic(anomaly, p, scores)
-            validated.append(result.to_dict())
+            if result is not None:  # Only add if it's still an anomaly
+                validated.append(result.to_dict())
         except Exception:
             # LLM unavailable — keep conservative deterministic result
             anomaly.source = AnomalySource.FALLBACK

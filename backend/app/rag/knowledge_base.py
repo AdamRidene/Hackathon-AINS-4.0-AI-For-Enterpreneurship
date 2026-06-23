@@ -13,7 +13,9 @@ import json
 import math
 import os
 import re
+import sys
 import threading
+import uuid
 from collections import Counter
 from dataclasses import dataclass
 from functools import lru_cache
@@ -253,6 +255,99 @@ class KnowledgeBase:
         na = np.linalg.norm(a)
         nb = np.linalg.norm(b)
         return float(dot / (na * nb)) if na and nb else 0.0
+
+
+def _lock_file(file_path: Path, exclusive: bool = True):
+    """Cross-platform file locking using fcntl (Unix) or msvcrt (Windows)."""
+    if sys.platform == "win32":
+        import msvcrt
+        mode = os.O_RDWR | os.O_CREAT
+        lock_file = os.open(str(file_path), mode)
+        try:
+            if exclusive:
+                msvcrt.locking(lock_file, msvcrt.LK_LOCK, 1)
+            else:
+                msvcrt.locking(lock_file, msvcrt.LK_NBLCK, 1)
+            return lock_file
+        except Exception:
+            os.close(lock_file)
+            raise
+    else:
+        import fcntl
+        lock_file = open(str(file_path), "r+" if os.path.exists(str(file_path)) else "w+")
+        try:
+            fcntl.flock(lock_file, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+            return lock_file
+        except Exception:
+            lock_file.close()
+            raise
+
+
+def _unlock_file(lock_file):
+    """Cross-platform file unlocking."""
+    if sys.platform == "win32":
+        import msvcrt
+        msvcrt.locking(lock_file, msvcrt.LK_UNLCK, 1)
+        os.close(lock_file)
+    else:
+        import fcntl
+        fcntl.flock(lock_file, fcntl.LOCK_UN)
+        lock_file.close()
+
+
+def save_kb(kb: KnowledgeBase, path: Path = _KB_PATH) -> None:
+    """Save the KnowledgeBase back to disk as JSON (with file locking)."""
+    raw = {
+        "_meta": kb.meta,
+        "resources": [chunk.to_dict() for chunk in kb.chunks]
+    }
+    lock_file = _lock_file(path)
+    try:
+        path.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
+    finally:
+        _unlock_file(lock_file)
+    # Invalidate the cache so next get_kb() call loads fresh
+    get_kb.cache_clear()
+
+
+def add_chunk(chunk_data: dict, path: Path = _KB_PATH) -> KnowledgeBase:
+    """Add a new chunk to the knowledge base and save (with file locking and UUIDs)."""
+    lock_file = _lock_file(path)
+    try:
+        # Load current KB
+        raw = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"_meta": {}, "resources": []}
+        # Generate a unique ID if not provided (using UUID)
+        if "id" not in chunk_data or not chunk_data["id"]:
+            chunk_data["id"] = f"custom-{uuid.uuid4().hex[:12]}"
+        # Add the chunk
+        raw["resources"].append(chunk_data)
+        # Save back
+        path.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
+    finally:
+        _unlock_file(lock_file)
+    # Invalidate cache and return fresh KB
+    get_kb.cache_clear()
+    return get_kb()
+
+
+def delete_chunk(chunk_id: str, path: Path = _KB_PATH) -> tuple[bool, KnowledgeBase]:
+    """Delete a chunk from the knowledge base and save (with file locking). Returns (success: bool, kb)."""
+    lock_file = _lock_file(path)
+    found = False
+    try:
+        # Load current KB
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        # Check if chunk exists
+        found = any(r["id"] == chunk_id for r in raw["resources"])
+        # Filter out the chunk
+        raw["resources"] = [r for r in raw["resources"] if r["id"] != chunk_id]
+        # Save back
+        path.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
+    finally:
+        _unlock_file(lock_file)
+    # Invalidate cache and return fresh KB
+    get_kb.cache_clear()
+    return found, get_kb()
 
 
 @lru_cache(maxsize=1)

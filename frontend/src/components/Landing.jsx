@@ -170,7 +170,7 @@ export default function Landing({ lang, setLang, theme, setTheme, health, histor
 
   return (
     <div className="landing-wrap" dir={ar ? "rtl" : "ltr"}>
-      <ArabicWindBackground />
+      <ArabicWindBackground theme={theme} />
 
       {/* ── Hero ── */}
       <main className="landing-hero">
