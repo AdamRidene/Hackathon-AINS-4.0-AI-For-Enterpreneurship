@@ -56,6 +56,12 @@ function barColor(v, gated) {
   return "var(--red)";
 }
 
+function subBarColor(raw) {
+  if (raw >= 66) return "var(--green)";
+  if (raw >= 40) return "var(--amber)";
+  return "var(--red)";
+}
+
 const COPY = {
   fr: {
     newAudit: "Nouvel audit",
@@ -327,16 +333,23 @@ function ScoresTab({ audit, lang, T, plan, openProfile, explanations }) {
                         <p className="score-pourquoi-text">{explanations[key].natural_language}</p>
                     </div>
                 )}
-                <div className="score-anchor">{T.anchor} : {res.anchor}</div>
-                {res.gate_triggered && res.gate_reason && (
-                    <div className="score-gate-msg">⚠ {T.gateRule} : {res.gate_reason}</div>
+                <div className="score-anchor">{T.anchor} : {ar ? res.anchor_ar || res.anchor_fr : res.anchor_fr}</div>
+                {res.gate_triggered && (res.gate_reason_fr || res.gate_reason_ar) && (
+                    <div className="score-gate-msg">⚠ {T.gateRule} : {ar ? res.gate_reason_ar || res.gate_reason_fr : res.gate_reason_fr}</div>
                 )}
                 {res.contributions.map((c, i) => (
                     <div key={i} className="contrib-row">
-                        <span className="contrib-name">{c.criterion}</span>
-                        <span className="contrib-detail">{c.detail}</span>
-                        <span className="contrib-w mono">w:{c.weight}</span>
-                        <span className="contrib-score mono">{c.weighted}</span>
+                        <div className="contrib-row-head">
+                            <span className="contrib-name">
+                                {ar ? CRITERION_LABELS_AR[c.criterion] || c.criterion : CRITERION_LABELS_FR[c.criterion] || c.criterion}
+                            </span>
+                            <span className="contrib-w mono">×{c.weight}</span>
+                            <span className="contrib-score mono" style={{ color: subBarColor(c.raw) }}>{c.weighted}</span>
+                        </div>
+                        <div className="contrib-bar-track">
+                            <div className="contrib-bar-fill" style={{ width: `${c.raw}%`, background: subBarColor(c.raw) }} />
+                        </div>
+                        <div className="contrib-detail">{c.detail}</div>
                     </div>
                 ))}
                 {res.missing_inputs?.length > 0 && (
