@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import 'katex/dist/katex.min.css';
-import TeX from '@matejmazur/react-katex';
+import TeX from 'react-katex';
 
 const ScoreExplanationOverlay = ({ score, onClose, lang }) => {
   const overlayRef = useRef(null);
