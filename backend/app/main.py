@@ -795,29 +795,33 @@ async def audit_adhoc(profile: ProjectProfile) -> dict:
     return result.to_dict()
 
 
-_eval_jobs: dict = {}  # job_id → {status, progress, result, error}
+_eval_jobs: dict = {}        # job_id → {status, progress, result, error}
+_eval_cache: dict = {}       # keys: "result", "cached_at" (epoch float)
+_EVAL_CACHE_TTL = 1800       # 30 min — deterministic eval doesn't change between runs
 
 async def _run_eval_job(job_id: str) -> None:
     from .eval_protocol import eval_diagnostic, eval_rag, eval_scoring_consistency
+    import time
     try:
         loop = asyncio.get_running_loop()
         _eval_jobs[job_id]["result"] = {}
 
-        diag = await asyncio.wait_for(loop.run_in_executor(None, eval_diagnostic), timeout=180)
+        diag = await loop.run_in_executor(None, eval_diagnostic)
         _eval_jobs[job_id]["result"]["diagnostic"] = diag
         _eval_jobs[job_id]["progress"] = 1
 
-        rag = await asyncio.wait_for(loop.run_in_executor(None, eval_rag), timeout=180)
+        rag = await loop.run_in_executor(None, eval_rag)
         _eval_jobs[job_id]["result"]["rag_retrieval"] = rag
         _eval_jobs[job_id]["progress"] = 2
 
-        scoring = await asyncio.wait_for(loop.run_in_executor(None, eval_scoring_consistency), timeout=180)
+        scoring = await loop.run_in_executor(None, eval_scoring_consistency)
         _eval_jobs[job_id]["result"]["scoring_consistency"] = scoring
         _eval_jobs[job_id]["progress"] = 3
         _eval_jobs[job_id]["status"] = "done"
-    except asyncio.TimeoutError:
-        _eval_jobs[job_id]["status"] = "failed"
-        _eval_jobs[job_id]["error"] = "Timeout — evaluation exceeded 3 min per step"
+
+        # Populate cache so next eval/start returns instantly
+        _eval_cache["result"] = _eval_jobs[job_id]["result"]
+        _eval_cache["cached_at"] = time.time()
     except Exception as exc:
         _eval_jobs[job_id]["status"] = "failed"
         _eval_jobs[job_id]["error"] = str(exc)
@@ -825,17 +829,27 @@ async def _run_eval_job(job_id: str) -> None:
 
 @app.post("/api/eval/start")
 async def eval_start(user: dict = Depends(get_current_user)) -> dict:
+    import time
+    # Return cached result instantly if fresh (< 30 min)
+    if _eval_cache.get("cached_at") and (time.time() - _eval_cache["cached_at"]) < _EVAL_CACHE_TTL:
+        job_id = "cached"
+        _eval_jobs[job_id] = {
+            "status": "done", "progress": 3,
+            "result": _eval_cache["result"], "error": None,
+        }
+        return {"job_id": job_id, "cached": True}
+
     job_id = uuid4().hex[:8]
     _eval_jobs[job_id] = {"status": "running", "progress": 0, "result": {}, "error": None}
     asyncio.create_task(_run_eval_job(job_id))
-    return {"job_id": job_id}
+    return {"job_id": job_id, "cached": False}
 
 
 @app.get("/api/eval/status/{job_id}")
 def eval_status(job_id: str, user: dict = Depends(get_current_user)) -> dict:
     job = _eval_jobs.get(job_id)
     if not job:
-        raise HTTPException(404, "Job not found")
+        raise HTTPException(404, "Job not found or expired")
     return job
 
 
