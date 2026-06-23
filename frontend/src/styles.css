@@ -2120,6 +2120,7 @@ label {
   margin: 0;
 }
 
+
 .contrib-row {
   display: flex;
   align-items: flex-start;
@@ -2300,6 +2301,7 @@ label {
   border-left: none;
   border-right: 3px solid var(--primary);
 }
+
 
 .ms-sources {
   display: flex;
@@ -4563,4 +4565,49 @@ label {
 .doc-item-delete-btn:hover {
   color: var(--red) !important;
   background: var(--red-soft) !important;
+}
+/* ── Floating assistant ─────────────────────────────────────────────────── */
+.float-assistant-btn {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  z-index: 900;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 1.3rem;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 18px var(--primary-glow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform .15s, box-shadow .15s;
+}
+.float-assistant-btn:hover {
+  transform: scale(1.08);
+  box-shadow: 0 6px 24px var(--primary-glow);
+}
+.float-assistant-panel {
+  position: fixed;
+  bottom: 92px;
+  right: 28px;
+  z-index: 899;
+  width: 380px;
+  max-height: 560px;
+  overflow-y: auto;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+  padding: 16px;
+}
+@media (max-width: 480px) {
+  .float-assistant-panel {
+    width: calc(100vw - 24px);
+    right: 12px;
+    bottom: 88px;
+  }
 }

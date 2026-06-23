@@ -367,11 +367,23 @@ def _coerce(q: Question, value: Any) -> Any:
 
 
 def _set_path(profile: ProjectProfile, path: str, value: Any) -> None:
+    import enum as _enum, typing as _typing
     parts = path.split(".")
     obj: Any = profile
     for p in parts[:-1]:
         obj = getattr(obj, p)
-    setattr(obj, parts[-1], value)
+    field_name = parts[-1]
+    if isinstance(value, str):
+        field_info = type(obj).model_fields.get(field_name)
+        if field_info:
+            args = _typing.get_args(field_info.annotation)
+            target = args[0] if args else field_info.annotation
+            if isinstance(target, type) and issubclass(target, _enum.Enum):
+                try:
+                    value = target(value)
+                except ValueError:
+                    pass
+    setattr(obj, field_name, value)
 
 
 def coerce_value(question_id: str, value: Any) -> Any:

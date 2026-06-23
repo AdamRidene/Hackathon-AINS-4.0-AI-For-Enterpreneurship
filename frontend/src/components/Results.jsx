@@ -1,5 +1,4 @@
 import { useState } from "react";
-import Assistant from "./Assistant.jsx";
 import ScoreDeltas from "./ScoreDeltas.jsx";
 import ProfileEditor from "./ProfileEditor.jsx";
 import { SECTOR_LABELS as SECTOR_L, STAGE_LABELS as STAGE_L } from "../constants.js";
@@ -61,7 +60,7 @@ const COPY = {
   fr: {
     newAudit: "Nouvel audit",
     editProfile: "Ajuster les réponses",
-    tabs: ["Diagnostic", "Scores", "Feuille de route", "Assistant"],
+    tabs: ["Diagnostic", "Scores", "Feuille de route"],
     confidence: "Confiance",
     activeGate: "PORTE ACTIVE",
     declared: "Stade déclaré",
@@ -88,7 +87,7 @@ const COPY = {
   ar: {
     newAudit: "تدقيق جديد",
     editProfile: "تعديل الإجابات",
-    tabs: ["التشخيص", "المؤشرات", "خارطة الطريق", "المستشار"],
+    tabs: ["التشخيص", "المؤشرات", "خارطة الطريق"],
     confidence: "الثقة",
     activeGate: "البوابة النشطة",
     declared: "المرحلة المعلنة",
@@ -328,9 +327,9 @@ function ScoresTab({ audit, lang, T, plan, openProfile, explanations }) {
                         <p className="score-pourquoi-text">{explanations[key].natural_language}</p>
                     </div>
                 )}
-                <div className="score-anchor">{T.anchor} : {ar ? res.anchor_ar : res.anchor_fr}</div>
-                {res.gate_triggered && (
-                    <div className="score-gate-msg">⚠ {T.gateRule} : {ar ? res.gate_reason_ar : res.gate_reason_fr}</div>
+                <div className="score-anchor">{T.anchor} : {res.anchor}</div>
+                {res.gate_triggered && res.gate_reason && (
+                    <div className="score-gate-msg">⚠ {T.gateRule} : {res.gate_reason}</div>
                 )}
                 {res.contributions.map((c, i) => (
                     <div key={i} className="contrib-row">
@@ -342,13 +341,6 @@ function ScoresTab({ audit, lang, T, plan, openProfile, explanations }) {
                 ))}
                 {res.missing_inputs?.length > 0 && (
                     <div className="score-missing muted">⚠ {T.missing} : {res.missing_inputs.join(", ")}</div>
-                )}
-                {/* Improvement guidance */}
-                {(ar ? res.improvement_guidance_ar : res.improvement_guidance_fr) && (
-                    <div className="score-improvement">
-                        <span className="score-improvement-label">{ar ? "خطوات تحسين" : "Amélioration"}</span>
-                        <p className="score-improvement-text">{ar ? res.improvement_guidance_ar : res.improvement_guidance_fr}</p>
-                    </div>
                 )}
                 {/* What-if CTA */}
                 {res.what_if_hint && (
@@ -562,11 +554,6 @@ export default function Results({ audit, pid, lang, onNewAudit, onBackToDashboar
           </div>
         )}
 
-        {activeTab === 3 && (
-          <div className="results-section">
-            <Assistant pid={pid} lang={lang} />
-          </div>
-        )}
       </div>
 
       {showEditor && (

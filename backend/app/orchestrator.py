@@ -52,8 +52,8 @@ class AuditResult:
         d = {
             "project_id": self.profile.project_id,
             "project_name": self.profile.name,
-            "sector": self.profile.sector.value if self.profile.sector else None,
-            "location": self.profile.location.value if self.profile.location else None,
+            "sector": getattr(self.profile.sector, 'value', self.profile.sector) if self.profile.sector else None,
+            "location": getattr(self.profile.location, 'value', self.profile.location) if self.profile.location else None,
             "diagnostic": self.diagnostic.to_dict(),
             "perception_reality_gap": self.gap.to_dict(),
             "anomalies": self.anomalies,
@@ -251,6 +251,28 @@ def _format_grounding(stage, gap, vector, roadmap_prose, docs_context,
     return ctx
 
 
+# Keywords that signal the question is about the user's own project/diagnostic
+_CONTEXT_KEYWORDS = {
+    "score", "stade", "financement", "programme", "recommand", "diagnostic",
+    "marché", "market", "innovation", "scalabilit", "green", "roadmap", "feuille",
+    "mon ", "ma ", "mes ", "notre", "votre", "startup", "projet", "problème",
+    "aide", "apii", "bfpme", "flat6", "améliorer", "améliore", "comment",
+    "pourquoi", "quel", "quelle", "quels", "anomalie", "gate", "porte",
+    "مؤشر", "تشخيص", "مشروع", "كيف", "لماذا", "ما هو", "برنامج", "تمويل",
+}
+
+def _needs_grounding(question: str) -> bool:
+    """Return True if the question is about the user's project and needs diagnostic context."""
+    q = question.lower()
+    # Always ground if any project-context keyword present
+    if any(kw in q for kw in _CONTEXT_KEYWORDS):
+        return True
+    # Ground if question is substantive (>6 words) — likely a real question
+    if len(question.split()) > 6:
+        return True
+    return False
+
+
 async def grounded_assistant_reply(profile: ProjectProfile, question: str) -> dict:
     """Secondary conversational layer — grounded ONLY in structured outputs and uploaded documents.
 
@@ -258,6 +280,12 @@ async def grounded_assistant_reply(profile: ProjectProfile, question: str) -> di
     audit (diagnostic, scores, roadmap) and supporting evidence documents.
     This satisfies the 'assistant is a layer, not the product' requirement.
     """
+
+    # Skip grounding for small talk / general questions — no project keywords detected
+    if not _needs_grounding(question):
+        reply = await get_llm().chat(question, "", lang=profile.language)
+        return {"reply": reply, "grounding": None, "sources_used": []}
+
     # Fetch uploaded documents
     docs = store.list_documents(profile.project_id)
     full_docs = []
