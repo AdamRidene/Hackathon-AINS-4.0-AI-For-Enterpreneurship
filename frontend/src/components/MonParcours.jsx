@@ -49,7 +49,7 @@ const TEXTS = {
   },
 };
 
-export default function MonParcours({ pid, lang, api, onBack, checkedMilestones }) {
+export default function MonParcours({ pid, lang, api, onBack, checkedMilestones, onToggleMilestone }) {
   const [audits, setAudits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -60,25 +60,18 @@ export default function MonParcours({ pid, lang, api, onBack, checkedMilestones 
   useEffect(() => {
     async function load() {
       try {
-        // Fetch last audit + all project data
-        const [last, project] = await Promise.all([
-          api.getLastAudit(pid).catch(() => null),
+        const [history, project] = await Promise.all([
+          api.getAuditHistory(pid).catch(() => []),
           api.getProject(pid).catch(() => null),
         ]);
-        // Build audit history from project and cached audits
-        const items = [];
-        if (last) {
-          items.push({
-            type: "audit",
-            date: last.audited_at || new Date().toISOString(),
-            stage: last.diagnostic?.classified_stage,
-            stageName: last.diagnostic?.classified_stage_name,
-            scores: last.scores?.vector,
-            roadmap: last.roadmap || [],
-            gap: last.perception_reality_gap,
-          });
-        }
-        setAudits(items);
+        const formatted = Array.isArray(history) ? history.map(h => ({
+          date: h.audited_at,
+          stage: h.stage || h.diagnostic?.classified_stage || 1,
+          scores: h.scores?.vector || h.vector,
+          roadmap: h.roadmap || [],
+          gap: h.perception_reality_gap,
+        })) : [];
+        setAudits(formatted);
       } catch (err) {
         setError(err.message);
       } finally {
@@ -165,6 +158,7 @@ export default function MonParcours({ pid, lang, api, onBack, checkedMilestones 
                 const key = `${pid}_${m.id}`;
                 const done = !!checkedMilestones?.[key];
                 const rat = ar ? m.rationale_ar || m.rationale_fr : m.rationale_fr;
+                const timeline = ar ? m.timeline_ar || m.timeline_fr : m.timeline_fr || m.timeline_ar;
                 return (
                   <div key={i} style={{
                     display: "flex", alignItems: "flex-start", gap: 10,
@@ -172,7 +166,8 @@ export default function MonParcours({ pid, lang, api, onBack, checkedMilestones 
                     background: done ? "rgba(34,197,94,0.04)" : "rgba(255,255,255,0.01)",
                     border: `1px solid ${done ? "rgba(34,197,94,0.2)" : "var(--border)"}`,
                     opacity: done ? 0.7 : 1,
-                  }}>
+                    cursor: "pointer",
+                  }} onClick={() => onToggleMilestone && onToggleMilestone(m.id)}>
                     <span style={{
                       minWidth: 20, height: 20, borderRadius: "50%",
                       background: done ? "var(--green)" : "var(--border)",
@@ -185,8 +180,58 @@ export default function MonParcours({ pid, lang, api, onBack, checkedMilestones 
                       <div style={{ fontWeight: 600, fontSize: "0.88rem", textDecoration: done ? "line-through" : "none" }}>
                         {m.title}
                       </div>
+                      {timeline && <div style={{ fontSize: "0.74rem", color: "var(--orange)", marginTop: 2 }}>{timeline}</div>}
                       {rat && <div style={{ fontSize: "0.78rem", color: "var(--text-sub)", marginTop: 2 }}>{rat}</div>}
                     </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p style={{ color: "var(--text-dim)", fontSize: "0.85rem" }}>{t.noHistory}</p>
+          )}
+        </div>
+
+        {/* Past recommendations history timeline */}
+        <div className="dash-section">
+          <h3 className="dash-section-title">{t.pastRecommendations}</h3>
+          {audits.length > 1 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {audits.slice(1).map((audit, idx) => {
+                const stageName = STAGE_LABELS[lang]?.[audit.stage] || `Stage ${audit.stage}`;
+                return (
+                  <div key={idx} style={{
+                    padding: "14px", borderRadius: "var(--r-sm)",
+                    background: "rgba(255,255,255,0.01)", border: "1px solid var(--border)",
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+                      <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>{stageName}</span>
+                      <span style={{ fontSize: "0.8rem", color: "var(--text-sub)" }}>{formatDate(audit.date, lang)}</span>
+                    </div>
+                    {/* Score vector preview */}
+                    {audit.scores && (
+                      <div style={{ display: "flex", gap: 12, marginBottom: 8, flexWrap: "wrap" }}>
+                        {["M", "C", "I", "S", "G"].map((dim, i) => {
+                          const val = audit.scores[i];
+                          if (val === undefined) return null;
+                          return (
+                            <span key={dim} style={{ fontSize: "0.75rem", color: "var(--text-dim)" }}>
+                              {dim}: <strong>{Math.round(val)}</strong>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {/* Roadmap top 3 */}
+                    {audit.roadmap && audit.roadmap.length > 0 && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4, borderTop: "1px solid rgba(255,255,255,0.03)", paddingTop: 6 }}>
+                        {audit.roadmap.slice(0, 3).map((item, i) => (
+                          <div key={i} style={{ fontSize: "0.8rem", color: "var(--text-sub)" }}>
+                            • {item.title}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}

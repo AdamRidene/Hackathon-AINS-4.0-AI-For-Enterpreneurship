@@ -70,7 +70,7 @@ export default function App() {
   /* ── Persistent state ── */
   const [history,  setHistory]  = useState([]);
   const [checked,  setChecked]  = useState(() => {
-    try { return JSON.parse(localStorage.getItem("firasa_milestones") || "{}"); }
+    try { return JSON.parse(localStorage.getItem("firasa_checked") || localStorage.getItem("firasa_milestones") || "{}"); }
     catch { return {}; }
   });
 
@@ -184,6 +184,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    localStorage.setItem("firasa_checked", JSON.stringify(checked));
     localStorage.setItem("firasa_milestones", JSON.stringify(checked));
   }, [checked]);
 
@@ -501,6 +502,7 @@ export default function App() {
           api={api}
           onBack={() => setPhase("dashboard")}
           checkedMilestones={checked}
+          onToggleMilestone={toggleMilestone}
         />
       )}
 

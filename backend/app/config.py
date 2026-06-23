@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     skip_db: bool = False
 
     # LLM provider selection
-    llm_provider: Literal["ollama", "huggingface", "openai", "deepseek", "gemini", "stub"] = "ollama"
+    llm_provider: Literal["ollama", "huggingface", "openai", "groq", "deepseek", "gemini", "stub"] = "stub"
 
     # Ollama (local)
     ollama_host: str = "http://localhost:11434"
@@ -46,16 +46,36 @@ class Settings(BaseSettings):
     hf_token: str = ""
 
     # OpenAI-compatible (OpenAI, Groq, OpenRouter, Together AI...)
-    openai_api_key: str = ""
+    openai_api_key: str = Field("", validation_alias=AliasChoices("FIRASA_OPENAI_API_KEY", "OPENAI_API_KEY"))
     openai_api_base: str = "https://api.openai.com/v1"
     openai_model: str = "gpt-4o-mini"
+
+    # Groq (OpenAI-compatible endpoint at api.groq.com)
+    groq_api_key: str = Field("", validation_alias=AliasChoices("FIRASA_GROQ_API_KEY", "GROQ_API_KEY"))
+    groq_api_base: str = Field(
+        "https://api.groq.com/openai/v1",
+        validation_alias=AliasChoices("FIRASA_GROQ_API_BASE", "GROQ_API_BASE"),
+    )
+    groq_model: str = Field(
+        "llama-3.1-70b-versatile",
+        validation_alias=AliasChoices("FIRASA_GROQ_MODEL", "GROQ_MODEL"),
+    )
 
     # DeepSeek (OpenAI-compatible endpoint at api.deepseek.com)
     deepseek_api_key: str = Field("", validation_alias=AliasChoices("FIRASA_DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY"))
     deepseek_model: str = Field("deepseek-chat", validation_alias=AliasChoices("FIRASA_DEEPSEEK_MODEL", "DEEPSEEK_MODEL"))
 
-    # Cohere embeddings (optional — enables semantic RAG over TF-IDF)
+    # Cohere embeddings (optional — enables semantic retrieval when the SDK is installed)
     cohere_api_key: str = Field("", validation_alias=AliasChoices("FIRASA_COHERE_API_KEY", "COHERE_API_KEY"))
+    cohere_embedding_model: str = Field(
+        "embed-multilingual-v3.0",
+        validation_alias=AliasChoices(
+            "FIRASA_COHERE_EMBEDDING_MODEL",
+            "FIRASA_COHERE_MODEL",
+            "COHERE_EMBEDDING_MODEL",
+            "COHERE_MODEL",
+        ),
+    )
 
     # Google Gemini
     gemini_api_key: str = ""
@@ -64,6 +84,10 @@ class Settings(BaseSettings):
     # Common
     llm_timeout: float = 30.0
     debug: bool = False
+    RATE_LIMIT_BACKOFF_BASE: float = 1.0
+    RATE_LIMIT_BACKOFF_MAX: float = 10.0
+    DUPLICATE_ANSWER_TTL: float = 300.0
+    ARABIC_PROMPT_DIRECTIVE: bool = False
 
     @property
     def is_supabase_auth(self) -> bool:

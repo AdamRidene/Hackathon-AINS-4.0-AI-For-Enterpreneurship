@@ -130,6 +130,7 @@ export const api = {
   // History / management
   listProjects: (opts) => req("/api/projects", opts),
   getLastAudit: (pid) => req(`/api/projects/${pid}/last-audit`),
+  getAuditHistory: (pid) => req(`/api/projects/${pid}/audit-history`),
   deleteProject: (pid) => req(`/api/projects/${pid}`, { method: "DELETE" }),
   eval: () => req("/api/eval"),
 };

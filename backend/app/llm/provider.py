@@ -12,7 +12,8 @@ authority):
 Provider selection via env var FIRASA_LLM_PROVIDER:
   - "ollama"      (default) local Ollama, model FIRASA_LLM_MODEL (qwen3:8b)
   - "huggingface" HF Inference API, model FIRASA_HF_MODEL, token FIRASA_HF_TOKEN
-  - "openai"      OpenAI-compatible cloud API (Groq, OpenRouter, Gemini, OpenAI)
+  - "openai"      OpenAI-compatible cloud API (OpenAI, OpenRouter, Gemini, etc.)
+  - "groq"        Groq OpenAI-compatible endpoint at api.groq.com/openai/v1
   - "gemini"      Google Gemini via generative-ai SDK
   - "stub"        deterministic, no network — always available
 
@@ -57,7 +58,8 @@ RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
 
 def _backoff(attempt: int) -> float:
     """Exponential backoff with jitter: delay = min(max, base * 2^attempt) + jitter."""
-    delay = min(MAX_DELAY, BASE_DELAY * (2 ** attempt))
+    base_delay = settings.RATE_LIMIT_BACKOFF_BASE * (2 ** attempt)
+    delay = min(settings.RATE_LIMIT_BACKOFF_MAX, base_delay)
     jitter = random.uniform(0, delay * 0.5)
     return delay + jitter
 
@@ -189,6 +191,7 @@ class LLMProvider(ABC):
                 "why the system produced this result. Be specific and reference the "
                 "evidence. Do not invent facts.\n\n" + context
             )
+        prompt = apply_language_directive(prompt, lang)
         try:
             completed_str = await self._complete_with_retry(prompt, max_tokens=220)
             out = completed_str.strip()
@@ -205,9 +208,8 @@ class LLMProvider(ABC):
                 "أنت مساعد فراسة. أجب على سؤال المؤسس بالعربية "
                 "(العربية التونسية أو العربية الفصحى المبسطة)، معتمداً فقط على السياق "
                 "المنظم (التشخيص، المؤشرات، خارطة الطريق). لا تخترع أي برنامج.\n"
-                "اجعل جوابك متناسباً مع السؤال: للتحية أو سؤال قصير، أجب بجملة واحدة "
-                "بدون نقاط. للسؤال الحقيقي فقط: جملة تلخيص ثم نقطتان إلى أربع كحد أقصى "
-                "(كل نقطة تبدأ بـ «• »). لا تكرر السياق حرفياً.\n\n"
+                "أعطِ فقط الجواب النهائي، بدون أي تفكير داخلي أو شرح للمراحل أو <think>.\n"
+                "للتغطية القصيرة: جملة واحدة. وللسؤال الحقيقي: جملة تلخيص قصيرة ثم 2 إلى 4 نقاط كحد أقصى.\n\n"
                 f"السياق:\n{context}\n\nالسؤال: {question}\n\nالجواب:"
             )
         else:
@@ -215,19 +217,19 @@ class LLMProvider(ABC):
                 "Tu es l'assistant Firasa. Réponds à la question du fondateur en "
                 "français, en te basant UNIQUEMENT sur le contexte structuré "
                 "(diagnostic, scores, feuille de route). N'invente aucun programme.\n"
+                "Réponds uniquement avec la réponse finale. N'inclus aucun raisonnement, "
+                "aucune chaîne de pensée, aucun <think> et aucune explication de ta méthode.\n"
                 "Adapte la longueur à la question : pour une simple salutation ou une "
-                "question courte, réponds en UNE phrase, sans synthèse ni puces. Pour "
-                "une vraie question seulement : une phrase de synthèse puis 2 à 4 points "
-                "« • » maximum. Ne recopie jamais le contexte mot pour mot.\n\n"
+                "question courte, réponds en UNE phrase. Pour une vraie question seulement : "
+                "une phrase de synthèse puis 2 à 4 points « • » maximum.\n\n"
                 f"Contexte:\n{context}\n\nQuestion: {question}\n\nRéponse:"
             )
+        prompt = apply_language_directive(prompt, lang)
         try:
-            # 700 not 300: reasoning models (v4-flash/-pro) spend tokens on
-            # reasoning_content before emitting the answer.
-            completed_str = await self._complete_with_retry(prompt, max_tokens=700)
-            out = completed_str.strip()
+            completed_str = await self._complete_with_retry(prompt, max_tokens=400)
+            out = _final_assistant_text(completed_str)
             if out:
-                return _strip_think(out)
+                return out
         except Exception:
             pass
         # Deterministic grounded fallback: surface the context directly.
@@ -274,6 +276,7 @@ class LLMProvider(ABC):
             "Return ONLY a JSON object {\"fields\":[ ... ]}.\n\n"
             f"FIELDS:\n{catalogue}\n\nDOCUMENT:\n\"\"\"{doc_text[:8000]}\"\"\""
         )
+        prompt = apply_language_directive(prompt, lang)
         try:
             raw = _strip_think(await self._complete_with_retry(prompt, max_tokens=3000))
         except Exception:
@@ -325,6 +328,7 @@ class LLMProvider(ABC):
                 "evidence. If the answer is already specific, propose nothing. "
                 "Return ONLY a JSON object {\"probe\": \"<question or empty>\"}."
             )
+        prompt = apply_language_directive(prompt, lang)
         try:
             raw = _strip_think(await self._complete_with_retry(prompt, max_tokens=160))
             m = re.search(r"\{[^{}]*\}", raw)
@@ -353,6 +357,7 @@ class LLMProvider(ABC):
                 "institution. Do not invent programs.\n\n"
                 f"Gap: {gap}\n\nSources:\n{joined}"
             )
+        prompt = apply_language_directive(prompt, lang)
         try:
             completed_str = await self._complete_with_retry(prompt, max_tokens=260)
             out = completed_str.strip()
@@ -366,8 +371,109 @@ class LLMProvider(ABC):
 
 
 def _strip_think(text: str) -> str:
-    """qwen3 emits <think>...</think> reasoning; keep only the answer."""
-    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    """Strip think, thought, and reasoning blocks (both closed and unclosed/truncated)."""
+    # Remove complete tags: <think>...</think>, <thought>...</thought>, [thinking]...[/thinking], [thought]...[/thought]
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+    text = re.sub(r"<thought>.*?</thought>", "", text, flags=re.DOTALL)
+    text = re.sub(r"\[thinking\].*?\[/thinking\]", "", text, flags=re.DOTALL)
+    text = re.sub(r"\[thought\].*?\[/thought\]", "", text, flags=re.DOTALL)
+    
+    # Remove unclosed/truncated tags (often at the end of text or if model is interrupted)
+    text = re.sub(r"<think>.*", "", text, flags=re.DOTALL)
+    text = re.sub(r"<thought>.*", "", text, flags=re.DOTALL)
+    text = re.sub(r"\[thinking\].*", "", text, flags=re.DOTALL)
+    text = re.sub(r"\[thought\].*", "", text, flags=re.DOTALL)
+    return text.strip()
+
+
+def _final_assistant_text(text: str) -> str:
+    """Remove reasoning preambles and return only the visible reply."""
+    cleaned = _strip_think(text)
+    if not cleaned:
+        return ""
+
+    lowered = cleaned.lower()
+    answer_markers = (
+        "final answer:",
+        "réponse finale:",
+        "reponse finale:",
+        "answer:",
+        "réponse:",
+        "reponse:",
+    )
+    for marker in answer_markers:
+        idx = lowered.find(marker)
+        if idx != -1:
+            return cleaned[idx + len(marker):].strip()
+
+    reasoning_prefixes = (
+        "here's a thinking process",
+        "here is a thinking process",
+        "thinking process",
+        "reasoning:",
+        "analysis:",
+        "analyse:",
+    )
+    if any(lowered.startswith(prefix) for prefix in reasoning_prefixes):
+        lines = [line for line in cleaned.splitlines() if line.strip()]
+        for i, line in enumerate(lines):
+            if line.lower().startswith(answer_markers):
+                return "\n".join(lines[i:]).strip()
+        if len(lines) > 1:
+            return "\n".join(lines[1:]).strip()
+        return ""
+
+    return cleaned
+
+
+def parse_llm_json(text: str, fallback: dict) -> dict:
+    """Parse a JSON object from noisy LLM output.
+
+    Accepts plain JSON, markdown code fences, and prose wrapped around the
+    payload. Falls back to the provided dict on any failure.
+    """
+    if not text or not text.strip():
+        return fallback
+
+    cleaned = _strip_think(text).strip()
+
+    # Prefer a fenced JSON payload when present.
+    fence_match = re.search(r"```(?:json)?\s*(.*?)```", cleaned, flags=re.DOTALL | re.IGNORECASE)
+    if fence_match:
+        cleaned = fence_match.group(1).strip()
+
+    decoder = json.JSONDecoder()
+    candidates = [cleaned]
+    for start in (cleaned.find("{"), cleaned.find("[")):
+        if start != -1:
+            candidates.append(cleaned[start:])
+
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            obj = json.loads(candidate)
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            pass
+        try:
+            obj, _ = decoder.raw_decode(candidate)
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            continue
+
+    return fallback
+
+
+def apply_language_directive(prompt: str, lang: str) -> str:
+    """Prefix the prompt with an Arabic language directive when enabled."""
+    if lang != "ar" or not settings.ARABIC_PROMPT_DIRECTIVE:
+        return prompt
+    if prompt.lstrip().startswith("[LANG=ar]"):
+        return prompt
+    return f"[LANG=ar]\n{prompt}"
 
 
 class StubProvider(LLMProvider):
@@ -456,6 +562,17 @@ class OpenAIProvider(LLMProvider):
             if choices:
                 return choices[0].get("message", {}).get("content", "")
             return ""
+
+
+class GroqProvider(OpenAIProvider):
+    """Groq's OpenAI-compatible chat API."""
+
+    name = "groq"
+
+    def __init__(self) -> None:
+        self.api_key = os.getenv("FIRASA_GROQ_API_KEY") or settings.groq_api_key
+        self.api_base = (os.getenv("FIRASA_GROQ_API_BASE") or settings.groq_api_base).rstrip("/")
+        self.model = os.getenv("FIRASA_GROQ_MODEL") or settings.groq_model
 
 
 class DeepSeekProvider(LLMProvider):
@@ -572,6 +689,7 @@ _PROVIDERS = {
     "ollama": OllamaProvider,
     "huggingface": HuggingFaceProvider,
     "openai": OpenAIProvider,
+    "groq": GroqProvider,
     "deepseek": DeepSeekProvider,
     "gemini": GeminiProvider,
     "stub": StubProvider,

@@ -14,6 +14,9 @@ from uuid import uuid4
 from fastapi import Depends, FastAPI, File as FastAPIFile, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator, Field
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from . import __version__, store
 from .auth import get_current_user, extract_token
@@ -21,14 +24,26 @@ from .config import settings
 from .schema import ProjectProfile
 from .intake import IntakeStateMachine, run_intake_turn, propose_autofill, apply_autofill
 from .orchestrator import run_audit, grounded_assistant_reply
-from .rag.knowledge_base import get_kb
+from .rag.knowledge_base import get_kb, add_chunk, delete_chunk
 from .llm import get_llm
 
 _logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Firasa Orientation Engine", version=__version__)
+
+limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+_ORIGINS = (
+    os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000")
+    .split(",")
+)
 app.add_middleware(
-    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
+    CORSMiddleware,
+    allow_origins=["*"] if settings.debug else _ORIGINS,
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
@@ -132,10 +147,24 @@ def _require_owned(pid: str, user: dict) -> ProjectProfile:
 def health() -> dict:
     kb = get_kb()
     llm = get_llm()
+    llm_env = os.getenv("FIRASA_LLM_PROVIDER") or settings.llm_provider
+    llm_configured = True
+    if llm.name == "openai":
+        llm_configured = bool(settings.openai_api_key)
+    elif llm.name == "groq":
+        llm_configured = bool(settings.groq_api_key)
+    elif llm.name == "huggingface":
+        llm_configured = bool(settings.hf_token)
+    elif llm.name == "deepseek":
+        llm_configured = bool(settings.deepseek_api_key)
+    elif llm.name == "gemini":
+        llm_configured = bool(settings.gemini_api_key)
     model_names = {
         "ollama": settings.llm_model,
         "huggingface": settings.hf_model,
         "openai": settings.openai_model,
+        "groq": settings.groq_model,
+        "deepseek": settings.deepseek_model,
         "gemini": settings.gemini_model,
         "stub": "stub",
     }
@@ -143,9 +172,15 @@ def health() -> dict:
         "status": "ok",
         "version": __version__,
         "auth_mode": settings.auth_mode,
+        "llm_provider_env": llm_env,
         "llm_provider": llm.name,
         "llm_model": model_names.get(llm.name, "unknown"),
+        "llm_configured": llm_configured,
         "kb_resources": len(kb),
+        "kb_embedding_model": kb.meta.get("embedding_model"),
+        "cohere_embedding_model": settings.cohere_embedding_model,
+        "cohere_api_key_set": bool(settings.cohere_api_key or os.getenv("COHERE_API_KEY")),
+        "cohere_embeddings_enabled": kb.meta.get("embedding_model", "").startswith("cohere/"),
     }
 
 
@@ -159,6 +194,29 @@ def kb_overview() -> dict:
         by_horizon[c.horizon] = by_horizon.get(c.horizon, 0) + 1
     return {"count": len(kb), "by_institution": by_institution,
             "by_horizon": by_horizon, "meta": kb.meta}
+
+
+@app.get("/api/kb/chunks")
+def get_all_chunks(user: dict = Depends(get_current_user)) -> dict:
+    """Get all chunks in the knowledge base (authenticated only)."""
+    kb = get_kb()
+    return {"chunks": [c.to_dict() for c in kb.chunks]}
+
+
+@app.post("/api/kb/chunks")
+def create_chunk(chunk_data: dict, user: dict = Depends(get_current_user)) -> dict:
+    """Add a new chunk to the knowledge base (authenticated only)."""
+    kb = add_chunk(chunk_data)
+    return {"success": True, "count": len(kb)}
+
+
+@app.delete("/api/kb/chunks/{chunk_id}")
+def remove_chunk(chunk_id: str, user: dict = Depends(get_current_user)) -> dict:
+    """Delete a chunk from the knowledge base by ID (authenticated only). Returns 404 if chunk not found."""
+    found, kb = delete_chunk(chunk_id)
+    if not found:
+        raise HTTPException(404, "Chunk not found")
+    return {"success": True, "count": len(kb)}
 
 
 # --------------------------------------------------------------------------- #
@@ -354,15 +412,22 @@ async def answer(pid: str, body: AnswerBody, user: dict = Depends(get_current_us
     # Only auto-run the full audit pipeline when intake is complete
     # (last question answered, no pending probe). Intermediate answers just
     # update the profile.
+    follow_up = None
     if profile.intake_complete:
-        await _run_owned_audit(pid, user)
+        audit_dict = await _run_owned_audit(pid, user)
+        follow_up = audit_dict.get("follow_up_suggested")
 
-    return {"accepted": True, "next_question": turn["next_question"],
-            "progress": IntakeStateMachine(profile).progress(),
-            "intake_complete": profile.intake_complete,
-            # Per-turn LangGraph node trace, for the frontend "agent decision
-            # timeline" (explainability). e.g. ["answer:name","probe_emitted:..."].
-            "trace": turn["trace"]}
+    response_dict = {
+        "accepted": True, "next_question": turn["next_question"],
+        "progress": IntakeStateMachine(profile).progress(),
+        "intake_complete": profile.intake_complete,
+        # Per-turn LangGraph node trace, for the frontend "agent decision
+        # timeline" (explainability). e.g. ["answer:name","probe_emitted:..."].
+        "trace": turn["trace"],
+    }
+    if follow_up:
+        response_dict["follow_up_suggested"] = follow_up
+    return response_dict
 
 
 # --------------------------------------------------------------------------- #
@@ -399,7 +464,8 @@ async def autofill_apply(pid: str, body: AutofillApplyBody,
     result = apply_autofill(profile, [i.model_dump() for i in body.confirmed])
     store.save(profile)
     if profile.intake_complete:
-        await _run_owned_audit(pid, user)
+        audit_dict = await _run_owned_audit(pid, user)
+        result["follow_up_suggested"] = audit_dict.get("follow_up_suggested")
     return {"accepted": True, **result}
 
 
@@ -479,24 +545,40 @@ async def _run_owned_audit(pid: str, user: dict) -> dict:
         vector     = profile.last_score_vector,
         audit_dict = result_dict,
     )
+    store.append_audit_history(
+        pid=pid,
+        owner_user_id=user["id"],
+        stage=int(stage) if stage else None,
+        vector=profile.last_score_vector,
+        audit_dict=result_dict,
+    )
     return result_dict
 
 
 @app.post("/api/projects/{pid}/audit")
-async def audit(pid: str, user: dict = Depends(get_current_user)) -> dict:
+@limiter.limit("10/minute")
+async def audit(request: Request, pid: str, user: dict = Depends(get_current_user)) -> dict:
     return await _run_owned_audit(pid, user)
 
 
 @app.post("/api/v1/projects/{pid}/diagnose")
-async def diagnose(pid: str, user: dict = Depends(get_current_user)) -> dict:
+@limiter.limit("10/minute")
+async def diagnose(request: Request, pid: str, user: dict = Depends(get_current_user)) -> dict:
     """Compatibility endpoint for the final diagnostic handoff payload."""
     return await _run_owned_audit(pid, user)
 
 
 @app.post("/api/projects/{pid}/assistant")
-async def assistant(pid: str, body: AssistantBody, user: dict = Depends(get_current_user)) -> dict:
+@limiter.limit("20/minute")
+async def assistant(request: Request, pid: str, body: AssistantBody, user: dict = Depends(get_current_user)) -> dict:
     profile = _require_owned(pid, user)
     return await grounded_assistant_reply(profile, body.question)
+
+
+@app.get("/api/projects/{pid}/audit-history")
+def audit_history(pid: str, user: dict = Depends(get_current_user)) -> list[dict]:
+    _require_owned(pid, user)
+    return store.get_audit_history(pid)
 
 
 # ── History / management ──────────────────────────────────────────────────── #
@@ -620,6 +702,12 @@ async def upload_document(
         storage_path=str(file_path),
         extracted_text=extracted,
     )
+
+    # Delete ephemeral file after extraction to support container/server redeploys
+    try:
+        file_path.unlink(missing_ok=True)
+    except Exception:
+        pass
 
     return {
         "id": doc_id,

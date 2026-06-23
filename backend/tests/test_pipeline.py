@@ -58,6 +58,9 @@ def test_roadmap_is_grounded_and_ordered():
         assert m.sources, "every milestone must cite a real resource"
         for s in m.sources:
             assert s["url"].startswith("http")
+        assert m.timeline_start
+        assert m.timeline_end
+        assert m.timeline_weeks >= 1
     orders = [m.order for m in r.roadmap]
     assert orders == sorted(orders)
 

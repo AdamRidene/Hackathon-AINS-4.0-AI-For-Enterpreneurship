@@ -18,7 +18,7 @@ A secondary LLM layer sits over all of this — as a judge of value-proposition 
 
 ## Tech stack
 
-The backend is Python with FastAPI and Pydantic v2 models. Retrieval uses dependency-free TF-IDF cosine similarity, swappable for a vector database behind the `Retriever` interface. The LLM provider is abstracted behind a single class with three implementations selected by the `FIRASA_LLM_PROVIDER` environment variable: a local Ollama provider (default, `qwen3:8b`), a Hugging Face Inference API provider (feature toggle), and a deterministic stub used in tests and as the universal fallback. The frontend is React (Vite), French-first, organised as a small set of presentational components over a thin typed API client.
+The backend is Python with FastAPI and Pydantic v2 models. Retrieval uses dependency-free TF-IDF cosine similarity, swappable for a vector database behind the `Retriever` interface. The LLM provider is abstracted behind a single class with multiple implementations selected by the `FIRASA_LLM_PROVIDER` environment variable: local Ollama (default, `qwen3:8b`), Hugging Face Inference API, OpenAI-compatible APIs, Groq, DeepSeek, Gemini, and a deterministic stub used in tests and as the universal fallback. Cohere embeddings are optional and, when configured, are used to upgrade semantic retrieval before the local fallback. The frontend is React (Vite), French-first, organised as a small set of presentational components over a thin typed API client.
 
 ## Running it
 
@@ -29,7 +29,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload          # serves http://localhost:8000
 ```
 
-By default the backend expects a local Ollama instance. To run with no model installed, set `FIRASA_LLM_PROVIDER=stub`. To use Hugging Face instead, set `FIRASA_LLM_PROVIDER=huggingface` and provide `FIRASA_HF_TOKEN`. See `.env.example` for all variables.
+By default the backend expects a local Ollama instance. To run with no model installed, set `FIRASA_LLM_PROVIDER=stub`. To use Hugging Face instead, set `FIRASA_LLM_PROVIDER=huggingface` and provide `FIRASA_HF_TOKEN`. To use Groq, set `FIRASA_LLM_PROVIDER=groq` and provide `FIRASA_GROQ_API_KEY`. For semantic retrieval, set `FIRASA_COHERE_API_KEY` and optionally `FIRASA_COHERE_EMBEDDING_MODEL`. See `.env.example` for all variables.
 
 Frontend, from `frontend/`:
 

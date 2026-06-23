@@ -12,11 +12,12 @@ retrieved chunks (grounded); the LLM only rephrases, never invents a program.
 from __future__ import annotations
 
 import asyncio
+from datetime import date, timedelta
 from dataclasses import dataclass, field
 from typing import Optional
 
 from ..llm import get_llm
-from ..schema import ProjectProfile
+from ..schema import ProjectProfile, MVPStage
 from ..diagnostic.classifier import DiagnosticResult, STAGE_NAMES_AR as _STAGE_NAMES_AR
 from ..diagnostic.gap import GapReport
 from ..scoring.gwlc import CompositeScores
@@ -39,6 +40,12 @@ class Milestone:
     horizon_fr: str
     horizon_ar: str
     trigger: str                 # what diagnostic gap / score triggered it
+    timeline_fr: str = ""
+    timeline_ar: str = ""
+    timeline_start: str = ""
+    timeline_end: str = ""
+    timeline_weeks: int = 0
+    timeline_basis: str = ""
     sources: list[dict] = field(default_factory=list)  # grounded citations
     action_fr: str = ""          # grounded prose next-step
     action_ar: str = ""
@@ -55,10 +62,35 @@ class Milestone:
             "horizon_fr": self.horizon_fr,
             "horizon_ar": self.horizon_ar,
             "trigger": self.trigger,
+            "timeline_fr": self.timeline_fr,
+            "timeline_ar": self.timeline_ar,
+            "timeline_start": self.timeline_start,
+            "timeline_end": self.timeline_end,
+            "timeline_weeks": self.timeline_weeks,
+            "timeline_basis": self.timeline_basis,
             "action_fr": self.action_fr,
             "action_ar": self.action_ar,
             "sources": self.sources,
         }
+
+
+def _anomaly_to_gap_category(code: str) -> str:
+    """Map an anomaly code to a retriever gap category for roadmap routing."""
+    mapping = {
+        "tam_without_validation": "missing_market_validation",
+        "cheap_but_labour_bound": "scalability",
+        "advanced_stage_no_revenue": "missing_market_validation",
+        "market_claim_no_product": "tech_hype",
+        "tech_sector_mismatch": "tech_hype",
+        "innovation_no_ip": "tech_hype",
+        "innovation_pure_self_report": "tech_hype",
+        "green_without_footprint": "green",
+        "revenue_commercial_mismatch": "missing_market_validation",
+        "compound_evidence_vacuum": "missing_market_validation",
+        "compound_monetisation_blind_spot": "missing_market_validation",
+        "compound_narrative_inflation": "missing_market_validation",
+    }
+    return mapping.get(code, "general")
 
 
 def _score_triggers(scores: CompositeScores) -> list[tuple[str, str, str, str, str]]:
@@ -105,13 +137,108 @@ def _score_triggers(scores: CompositeScores) -> list[tuple[str, str, str, str, s
     return out
 
 
+def _timeline_profile_factor(profile: ProjectProfile) -> tuple[float, list[str]]:
+    """Return a multiplier and explanation tokens used to personalize timing."""
+    factor = 1.0
+    notes: list[str] = []
+
+    runway = profile.runway_months
+    if runway is not None:
+        if runway <= 3:
+            factor *= 0.75
+            notes.append(f"runway {runway} mois")
+        elif runway <= 6:
+            factor *= 0.9
+            notes.append(f"runway {runway} mois")
+        elif runway >= 12:
+            factor *= 1.1
+            notes.append(f"runway {runway} mois")
+
+    team_size = profile.team_size
+    if team_size is not None:
+        if team_size <= 2:
+            factor *= 0.9
+            notes.append(f"équipe réduite ({team_size})")
+        elif team_size >= 8:
+            factor *= 1.1
+            notes.append(f"équipe large ({team_size})")
+
+    if profile.has_revenue_model is False:
+        factor *= 0.9
+        notes.append("pas encore de modèle de revenus")
+
+    mvp = profile.commercial.mvp_stage
+    if mvp in (None, MVPStage.CONCEPT):
+        factor *= 0.85
+        notes.append("MVP concept")
+    elif mvp == MVPStage.PRODUCTION:
+        factor *= 1.1
+        notes.append("MVP déjà opérationnel")
+
+    return max(0.7, min(1.3, factor)), notes
+
+
+def _base_timeline_window(horizon: str, stage: int) -> tuple[int, int]:
+    if horizon == "immediate":
+        return (1, 2 if stage <= 1 else 3)
+    if horizon == "short_term":
+        return (2, 4 if stage <= 2 else 6)
+    return (4, 8 if stage <= 2 else 12)
+
+
+def _personalize_timeline(profile: ProjectProfile, horizon: str, stage: int) -> tuple[str, str, str, int, str]:
+    start_days, end_days = _base_timeline_window(horizon, stage)
+    factor, notes = _timeline_profile_factor(profile)
+    adjusted_start = max(1, round(start_days * factor))
+    adjusted_end = max(adjusted_start, round(end_days * factor))
+
+    today = date.today()
+    start_date = today + timedelta(days=adjusted_start * 7)
+    end_date = today + timedelta(days=adjusted_end * 7)
+    basis = ", ".join(notes) if notes else "profil standard"
+
+    if profile.language == "ar":
+        if adjusted_end <= 2:
+            label = "فوري"
+        elif adjusted_end <= 4:
+            label = "قصير المدى"
+        else:
+            label = "متوسط المدى"
+        timeline = f"{label} ({adjusted_start}–{adjusted_end} semaines, {basis})"
+    else:
+        if adjusted_end <= 2:
+            label = "Immédiat"
+        elif adjusted_end <= 4:
+            label = "Court terme"
+        else:
+            label = "Moyen terme"
+        timeline = f"{label} ({adjusted_start} à {adjusted_end} semaines, {basis})"
+
+    return timeline, timeline, start_date.isoformat(), end_date.isoformat(), basis
+
+
+def _timeline_weeks(profile: ProjectProfile, horizon: str, stage: int) -> int:
+    """Return the personalized number of weeks for a milestone."""
+    _, end_days = _base_timeline_window(horizon, stage)
+    factor, _ = _timeline_profile_factor(profile)
+    adjusted_end = max(1, round(end_days * factor))
+    return adjusted_end
+
+
 async def build_roadmap(
     profile: ProjectProfile,
     diagnostic: DiagnosticResult,
     scores: CompositeScores,
     gap: Optional[GapReport] = None,
     k_per_gap: int = 2,
+    anomalies: Optional[list[dict]] = None,
 ) -> list[Milestone]:
+    """Build an ordered, grounded action plan from gaps, scores, and anomalies.
+
+    Anomalies influence priority: high-severity anomalies escalate to stage 1
+    (immediate), medium to stage 2 (short-term), so anomaly-driven milestones
+    bubble up above routine blockers.
+    """
     retriever = Retriever()
     llm = get_llm()
     milestones: list[Milestone] = []
@@ -132,7 +259,28 @@ async def build_roadmap(
     for gap_cat, label_fr, label_ar, rat_fr, rat_ar in _score_triggers(scores):
         triggers.append((gap_cat, label_fr, label_ar, rat_fr, rat_ar, diagnostic.classified_stage))
 
-    # Order by stage (earliest blocker first); stable for equal stages.
+    # 3) Anomaly-driven triggers — escalate priority for structural inconsistencies.
+    if anomalies:
+        for anom in anomalies:
+            severity = anom.get("severity", "medium")
+            if severity not in ("high", "medium"):
+                continue
+            # Map anomaly code to a gap category for retrieval routing
+            anom_code = anom.get("code", "")
+            anom_gap_cat = _anomaly_to_gap_category(anom_code)
+            # Escalate: high → stage 1 (immediate), medium → stage 2 (short-term)
+            anom_stage = 1 if severity == "high" else 2
+            triggers.append((
+                anom_gap_cat,
+                anom.get("title_fr", "Anomalie détectée"),
+                anom.get("title_ar", "تم اكتشاف تناقض"),
+                anom.get("detail_fr", ""),
+                anom.get("detail_ar", ""),
+                anom_stage,
+            ))
+
+    # Order by stage (earliest first); anomaly-triggered items with escalated
+    # priority (stage 1/2) naturally bubble above routine blockers.
     triggers.sort(key=lambda t: t[5])
 
     # Phase 1: Collect all retrievals (no LLM calls yet).
@@ -150,6 +298,10 @@ async def build_roadmap(
         sources = [{"institution": c.institution, "title": c.title, "url": c.url,
                     "citation": c.cite(), "horizon": c.horizon} for c in fresh]
         horizon = fresh[0].horizon
+        timeline_fr, timeline_ar, timeline_start, timeline_end, timeline_basis = _personalize_timeline(
+            profile, horizon, _stage
+        )
+        timeline_weeks = _timeline_weeks(profile, horizon, _stage)
         milestone_id = f"{gap_cat}_{fresh[0].id}" if fresh else f"{gap_cat}_{label_fr.replace(' ', '_').lower()}"
         trigger_plans.append({
             "milestone_id": milestone_id,
@@ -159,6 +311,12 @@ async def build_roadmap(
             "rat_fr": rat_fr,
             "rat_ar": rat_ar,
             "horizon": horizon,
+            "timeline_fr": timeline_fr,
+            "timeline_ar": timeline_ar,
+            "timeline_start": timeline_start,
+            "timeline_end": timeline_end,
+            "timeline_weeks": timeline_weeks,
+            "timeline_basis": timeline_basis,
             "sources": sources,
             "chunks": [c.content for c in fresh],
         })
@@ -166,7 +324,7 @@ async def build_roadmap(
     # Phase 2: Fire ALL LLM prose-generation calls in parallel.
     async def _generate_action(plan: dict) -> str:
         return await llm.generate_roadmap_prose(
-            gap=f"{plan['label_fr']}: {plan['rat_fr']}",
+            gap=f"{plan['label_fr']}: {plan['rat_fr']} | Timeline: {plan['timeline_fr']}",
             chunks=plan["chunks"],
             lang=profile.language,
         )
@@ -199,6 +357,12 @@ async def build_roadmap(
             horizon_fr=_HORIZON_FR.get(plan["horizon"], plan["horizon"]),
             horizon_ar=_HORIZON_AR.get(plan["horizon"], plan["horizon"]),
             trigger=plan["gap_cat"],
+            timeline_fr=plan["timeline_fr"],
+            timeline_ar=plan["timeline_ar"],
+            timeline_start=plan["timeline_start"],
+            timeline_end=plan["timeline_end"],
+            timeline_weeks=plan["timeline_weeks"],
+            timeline_basis=plan["timeline_basis"],
             sources=plan["sources"],
         )
         if profile.language == "ar":

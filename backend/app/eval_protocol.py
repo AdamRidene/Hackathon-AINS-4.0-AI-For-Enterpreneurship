@@ -492,12 +492,31 @@ def eval_scoring_consistency() -> dict:
 
 
 def main() -> None:
-    report = {
-        "diagnostic": eval_diagnostic(),
-        "rag_retrieval": eval_rag(),
-        "scoring_consistency": eval_scoring_consistency(),
-    }
-    print(json.dumps(report, indent=2, ensure_ascii=True))
+    diag = eval_diagnostic()
+    rag = eval_rag()
+    scoring = eval_scoring_consistency()
+
+    print("=" * 70)
+    print(" FIRASA SYSTEM EVALUATION REPORT")
+    print("=" * 70)
+    print("\n1. PRIMARY DIAGNOSTIC EVALUATION (Hand-labelled Validation Set, N=12)")
+    print(f"   * Top-1 Accuracy : {diag['top1_accuracy'] * 100:.1f}%")
+    print(f"   * Top-2 Accuracy : {diag['top2_accuracy'] * 100:.1f}%")
+    print(f"   * MASE (Error)   : {diag['MASE']}  (Target: <= 0.5)")
+    print(f"   * Status         : {'PASS' if diag['passes'] else 'FAIL'}")
+
+    print("\n2. COVERAGE STRESS TEST / REGRESSION CHECK (Synthetic Set, N=60)")
+    print(f"   * Reg Accuracy   : {diag['regression_accuracy'] * 100:.1f}%")
+    print("   * Note           : This synthetic set checks logic boundaries and rules consistency.")
+
+    print("\n3. RAG RETRIEVAL PRECISION (Tunisian Ecosystem Matrix, N=30)")
+    print(f"   * Mean P@5       : {rag['mean_precision_at_5'] * 100:.1f}%  (Target: >= 70.0%)")
+    print(f"   * Status         : {'PASS' if rag['passes'] else 'FAIL'}")
+
+    print("\n4. SCORING CONSISTENCY & COHEN'S KAPPA (Adversarial Check)")
+    print(f"   * Weighted Kappa : {scoring['cohens_weighted_kappa']:.3f}  (Target: >= 0.70)")
+    print(f"   * Status         : {'PASS' if scoring['passes'] else 'FAIL'}")
+    print("=" * 70)
 
 
 if __name__ == "__main__":

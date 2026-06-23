@@ -1,1 +1,3 @@
-from .gwlc import score_all, ScoreResult, CompositeScores  # noqa: F401
+from .gwlc import (  # noqa: F401
+    score_all, ScoreResult, CompositeScores, annotate_scores_with_anomalies,
+)

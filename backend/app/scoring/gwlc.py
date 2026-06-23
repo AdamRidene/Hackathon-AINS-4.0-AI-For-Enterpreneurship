@@ -50,6 +50,9 @@ class ScoreResult:
     contributions: list[Contribution] = field(default_factory=list)
     missing_inputs: list[str] = field(default_factory=list)
     anchor: str = ""
+    # Anomaly-derived confidence notes (Section 10: don't mutate scores,
+    # attach confidence annotations for downstream decision support).
+    anomaly_notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -60,6 +63,7 @@ class ScoreResult:
             "gate_reason": self.gate_reason,
             "anchor": self.anchor,
             "missing_inputs": self.missing_inputs,
+            "anomaly_notes": self.anomaly_notes,
             "contributions": [
                 {
                     "criterion": c.criterion,
@@ -428,11 +432,72 @@ def score_green(p: ProjectProfile) -> ScoreResult:
 # --------------------------------------------------------------------------- #
 # Orchestrated computation of the full composite vector                        #
 # --------------------------------------------------------------------------- #
-def score_all(p: ProjectProfile, pcoh: Optional[float] = None) -> CompositeScores:
+def score_all(p: ProjectProfile, pcoh: Optional[float] = None,
+              anomaly_dimension_notes: Optional[dict[str, list[str]]] = None
+              ) -> CompositeScores:
+    """Compute all five dimension scores.
+
+    Args:
+        p: The project profile.
+        pcoh: LLM-as-a-Judge value-proposition coherence [0,100].
+        anomaly_dimension_notes: Optional per-dimension confidence notes from
+            the anomaly detector. Applied as read-only annotations — scores
+            are never mutated by anomalies (Section 10 recommendation).
+    """
+    market = score_market(p)
+    commercial = score_commercial(p, pcoh=pcoh)
+    innovation = score_innovation(p)
+    scalability = score_scalability(p)
+    green = score_green(p)
+
+    # Attach anomaly-derived confidence notes without mutating scores
+    if anomaly_dimension_notes:
+        dim_map = {
+            "market": market,
+            "commercial": commercial,
+            "innovation": innovation,
+            "scalability": scalability,
+            "green": green,
+        }
+        for dim_name, notes in anomaly_dimension_notes.items():
+            if dim_name in dim_map:
+                dim_map[dim_name].anomaly_notes.extend(notes)
+
     return CompositeScores(
-        market=score_market(p),
-        commercial=score_commercial(p, pcoh=pcoh),
-        innovation=score_innovation(p),
-        scalability=score_scalability(p),
-        green=score_green(p),
+        market=market,
+        commercial=commercial,
+        innovation=innovation,
+        scalability=scalability,
+        green=green,
     )
+
+
+def annotate_scores_with_anomalies(
+    scores: CompositeScores,
+    anomaly_dimension_notes: dict[str, list[str]],
+) -> CompositeScores:
+    """Apply anomaly-derived confidence notes to already-computed scores.
+
+    Use this when scores were computed before anomaly detection. Never mutates
+    scores — only adds read-only confidence annotations.
+
+    Args:
+        scores: Previously computed CompositeScores.
+        anomaly_dimension_notes: Per-dimension notes from get_anomaly_dimension_notes().
+
+    Returns:
+        The same CompositeScores with anomaly_notes populated.
+    """
+    dim_map = {
+        "market": scores.market,
+        "commercial": scores.commercial,
+        "innovation": scores.innovation,
+        "scalability": scores.scalability,
+        "green": scores.green,
+    }
+    for dim_name, notes in anomaly_dimension_notes.items():
+        if dim_name in dim_map:
+            for note in notes:
+                if note not in dim_map[dim_name].anomaly_notes:
+                    dim_map[dim_name].anomaly_notes.append(note)
+    return scores

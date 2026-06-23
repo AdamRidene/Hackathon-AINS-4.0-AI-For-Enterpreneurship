@@ -85,3 +85,19 @@ class TestLLMProviders(unittest.TestCase):
             score, rationale = run_async(llm.judge_value_proposition(text))
             assert score == 100.0
             assert "Deterministic rubric" in rationale
+
+    def test_strip_think_robustness(self):
+        from app.llm.provider import _strip_think
+        
+        # Closed tags
+        assert _strip_think("<think>some thinking</think>final answer") == "final answer"
+        assert _strip_think("<thought>my thoughts</thought>actual result") == "actual result"
+        assert _strip_think("[thinking]brainstorming[/thinking]response content") == "response content"
+        assert _strip_think("[thought]analysis[/thought]output text") == "output text"
+        
+        # Unclosed/truncated tags
+        assert _strip_think("<think>unclosed thought") == ""
+        assert _strip_think("<thought>still thinking...") == ""
+        assert _strip_think("beginning part <think>interrupted thinking") == "beginning part"
+        assert _strip_think("prefix [thinking]truncated thinking") == "prefix"
+
