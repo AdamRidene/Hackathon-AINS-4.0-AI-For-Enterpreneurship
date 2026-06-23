@@ -26,8 +26,10 @@ from .intake import IntakeStateMachine, run_intake_turn, propose_autofill, apply
 from .orchestrator import run_audit, grounded_assistant_reply
 from .rag.knowledge_base import get_kb, add_chunk, delete_chunk
 from .llm import get_llm
+from .utils import mask_pii, install_pii_log_filter
 
 _logger = logging.getLogger(__name__)
+install_pii_log_filter()  # redact PII from all log output
 
 app = FastAPI(title="Firasa Orientation Engine", version=__version__)
 
@@ -808,23 +810,30 @@ def get_evaluation_report(user: dict = Depends(get_current_user)) -> dict:
 # Document upload (supporting evidence for projects)                          #
 # --------------------------------------------------------------------------- #
 _DOCS_DIR = Path(__file__).parent.parent / "_data" / "documents"
-_MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+_MAX_UPLOAD_BYTES = 5 * 1024 * 1024   # 5 MB
+_ALLOWED_EXTENSIONS = {".pdf", ".md", ".markdown", ".txt", ".text"}
 
 
 @app.post("/api/projects/{pid}/documents")
+@limiter.limit("5/minute")
 async def upload_document(
     pid: str,
     request: Request,
     file: UploadFile = FastAPIFile(...),
     user: dict = Depends(get_current_user),
 ) -> dict:
-    """Upload a supporting document (PDF, image, etc.) for a project."""
+    """Upload a supporting document (PDF, MD, TXT) for a project."""
     _require_owned(pid, user)
+
+    # Validate file type
+    lower_name = (file.filename or "").lower()
+    if not any(lower_name.endswith(ext) for ext in _ALLOWED_EXTENSIONS):
+        raise HTTPException(415, "Unsupported file type. Allowed: PDF, MD, TXT.")
 
     # Enforce file size limit before reading the body
     content_length = request.headers.get("Content-Length")
     if content_length and int(content_length) > _MAX_UPLOAD_BYTES:
-        raise HTTPException(413, "File too large. Maximum size is 10 MB.")
+        raise HTTPException(413, "File too large. Maximum size is 5 MB.")
 
     _DOCS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -868,6 +877,10 @@ async def upload_document(
         except Exception as exc:
             _logger.warning("Text extraction failed for %s: %s", safe_name, exc)
             extracted = None
+
+    # Mask PII in extracted text before storing at rest
+    if extracted:
+        extracted = mask_pii(extracted)
 
     # Store document record
     store.save_document(
