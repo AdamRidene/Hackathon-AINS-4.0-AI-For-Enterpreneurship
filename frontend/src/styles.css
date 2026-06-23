@@ -2123,10 +2123,10 @@ label {
 
 .contrib-row {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  flex-direction: column;
+  gap: 4px;
   font-size: .82rem;
-  padding: 8px 0;
+  padding: 10px 0;
   border-bottom: 1px solid rgba(255, 255, 255, .03);
 }
 
@@ -2134,15 +2134,32 @@ label {
   border-bottom: none;
 }
 
+.contrib-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .contrib-name {
   font-weight: 700;
-  flex-shrink: 0;
-  min-width: 100px;
+  flex: 1;
+}
+
+.contrib-bar-track {
+  height: 5px;
+  background: rgba(255, 255, 255, .07);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.contrib-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width .35s ease;
 }
 
 .contrib-detail {
   color: var(--text-sub);
-  flex: 1;
   font-size: .76rem;
   line-height: 1.45;
 }
