@@ -1,11 +1,9 @@
-"""Tests for performance and reliability improvements: back-off, JSON parsing, cache, and lang directives."""
+"""Tests for performance and reliability improvements: back-off, JSON parsing, and lang directives."""
 import os
-import time
 import pytest
 from unittest.mock import patch
 
 from app.llm.provider import _backoff, parse_llm_json, apply_language_directive, get_llm, clear_llm_cache
-from app.duplicate_answer_cache import make_key, should_serve_cached, get_cached, store_response, clear_cache
 from app.config import settings
 
 
@@ -51,31 +49,6 @@ def test_parse_llm_json_noisy_output():
 
     # Malformed JSON fallback
     assert parse_llm_json("not a json at all", {"fallback": True}) == {"fallback": True}
-
-
-def test_duplicate_answer_cache_behavior():
-    """Verify in-memory duplicate answer cache TTL and storage."""
-    clear_cache()
-    key = make_key("Is this market big?", "proj_123", "ar")
-
-    # Initially empty
-    assert not should_serve_cached(key)
-
-    # Store response
-    store_response(key, "Yes, it is very big.")
-    assert should_serve_cached(key)
-    assert get_cached(key) == "Yes, it is very big."
-
-    # Test TTL expiry (mock settings.DUPLICATE_ANSWER_TTL to a small value or time.time)
-    with patch.object(settings, "DUPLICATE_ANSWER_TTL", 1):
-        assert should_serve_cached(key)
-        # Sleep to let TTL expire
-        time.sleep(1.1)
-        assert not should_serve_cached(key)
-
-    # Clear cache
-    clear_cache()
-    assert not should_serve_cached(key)
 
 
 def test_arabic_prompt_directive_injection():

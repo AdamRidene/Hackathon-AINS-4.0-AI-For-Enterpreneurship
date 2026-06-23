@@ -160,17 +160,6 @@ def detect_gap(p: ProjectProfile, diag: DiagnosticResult) -> GapReport:
 # pass flags *internally contradictory evidence* — pairs of tokens that should
 # not coexist. Each anomaly is explainable: it names the conflicting signals so
 # the founder sees exactly why the combination is implausible, not just a score.
-#
-# Architecture (per Section 10 of anomaly analysis):
-#   Stage 1 — Deterministic pre-filter: 8 rules catch obvious contradictions.
-#             Each returns no_issue, clear_anomaly, or needs_semantic_validation.
-#   Stage 2 — Semantic LLM validator: runs only on ambiguous cases.
-#   Fallback — Conservative deterministic heuristic when LLM unavailable.
-#
-# Confidence contract on every anomaly:
-#   source      ∈ {deterministic, semantic_llm, fallback}
-#   confidence  ∈ {high, medium, low}
-#   validated   ∈ {true, false}
 
 
 class AnomalySource(str, Enum):

@@ -53,8 +53,6 @@ class ScoreResult:
     # Anomaly-derived confidence notes (Section 10: don't mutate scores,
     # attach confidence annotations for downstream decision support).
     anomaly_notes: list[str] = field(default_factory=list)
-    # Per-dimension actionable improvement guidance
-    improvement_guidance: Optional[str] = None
 
     def to_dict(self) -> dict:
         return {
@@ -66,7 +64,6 @@ class ScoreResult:
             "anchor": self.anchor,
             "missing_inputs": self.missing_inputs,
             "anomaly_notes": self.anomaly_notes,
-            "improvement_guidance": self.improvement_guidance,
             "contributions": [
                 {
                     "criterion": c.criterion,
@@ -181,25 +178,11 @@ def score_market(p: ProjectProfile) -> ScoreResult:
         final = base
         reason = None
 
-    # Generate improvement guidance
-    guidance = []
-    if "customer_validation_evidence" in missing or gate_triggered:
-        guidance.append("Priorité la plus haute : Collectez des preuves de validation client (témoignages, interviews, paiements initiaux) — ceci débloquera votre score marché.")
-    if "estimated_tam_tnd" in missing:
-        guidance.append("Estimez votre marché adressable total (TAM) en dinars tunisiens — cela renforcera la crédibilité de votre potentiel de croissance.")
-    if "competitor_headcount" in missing:
-        guidance.append("Identifiez vos concurrents directs et indirects — comprendre le paysage compétitif améliorera votre stratégie.")
-    if "has_revenue_model" in missing:
-        guidance.append("Définissez un modèle de revenus clair — sans cela, le marché reste théorique et non capturable.")
-    if final < 40:
-        guidance.append("Votre score marché est faible — concentrez-vous d'abord sur la validation client avant d'investir dans d'autres dimensions.")
-    
     return ScoreResult(
         dimension="Market", base_score=base, final_score=final,
         gate_triggered=gate_triggered, gate_reason=reason,
         contributions=contribs, missing_inputs=missing,
         anchor="Lean Startup validated learning (Ries, 2011)",
-        improvement_guidance="\n".join(guidance) if guidance else None,
     )
 
 
@@ -252,24 +235,11 @@ def score_commercial(p: ProjectProfile, pcoh: Optional[float] = None) -> ScoreRe
     ]
     base = sum(c_.weighted for c_ in contribs)
     # No gate: commercial-offer signals are continuous, not binary.
-    
-    # Generate improvement guidance
-    guidance = []
-    if "value_proposition_narrative" in missing:
-        guidance.append("Rédigez une proposition de valeur claire expliquant comment vous résolvez un problème pour vos clients.")
-    if "mvp_stage" in missing:
-        guidance.append("Définissez le stade actuel de votre produit minimal viable (MVP) — cela montre votre progression.")
-    if "pricing_framework" in missing:
-        guidance.append("Choisissez un cadre de tarification (abonnement, paiement à l'usage, etc.) — cela renforce la crédibilité de votre offre.")
-    if base < 40:
-        guidance.append("Votre score offre commerciale est faible — concentrez-vous sur l'élaboration de votre MVP et de votre proposition de valeur.")
-    
     return ScoreResult(
         dimension="Commercial Offer", base_score=base, final_score=base,
         gate_triggered=False, gate_reason=None,
         contributions=contribs, missing_inputs=missing,
         anchor="Value Proposition Canvas (Strategyzer)",
-        improvement_guidance="\n".join(guidance) if guidance else None,
     )
 
 
@@ -315,24 +285,11 @@ def score_innovation(p: ProjectProfile) -> ScoreResult:
                      w["ip_status"] * ip_raw, ip_detail),
     ]
     base = sum(c.weighted for c in contribs)
-    
-    # Generate improvement guidance
-    guidance = []
-    if "geo_novelty" in missing:
-        guidance.append("Définissez le niveau de nouveauté géographique de votre solution (local, national, régional, mondial).")
-    if "tech_stack" in missing:
-        guidance.append("Listez les technologies que vous utilisez — cela démontre votre capacité technique et votre stack.")
-    if "ip_status" in missing:
-        guidance.append("Envisagez de protéger votre propriété intellectuelle (brevets, marques, droits d'auteur) — cela renforce votre avantage compétitif.")
-    if base < 40:
-        guidance.append("Votre score innovation est faible — documentez votre stack technique et votre nouveauté géographique.")
-    
     return ScoreResult(
         dimension="Innovation", base_score=base, final_score=base,
         gate_triggered=False, gate_reason=None,
         contributions=contribs, missing_inputs=missing,
         anchor="OECD Oslo Manual 2018",
-        improvement_guidance="\n".join(guidance) if guidance else None,
     )
 
 
@@ -418,23 +375,11 @@ def score_scalability(p: ProjectProfile) -> ScoreResult:
         final = base
         reason = None
 
-    # Generate improvement guidance
-    guidance = []
-    if "human_dependency" in missing or gate_triggered:
-        guidance.append("Priorité la plus haute : Réduisez votre dépendance humaine (automatisez les processus, utilisez des outils SaaS) — cela améliorera considérablement votre scalabilité.")
-    if "monthly_overhead" in missing:
-        guidance.append("Documentez vos charges mensuelles — cela permet d'évaluer votre découplage coût.")
-    if "cross_border_zones" in missing:
-        guidance.append("Identifiez les zones géographiques que vous ciblez (régionales, internationales) — cela montre votre potentiel de croissance géographique.")
-    if final < 40:
-        guidance.append("Votre score scalabilité est faible — concentrez-vous sur la réduction de votre dépendance humaine et l'automatisation.")
-    
     return ScoreResult(
         dimension="Scalability", base_score=base, final_score=final,
         gate_triggered=gate_triggered, gate_reason=reason,
         contributions=contribs, missing_inputs=missing,
         anchor="VC marginal-cost decoupling principle",
-        improvement_guidance="\n".join(guidance) if guidance else None,
     )
 
 
@@ -476,24 +421,11 @@ def score_green(p: ProjectProfile) -> ScoreResult:
         Contribution("sdg", w["sdg"], sdg_raw, w["sdg"] * sdg_raw, sdg_detail),
     ]
     base = sum(c.weighted for c in contribs)
-    
-    # Generate improvement guidance
-    guidance = []
-    if "footprint_category" in missing:
-        guidance.append("Définissez la catégorie de votre empreinte environnementale — cela renforce la crédibilité de vos engagements écologiques.")
-    if "circular_recycling" in missing:
-        guidance.append("Indiquez si vous intégrez des principes de circularité ou de recyclage dans votre modèle économique.")
-    if "sdg_targets" in missing:
-        guidance.append("Identifiez les Objectifs de Développement Durable (ODD) que vous ciblez — cela aligne votre projet sur des priorités mondiales.")
-    if base < 40:
-        guidance.append("Votre score écologique est faible — commencez par définir votre empreinte et cibler 1-2 ODD pertinents.")
-    
     return ScoreResult(
         dimension="Green", base_score=base, final_score=base,
         gate_triggered=False, gate_reason=None,
         contributions=contribs, missing_inputs=missing,
         anchor="UN SDG Indicators / World Bank ESG",
-        improvement_guidance="\n".join(guidance) if guidance else None,
     )
 
 
