@@ -31,6 +31,9 @@ const TEXTS = {
     noScores: "Pas de scores disponibles",
     markDone: "Marquer comme fait",
     scoreDelta: "Δ scores",
+    rescoreTitle: "Scores mis à jour",
+    rescoreSub: (title) => `Étape "${title}" complétée — votre profil a été mis à jour et les scores recalculés.`,
+    dimLabels: ["Marché", "Commercial", "Innovation", "Scalabilité", "Green"],
   },
   ar: {
     title: "مسارِي",
@@ -50,14 +53,18 @@ const TEXTS = {
     noScores: "لا توجد مؤشرات متاحة",
     markDone: "وضع علامة منجز",
     scoreDelta: "فروق المؤشرات",
+    rescoreTitle: "تم تحديث المؤشرات",
+    rescoreSub: (title) => `اكتملت الخطوة "${title}" — تم تحديث ملفك وإعادة حساب المؤشرات.`,
+    dimLabels: ["سوق", "تجاري", "ابتكار", "توسع", "بيئة"],
   },
 };
 
-export default function MonParcours({ pid, lang, api, onBack, checkedMilestones, onToggleMilestone }) {
+export default function MonParcours({ pid, lang, api, onBack, checkedMilestones, onToggleMilestone, onAuditUpdated }) {
   const [audits, setAudits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [completing, setCompleting] = useState(null);
+  const [rescoreResult, setRescoreResult] = useState(null);
 
   const ar = lang === "ar";
   const t = TEXTS[lang];
@@ -85,8 +92,14 @@ export default function MonParcours({ pid, lang, api, onBack, checkedMilestones,
 
   async function handleMarkDone(milestone) {
     setCompleting(milestone.id);
+    setRescoreResult(null);
     try {
-      await api.completeMilestone(pid, milestone.id, milestone.trigger);
+      const result = await api.completeMilestone(pid, milestone.id, milestone.trigger);
+      if (result.applied && result.new_scores) {
+        setRescoreResult({ milestoneTitle: milestone.title, scores: result.new_scores });
+        if (onAuditUpdated) onAuditUpdated();
+      }
+      onToggleMilestone && onToggleMilestone(milestone.id);
       await loadAudits();
     } catch (err) {
       setError(err.message);
@@ -122,6 +135,38 @@ export default function MonParcours({ pid, lang, api, onBack, checkedMilestones,
         <p style={{ color: "var(--text-sub)", marginBottom: 28 }}>{t.sub}</p>
 
         {error && <div className="error-banner" role="alert" style={{ marginBottom: 20 }}>{error}</div>}
+
+        {/* Re-score result banner: shown when milestone completion triggers a full re-audit */}
+        {rescoreResult && (
+          <div style={{
+            marginBottom: 20, padding: "14px 16px", borderRadius: "var(--r-sm)",
+            background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.25)",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <span style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--green)" }}>✓ {t.rescoreTitle}</span>
+              <button onClick={() => setRescoreResult(null)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--text-dim)", fontSize: "1rem" }}>×</button>
+            </div>
+            <div style={{ fontSize: "0.8rem", color: "var(--text-sub)", marginBottom: 10 }}>
+              {t.rescoreSub(rescoreResult.milestoneTitle)}
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {rescoreResult.scores.map((val, i) => {
+                const color = val >= 66 ? "var(--green)" : val >= 40 ? "var(--amber)" : "var(--red)";
+                const label = t.dimLabels[i] || ["M","C","I","S","G"][i];
+                return (
+                  <div key={i} style={{
+                    display: "flex", alignItems: "center", gap: 5,
+                    padding: "5px 10px", borderRadius: "var(--r-sm)",
+                    background: "rgba(255,255,255,0.03)", border: "1px solid var(--border)",
+                  }}>
+                    <span style={{ fontSize: "0.75rem", color: "var(--text-sub)" }}>{label}</span>
+                    <span style={{ fontWeight: 700, color, fontSize: "0.9rem" }}>{Math.round(val)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Stage progression bar */}
         <div className="parcours-stages">

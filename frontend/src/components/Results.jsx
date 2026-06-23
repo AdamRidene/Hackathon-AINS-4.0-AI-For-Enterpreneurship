@@ -104,6 +104,8 @@ const COPY = {
     pourquoi: "Pourquoi ce score ?",
     whatIf: (criterion, gain) => `+${gain} pts si vous ajoutez : ${CRITERION_LABELS_FR[criterion] || criterion}`,
     viewAction: "Voir l'action liée",
+    kbTitle: "Ressources utiles pour combler cet écart",
+    kbCta: "Voir dans la feuille de route →",
   },
   ar: {
     newAudit: "تدقيق جديد",
@@ -132,6 +134,8 @@ const COPY = {
     pourquoi: "لماذا هذا المؤشر؟",
     whatIf: (criterion, gain) => `+${gain} نقطة إذا أضفت: ${CRITERION_LABELS_AR[criterion] || criterion}`,
     viewAction: "عرض الإجراء المرتبط",
+    kbTitle: "موارد مفيدة لمعالجة هذه الفجوة",
+    kbCta: "عرض في خارطة الطريق ←",
   },
 };
 
@@ -147,7 +151,28 @@ const GATE_QUESTION_MAP = {
   6: "repeatable_sales"
 };
 
-function DiagnosticTab({ audit, lang, T, onFixGate }) {
+const GAP_CATEGORY_LABELS = {
+  fr: {
+    missing_market_validation: "Validation marché manquante",
+    missing_legal_form: "Forme légale manquante",
+    tech_hype: "Risque tech / surestimation",
+    premature_fundraising: "Levée de fonds prématurée",
+    scalability: "Scalabilité",
+    green: "Impact environnemental",
+    general: "Général",
+  },
+  ar: {
+    missing_market_validation: "تحقق السوق مفقود",
+    missing_legal_form: "الشكل القانوني مفقود",
+    tech_hype: "مبالغة تقنية",
+    premature_fundraising: "جمع تمويل مبكر",
+    scalability: "قابلية التوسع",
+    green: "الأثر البيئي",
+    general: "عام",
+  },
+};
+
+function DiagnosticTab({ audit, lang, T, onFixGate, onJumpToRoadmap }) {
   const ar = lang === "ar";
   const gap = audit.perception_reality_gap;
   const diag = audit.diagnostic;
@@ -263,6 +288,63 @@ function DiagnosticTab({ audit, lang, T, onFixGate }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* KB sources per gap category — cross-module: gap → KB */}
+      {audit.gap_sources && Object.keys(audit.gap_sources).length > 0 && (
+        <div style={{ marginTop: 32 }}>
+          <div className="tab-section-title">{T.kbTitle}</div>
+          {Object.entries(audit.gap_sources).map(([cat, chunks]) => {
+            const catLabel = (GAP_CATEGORY_LABELS[lang] || GAP_CATEGORY_LABELS.fr)[cat] || cat;
+            return (
+              <div key={cat} style={{ marginTop: 12 }}>
+                <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--orange)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  {catLabel}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {chunks.map((src, i) => (
+                    <div key={i} style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+                      padding: "8px 12px", borderRadius: "var(--r-sm)",
+                      background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)",
+                      flexWrap: "wrap",
+                    }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1 }}>
+                        <span style={{ fontSize: "0.82rem", fontWeight: 600 }}>
+                          {ar ? src.title_ar || src.title : src.title}
+                        </span>
+                        <span style={{ fontSize: "0.72rem", color: "var(--text-sub)" }}>{src.institution}</span>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                        {src.url && (
+                          <a
+                            href={src.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ fontSize: "0.74rem", color: "var(--orange)", textDecoration: "none", padding: "4px 8px", border: "1px solid var(--orange-border)", borderRadius: "var(--r-sm)" }}
+                          >
+                            {ar ? "رابط" : "Lien"}
+                          </a>
+                        )}
+                        {onJumpToRoadmap && (
+                          <button
+                            onClick={() => {
+                              const match = audit.roadmap?.find(m => m.trigger === cat);
+                              if (match) onJumpToRoadmap(match.id);
+                            }}
+                            style={{ fontSize: "0.74rem", background: "transparent", color: "var(--text-sub)", border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "4px 8px", cursor: "pointer" }}
+                          >
+                            {T.kbCta}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -601,7 +683,7 @@ export default function Results({ audit, pid, lang, onNewAudit, onBackToDashboar
         {/* Tab Panels — only the active one renders */}
         {activeTab === 0 && (
           <div className="results-section">
-            <DiagnosticTab audit={audit} lang={lang} T={T} onFixGate={handleFixGate} />
+            <DiagnosticTab audit={audit} lang={lang} T={T} onFixGate={handleFixGate} onJumpToRoadmap={handleJumpToRoadmap} />
           </div>
         )}
 

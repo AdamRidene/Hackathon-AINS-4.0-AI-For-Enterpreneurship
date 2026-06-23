@@ -69,15 +69,13 @@ Import-EnvFile (Join-Path $Root ".env.example") -OnlyIfMissing
 Import-EnvFile (Join-Path $Backend ".env.example") -OnlyIfMissing
 [System.Environment]::SetEnvironmentVariable("FIRASA_LLM_PROVIDER", $Provider)
 
-$backendCmd = @"
-cd '$Backend'
+$backendScript = Join-Path $env:TEMP "firasa_backend_$PID.ps1"
+@"
+Set-Location '$Backend'
 `$env:FIRASA_LLM_PROVIDER = '$Provider'
 
 function Import-EnvFile {
-    param(
-        [string]`$Path,
-        [switch]`$OnlyIfMissing
-    )
+    param([string]`$Path, [switch]`$OnlyIfMissing)
     if (-not (Test-Path `$Path)) { return }
     Get-Content `$Path | ForEach-Object {
         `$line = `$_.Trim()
@@ -86,7 +84,9 @@ function Import-EnvFile {
         if (`$eq -lt 1) { return }
         `$name = `$line.Substring(0, `$eq).Trim()
         `$value = `$line.Substring(`$eq + 1).Trim()
-        if (`$value.Length -ge 2 -and ((`$value.StartsWith('"') -and `$value.EndsWith('"')) -or (`$value.StartsWith("'") -and `$value.EndsWith("'")))) {
+        `$dq = [char]34
+        `$sq = [char]39
+        if (`$value.Length -ge 2 -and ((`$value[0] -eq `$dq -and `$value[-1] -eq `$dq) -or (`$value[0] -eq `$sq -and `$value[-1] -eq `$sq))) {
             `$value = `$value.Substring(1, `$value.Length - 2)
         }
         if (`$OnlyIfMissing -and -not [string]::IsNullOrWhiteSpace([System.Environment]::GetEnvironmentVariable(`$name))) { return }
@@ -94,17 +94,17 @@ function Import-EnvFile {
     }
 }
 
-Import-EnvFile '..\.env'
-Import-EnvFile '.env'
-Import-EnvFile '..\.env.example' -OnlyIfMissing
-Import-EnvFile '.env.example' -OnlyIfMissing
+Import-EnvFile (Join-Path '$Backend' '..\\.env')
+Import-EnvFile (Join-Path '$Backend' '.env')
+Import-EnvFile (Join-Path '$Backend' '..\\.env.example') -OnlyIfMissing
+Import-EnvFile (Join-Path '$Backend' '.env.example') -OnlyIfMissing
 `$env:FIRASA_LLM_PROVIDER = '$Provider'
 
 Write-Host '==> Backend starting (provider: $Provider)' -ForegroundColor Cyan
 python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-"@
+"@ | Set-Content -Path $backendScript -Encoding utf8
 
-Start-Process powershell -ArgumentList "-NoExit", "-Command", $backendCmd
+Start-Process powershell -ArgumentList "-NoExit", "-File", $backendScript
 
 $frontendCmd = @"
 cd '$Frontend'
