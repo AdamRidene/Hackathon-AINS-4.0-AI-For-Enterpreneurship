@@ -55,6 +55,12 @@ class ScoreResult:
     anomaly_notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
+        what_if = None
+        if self.contributions:
+            best = max(self.contributions, key=lambda c: c.weight * (100.0 - c.raw))
+            gain = round(best.weight * (100.0 - best.raw), 1)
+            if gain >= 5:
+                what_if = {"criterion": best.criterion, "potential_gain": gain}
         return {
             "dimension": self.dimension,
             "base_score": round(self.base_score, 1),
@@ -64,6 +70,7 @@ class ScoreResult:
             "anchor": self.anchor,
             "missing_inputs": self.missing_inputs,
             "anomaly_notes": self.anomaly_notes,
+            "what_if_hint": what_if,
             "contributions": [
                 {
                     "criterion": c.criterion,

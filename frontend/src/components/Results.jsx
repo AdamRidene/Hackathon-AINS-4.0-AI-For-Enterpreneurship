@@ -4,6 +4,44 @@ import ScoreDeltas from "./ScoreDeltas.jsx";
 import ProfileEditor from "./ProfileEditor.jsx";
 import { SECTOR_LABELS as SECTOR_L, STAGE_LABELS as STAGE_L } from "../constants.js";
 
+const CRITERION_LABELS_FR = {
+  tam: "une estimation du marché adressable (TAM)",
+  competition: "une analyse de la concurrence",
+  revenue_viability: "un modèle de revenus",
+  customer_validation_evidence: "une preuve de validation client",
+  pcoh: "une proposition de valeur claire",
+  mvp_stage: "un stade MVP défini",
+  pricing: "une stratégie de prix",
+  geo_novelty: "une nouveauté géographique",
+  tech_stack: "un stack technologique documenté",
+  ip_status: "une protection de la propriété intellectuelle",
+  human_dependency: "une réduction de la dépendance humaine",
+  monthly_overhead: "un bilan des charges mensuelles",
+  cross_border_zones: "une expansion géographique ciblée",
+  footprint_category: "une empreinte environnementale définie",
+  circular_recycling: "une approche circulaire / recyclage",
+  sdg: "des Objectifs de Développement Durable ciblés",
+};
+
+const CRITERION_LABELS_AR = {
+  tam: "تقدير السوق المستهدف (TAM)",
+  competition: "تحليل المنافسة",
+  revenue_viability: "نموذج الإيرادات",
+  customer_validation_evidence: "دليل تحقق من العملاء",
+  pcoh: "عرض قيمة واضح",
+  mvp_stage: "مرحلة MVP محددة",
+  pricing: "استراتيجية التسعير",
+  geo_novelty: "التجديد الجغرافي",
+  tech_stack: "توثيق التقنية المستخدمة",
+  ip_status: "حماية الملكية الفكرية",
+  human_dependency: "تقليل الاعتماد البشري",
+  monthly_overhead: "توثيق التكاليف الشهرية",
+  cross_border_zones: "التوسع الجغرافي المستهدف",
+  footprint_category: "تصنيف البصمة البيئية",
+  circular_recycling: "نهج دائري / إعادة تدوير",
+  sdg: "أهداف التنمية المستدامة المستهدفة",
+};
+
 const DIMS = [
   ["market", "Marché", "سوق"],
   ["commercial", "Commercial", "تجاري"],
@@ -44,6 +82,8 @@ const COPY = {
     send: "Envoyer",
     placeholder: "Ex. Quels financements s'offrent à moi ?",
     grounding: "Contexte de grounding",
+    pourquoi: "Pourquoi ce score ?",
+    whatIf: (criterion, gain) => `+${gain} pts si vous ajoutez : ${CRITERION_LABELS_FR[criterion] || criterion}`,
   },
   ar: {
     newAudit: "تدقيق جديد",
@@ -69,6 +109,8 @@ const COPY = {
     send: "إرسال",
     placeholder: "مثال: ما مصادر التمويل المتاحة لي؟",
     grounding: "السياق التوثيقي",
+    pourquoi: "لماذا هذا المؤشر؟",
+    whatIf: (criterion, gain) => `+${gain} نقطة إذا أضفت: ${CRITERION_LABELS_AR[criterion] || criterion}`,
   },
 };
 
@@ -209,7 +251,7 @@ function DiagnosticTab({ audit, lang, T, onFixGate }) {
 /* ══════════════════════════════════════════════════════════════
    SCORES TAB
 ══════════════════════════════════════════════════════════════ */
-function ScoresTab({ audit, lang, T, plan, openProfile }) {
+function ScoresTab({ audit, lang, T, plan, openProfile, explanations }) {
   const [expanded, setExpanded] = useState(null);
   const ar = lang === "ar";
   const scores = audit.scores;
@@ -279,6 +321,13 @@ function ScoresTab({ audit, lang, T, plan, openProfile }) {
 
               {open && (
                 <div className="score-detail">
+                  {/* Pourquoi ce score — LLM prose from explain_all_scores */}
+                  {explanations?.[key]?.natural_language && (
+                    <div className="score-pourquoi">
+                      <span className="score-pourquoi-label">{T.pourquoi}</span>
+                      <p className="score-pourquoi-text">{explanations[key].natural_language}</p>
+                    </div>
+                  )}
                   <div className="score-anchor">{T.anchor} : {res.anchor}</div>
                   {res.gate_triggered && res.gate_reason && (
                     <div className="score-gate-msg">⚠ {T.gateRule} : {res.gate_reason}</div>
@@ -293,6 +342,12 @@ function ScoresTab({ audit, lang, T, plan, openProfile }) {
                   ))}
                   {res.missing_inputs?.length > 0 && (
                     <div className="score-missing muted">⚠ {T.missing} : {res.missing_inputs.join(", ")}</div>
+                  )}
+                  {/* What-if CTA */}
+                  {res.what_if_hint && (
+                    <div className="score-whatif">
+                      ▲ {T.whatIf(res.what_if_hint.criterion, res.what_if_hint.potential_gain)}
+                    </div>
                   )}
                 </div>
               )}
@@ -476,7 +531,7 @@ export default function Results({ audit, pid, lang, onNewAudit, onBackToDashboar
 
         {activeTab === 1 && (
           <div className="results-section">
-            <ScoresTab audit={audit} lang={lang} T={T} plan={plan} openProfile={openProfile} />
+            <ScoresTab audit={audit} lang={lang} T={T} plan={plan} openProfile={openProfile} explanations={audit.explanations} />
           </div>
         )}
 
