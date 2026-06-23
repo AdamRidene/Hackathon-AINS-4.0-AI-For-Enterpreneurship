@@ -1,6 +1,7 @@
 import { useState } from "react";
 import ScoreDeltas from "./ScoreDeltas.jsx";
 import ProfileEditor from "./ProfileEditor.jsx";
+import ScoreExplanationOverlay from "./ScoreExplanationOverlay.jsx";
 import { SECTOR_LABELS as SECTOR_L, STAGE_LABELS as STAGE_L } from "../constants.js";
 
 const CRITERION_LABELS_FR = {
@@ -258,6 +259,7 @@ function DiagnosticTab({ audit, lang, T, onFixGate }) {
 ══════════════════════════════════════════════════════════════ */
 function ScoresTab({ audit, lang, T, plan, openProfile, explanations }) {
   const [expanded, setExpanded] = useState(null);
+  const [selectedScore, setSelectedScore] = useState(null);
   const ar = lang === "ar";
   const scores = audit.scores;
   if (!scores) return null;
@@ -288,86 +290,102 @@ function ScoresTab({ audit, lang, T, plan, openProfile, explanations }) {
     );
   }
 
+  const handleScoreClick = (key) => {
+    setSelectedScore(scores[key]);
+  };
+
   return (
-    <div style={{ position: "relative", minHeight: "350px" }}>
-      <ScoreDeltas scoreDeltas={audit.score_deltas} />
-      <div className="score-rows" style={{ marginTop: 24 }}>
-        {DIMS.map(([key, labelFr, labelAr]) => {
-          const res = scores[key];
-          if (!res) return null;
-          const open = expanded === key;
-          const label = ar ? labelAr : labelFr;
-          const color = barColor(res.final_score, res.gate_triggered);
-          const delta = audit.score_deltas?.deltas?.[key];
+    <>
+      <div style={{ position: "relative", minHeight: "350px" }}>
+        <ScoreDeltas scoreDeltas={audit.score_deltas} />
+        <div className="score-rows" style={{ marginTop: 24 }}>
+          {DIMS.map(([key, labelFr, labelAr]) => {
+            const res = scores[key];
+            if (!res) return null;
+            const open = expanded === key;
+            const label = ar ? labelAr : labelFr;
+            const color = barColor(res.final_score, res.gate_triggered);
+            const delta = audit.score_deltas?.deltas?.[key];
 
-          return (
-            <div key={key} className="score-row">
-              <div className="score-head" onClick={() => setExpanded(open ? null : key)}>
-                <div className="score-dim">
-                  <span className="score-dim-name">{label}</span>
-                </div>
-                <div className="score-bar-track">
-                  <div className="score-bar-fill" style={{ width: `${res.final_score}%`, background: color }} />
-                </div>
-                <div className="score-val">
-                  <span className="score-final" style={{ color }}>{res.final_score}</span>
-                  {res.base_score !== res.final_score && (
-                    <span className="score-base">/ {res.base_score}</span>
+            return (
+              <div key={key} className="score-row">
+                <div className="score-head" onClick={() => setExpanded(open ? null : key)}>
+                  <div className="score-dim">
+                    <span className="score-dim-name">{label}</span>
+                  </div>
+                  <div className="score-bar-track">
+                    <div className="score-bar-fill" style={{ width: `${res.final_score}%`, background: color }} />
+                  </div>
+                  <div className="score-val" onClick={(e) => {
+                    e.stopPropagation();
+                    handleScoreClick(key);
+                  }} style={{ cursor: 'pointer' }}>
+                    <span className="score-final" style={{ color }}>{res.final_score}</span>
+                    {res.base_score !== res.final_score && (
+                      <span className="score-base">/ {res.base_score}</span>
+                    )}
+                  </div>
+                  {delta !== undefined && delta !== 0 && (
+                    <span className={`delta-badge ${delta > 0 ? "up" : "down"}`}>
+                      {delta > 0 ? `+${delta}` : delta}
+                    </span>
                   )}
+                  {res.gate_triggered && <span className="gate-flag">GATE</span>}
+                  <span className={`score-chevron${open ? " open" : ""}`}>▶</span>
                 </div>
-                {delta !== undefined && delta !== 0 && (
-                  <span className={`delta-badge ${delta > 0 ? "up" : "down"}`}>
-                    {delta > 0 ? `+${delta}` : delta}
-                  </span>
-                )}
-                {res.gate_triggered && <span className="gate-flag">GATE</span>}
-                <span className={`score-chevron${open ? " open" : ""}`}>▶</span>
-              </div>
 
-              {open && (
-            <div className="score-detail">
-                {/* Pourquoi ce score — LLM prose from explain_all_scores */}
-                {explanations?.[key]?.natural_language && (
-                    <div className="score-pourquoi">
+                {open && (
+                  <div className="score-detail">
+                    {/* Pourquoi ce score — LLM prose from explain_all_scores */}
+                    {explanations?.[key]?.natural_language && (
+                      <div className="score-pourquoi">
                         <span className="score-pourquoi-label">{T.pourquoi}</span>
                         <p className="score-pourquoi-text">{explanations[key].natural_language}</p>
-                    </div>
-                )}
-                <div className="score-anchor">{T.anchor} : {ar ? res.anchor_ar || res.anchor_fr : res.anchor_fr}</div>
-                {res.gate_triggered && (res.gate_reason_fr || res.gate_reason_ar) && (
-                    <div className="score-gate-msg">⚠ {T.gateRule} : {ar ? res.gate_reason_ar || res.gate_reason_fr : res.gate_reason_fr}</div>
-                )}
-                {res.contributions.map((c, i) => (
-                    <div key={i} className="contrib-row">
+                      </div>
+                    )}
+                    <div className="score-anchor">{T.anchor} : {ar ? res.anchor_ar || res.anchor_fr : res.anchor_fr}</div>
+                    {res.gate_triggered && (res.gate_reason_fr || res.gate_reason_ar) && (
+                      <div className="score-gate-msg">⚠ {T.gateRule} : {ar ? res.gate_reason_ar || res.gate_reason_fr : res.gate_reason_fr}</div>
+                    )}
+                    {res.contributions.map((c, i) => (
+                      <div key={i} className="contrib-row">
                         <div className="contrib-row-head">
-                            <span className="contrib-name">
-                                {ar ? CRITERION_LABELS_AR[c.criterion] || c.criterion : CRITERION_LABELS_FR[c.criterion] || c.criterion}
-                            </span>
-                            <span className="contrib-w mono">×{c.weight}</span>
-                            <span className="contrib-score mono" style={{ color: subBarColor(c.raw) }}>{c.weighted}</span>
+                          <span className="contrib-name">
+                            {ar ? CRITERION_LABELS_AR[c.criterion] || c.criterion : CRITERION_LABELS_FR[c.criterion] || c.criterion}
+                          </span>
+                          <span className="contrib-w mono">×{c.weight}</span>
+                          <span className="contrib-score mono" style={{ color: subBarColor(c.raw) }}>{c.weighted}</span>
                         </div>
                         <div className="contrib-bar-track">
-                            <div className="contrib-bar-fill" style={{ width: `${c.raw}%`, background: subBarColor(c.raw) }} />
+                          <div className="contrib-bar-fill" style={{ width: `${c.raw}%`, background: subBarColor(c.raw) }} />
                         </div>
                         <div className="contrib-detail">{c.detail}</div>
-                    </div>
-                ))}
-                {res.missing_inputs?.length > 0 && (
-                    <div className="score-missing muted">⚠ {T.missing} : {res.missing_inputs.join(", ")}</div>
-                )}
-                {/* What-if CTA */}
-                {res.what_if_hint && (
-                    <div className="score-whatif">
+                      </div>
+                    ))}
+                    {res.missing_inputs?.length > 0 && (
+                      <div className="score-missing muted">⚠ {T.missing} : {res.missing_inputs.join(", ")}</div>
+                    )}
+                    {/* What-if CTA */}
+                    {res.what_if_hint && (
+                      <div className="score-whatif">
                         ▲ {T.whatIf(res.what_if_hint.criterion, res.what_if_hint.potential_gain)}
-                    </div>
+                      </div>
+                    )}
+                  </div>
                 )}
-            </div>
-        )}
-            </div>
-          );
-        })}
+              </div>
+            );
+          })}
+        </div>
       </div>
-    </div>
+      {selectedScore && (
+        <ScoreExplanationOverlay 
+          score={selectedScore} 
+          onClose={() => setSelectedScore(null)} 
+          lang={lang}
+        />
+      )}
+    </>
   );
 }
 

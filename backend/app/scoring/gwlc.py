@@ -57,6 +57,7 @@ class ScoreResult:
     anomaly_notes: list[str] = field(default_factory=list)
     improvement_guidance_fr: Optional[str] = None
     improvement_guidance_ar: Optional[str] = None
+    formula_latex: Optional[str] = None
 
     def to_dict(self) -> dict:
         what_if = None
@@ -79,6 +80,7 @@ class ScoreResult:
             "what_if_hint": what_if,
             "improvement_guidance_fr": self.improvement_guidance_fr,
             "improvement_guidance_ar": self.improvement_guidance_ar,
+            "formula_latex": self.formula_latex,
             "contributions": [
                 {
                     "criterion": c.criterion,
@@ -225,6 +227,12 @@ def score_market(p: ProjectProfile) -> ScoreResult:
         anchor_ar="التعلم الموثق Lean Startup (Ries, 2011)",
         improvement_guidance_fr=guidance_fr,
         improvement_guidance_ar=guidance_ar,
+        formula_latex=r"""
+        \begin{aligned}
+        S_M &= \text{min} \left( w_{M1} \cdot \text{min} \left( \frac{\ln T}{\ln 10^7}, 1 \right) \cdot 100 + w_{M2} \cdot \text{max} \left( 0, 100 - 5C \right) + w_{M3} \cdot R_{MV}, 30 \right) \quad \text{if } V_e \neq 1 \\
+        S_M &= w_{M1} \cdot \text{min} \left( \frac{\ln T}{\ln 10^7}, 1 \right) \cdot 100 + w_{M2} \cdot \text{max} \left( 0, 100 - 5C \right) + w_{M3} \cdot R_{MV} \quad \text{if } V_e = 1
+        \end{aligned}
+        """,
     )
 
 
@@ -301,6 +309,11 @@ def score_commercial(p: ProjectProfile, pcoh: Optional[float] = None) -> ScoreRe
         anchor_ar="لوحة عرض القيمة (Strategyzer)",
         improvement_guidance_fr=guidance_fr,
         improvement_guidance_ar=guidance_ar,
+        formula_latex=r"""
+        \begin{aligned}
+        S_C = w_{C1} \cdot P_{coh} + w_{C2} \cdot R_{MVP} \cdot 100 + w_{C3} \cdot A_{price}
+        \end{aligned}
+        """,
     )
 
 
@@ -370,6 +383,11 @@ def score_innovation(p: ProjectProfile) -> ScoreResult:
         anchor_ar="دليل أوسلو للمنظمة التعاون الاقتصادي والتنمية 2018",
         improvement_guidance_fr=guidance_fr,
         improvement_guidance_ar=guidance_ar,
+        formula_latex=r"""
+        \begin{aligned}
+        S_I = w_{I1} \cdot N_{geo} + w_{I2} \cdot \text{min} \left( \frac{|T_{stack}|}{5}, 1 \right) \cdot 100 + w_{I3} \cdot I_{ip}
+        \end{aligned}
+        """,
     )
 
 
@@ -484,6 +502,12 @@ def score_scalability(p: ProjectProfile) -> ScoreResult:
         anchor_ar="مبدأ فصل التكاليف الهامشية لشركات رأس المال الاستثماري",
         improvement_guidance_fr=guidance_fr,
         improvement_guidance_ar=guidance_ar,
+        formula_latex=r"""
+        \begin{aligned}
+        S_S &= 0.5 \cdot \left( w_{S1} \cdot \left( 100 - \frac{C_{month}}{C_{baseline}} \cdot 100 \right) + w_{S2} \cdot \text{min} \left( \frac{|E|}{3}, 1 \right) \cdot 100 + w_{S3} \cdot \frac{10 - D_{man}}{10} \cdot 100 \right) \quad \text{if } D_{man} > 7 \\
+        S_S &= w_{S1} \cdot \left( 100 - \frac{C_{month}}{C_{baseline}} \cdot 100 \right) + w_{S2} \cdot \text{min} \left( \frac{|E|}{3}, 1 \right) \cdot 100 + w_{S3} \cdot \frac{10 - D_{man}}{10} \cdot 100 \quad \text{if } D_{man} \leq 7
+        \end{aligned}
+        """,
     )
 
 
@@ -549,6 +573,11 @@ def score_green(p: ProjectProfile) -> ScoreResult:
         anchor_ar="مؤشرات أهداف التنمية المستدامة للأمم المتحدة / ESG للبنك الدولي",
         improvement_guidance_fr=guidance_fr,
         improvement_guidance_ar=guidance_ar,
+        formula_latex=r"""
+        \begin{aligned}
+        S_G = w_{G1} \cdot F_p + w_{G2} \cdot R_c + w_{G3} \cdot \text{min} \left( \frac{|SDG|}{17}, 1 \right) \cdot 100
+        \end{aligned}
+        """,
     )
 
 
