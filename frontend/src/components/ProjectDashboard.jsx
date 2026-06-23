@@ -763,9 +763,18 @@ export default function ProjectDashboard({
         await api.updateProject(pid, patch);
       }
       // Reload fresh data
-      const updated = await api.getProject(pid);
-      setProject(updated);
-      setDraft(updated);
+      const [updatedProj, updatedAudit, nextQRes] = await Promise.all([
+        api.getProject(pid),
+        api.getLastAudit(pid).catch(() => null),
+        api.nextQuestion(pid).catch(() => null),
+      ]);
+      setProject(updatedProj);
+      setDraft(updatedProj);
+      setAudit(updatedAudit);
+      if (nextQRes) {
+        setNextQ(nextQRes.next_question);
+        setProgress(nextQRes.progress);
+      }
       setEditing(false);
     } catch (err) {
       setError(err.message);
