@@ -62,8 +62,67 @@ function Edge({ d, on }) {
   );
 }
 
+function AssistantGraphMap({ trace, lang }) {
+  const ar = lang === "ar";
+  const has = (name) => trace.includes(`tool:${name}`);
+  const chat = trace.includes("assistant:chat");
+  const noTool = trace.includes("assistant:no_tool");
+  const tools = [
+    ["run_classifier", 48, 72],
+    ["get_scores", 140, 72],
+    ["detect_gap", 232, 72],
+    ["retrieve_kb", 86, 128],
+    ["build_roadmap", 194, 128],
+    ["retrieve_documents", 140, 184],
+  ];
+
+  return (
+    <div style={{ margin: "8px 0 6px 0" }}>
+      <svg viewBox="0 0 280 230" width="100%" style={{ maxWidth: 320, height: "auto" }} role="img"
+           aria-label="Assistant tool-call path">
+        <defs>
+          <marker id="assistant-arrow-on" markerWidth="7" markerHeight="7" refX="5.5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill={ACTIVE} />
+          </marker>
+          <marker id="assistant-arrow-off" markerWidth="7" markerHeight="7" refX="5.5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill={DIM_LINE} />
+          </marker>
+        </defs>
+
+        <ellipse cx="140" cy="18" rx="24" ry="10" fill="transparent" stroke={ACTIVE} strokeWidth="1.3" />
+        <text x="140" y="21" textAnchor="middle" fontSize="8" fontFamily="monospace" fill={ACTIVE}>AGENT</text>
+
+        {tools.map(([name, x, y]) => (
+          <g key={`edge-${name}`}>
+            <path
+              d={`M140,30 C140,48 ${x},48 ${x},58`}
+              fill="none"
+              stroke={has(name) ? ACTIVE : DIM_LINE}
+              strokeWidth={has(name) ? 1.6 : 1}
+              strokeDasharray={has(name) ? "0" : "3 3"}
+              markerEnd={has(name) ? "url(#assistant-arrow-on)" : "url(#assistant-arrow-off)"}
+            />
+          </g>
+        ))}
+
+        {tools.map(([name, x, y]) => (
+          <Node key={name} x={x} y={y} w={name === "retrieve_documents" ? 116 : 92} label={name} on={has(name)} />
+        ))}
+
+        <Node x={140} y={214} w={70} label={noTool ? "chat" : "answer"} on={chat || noTool} />
+      </svg>
+      <div style={{ fontSize: "0.66rem", color: "var(--text-dim)", marginTop: 2 }}>
+        {ar ? "بنفسجي = الأدوات المستعملة في هذه الإجابة" : "Violet = outils appelés pour cette réponse"}
+      </div>
+    </div>
+  );
+}
+
 export default function GraphMap({ trace, lang }) {
   if (!Array.isArray(trace) || trace.length === 0) return null;
+  if (trace.some((t) => t.startsWith("assistant:") || t.startsWith("tool:"))) {
+    return <AssistantGraphMap trace={trace} lang={lang} />;
+  }
   const ar = lang === "ar";
   const { nodes, edges } = activeSets(trace);
 

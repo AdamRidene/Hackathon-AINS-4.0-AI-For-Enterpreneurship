@@ -815,7 +815,7 @@ _eval_cache: dict = {}       # keys: "result", "cached_at" (epoch float)
 _EVAL_CACHE_TTL = 1800       # 30 min — deterministic eval doesn't change between runs
 
 async def _run_eval_job(job_id: str) -> None:
-    from .eval_protocol import eval_diagnostic, eval_rag, eval_scoring_consistency
+    from .eval_protocol import eval_assistant_tool_trace, eval_diagnostic, eval_rag, eval_scoring_consistency
     import time
     try:
         loop = asyncio.get_running_loop()
@@ -832,6 +832,10 @@ async def _run_eval_job(job_id: str) -> None:
         scoring = await loop.run_in_executor(None, eval_scoring_consistency)
         _eval_jobs[job_id]["result"]["scoring_consistency"] = scoring
         _eval_jobs[job_id]["progress"] = 3
+
+        assistant = await loop.run_in_executor(None, eval_assistant_tool_trace)
+        _eval_jobs[job_id]["result"]["assistant_tool_trace"] = assistant
+        _eval_jobs[job_id]["progress"] = 4
         _eval_jobs[job_id]["status"] = "done"
 
         # Populate cache so next eval/start returns instantly
@@ -849,7 +853,7 @@ async def eval_start(user: dict = Depends(get_current_user)) -> dict:
     if _eval_cache.get("cached_at") and (time.time() - _eval_cache["cached_at"]) < _EVAL_CACHE_TTL:
         job_id = "cached"
         _eval_jobs[job_id] = {
-            "status": "done", "progress": 3,
+            "status": "done", "progress": 4,
             "result": _eval_cache["result"], "error": None,
         }
         return {"job_id": job_id, "cached": True}
@@ -871,11 +875,12 @@ def eval_status(job_id: str, user: dict = Depends(get_current_user)) -> dict:
 @app.get("/api/eval")
 def get_evaluation_report(user: dict = Depends(get_current_user)) -> dict:
     """Legacy sync endpoint — kept for backwards compat."""
-    from .eval_protocol import eval_diagnostic, eval_rag, eval_scoring_consistency
+    from .eval_protocol import eval_assistant_tool_trace, eval_diagnostic, eval_rag, eval_scoring_consistency
     return {
         "diagnostic": eval_diagnostic(),
         "rag_retrieval": eval_rag(),
         "scoring_consistency": eval_scoring_consistency(),
+        "assistant_tool_trace": eval_assistant_tool_trace(),
     }
 
 

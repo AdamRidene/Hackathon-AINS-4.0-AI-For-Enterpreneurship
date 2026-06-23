@@ -68,11 +68,15 @@ const TEXTS = {
   }
 };
 
-const STEPS = ["diagnostic", "rag_retrieval", "scoring_consistency"];
+const STEPS = ["diagnostic", "rag_retrieval", "scoring_consistency", "assistant_tool_trace"];
+const TOTAL_STEPS = STEPS.length;
 const STEP_LABELS = {
   fr: ["Moteur de diagnostic", "Récupération RAG", "Cohérence du scoring"],
   ar: ["محرك التشخيص", "محرك RAG", "اتساق التقييم"],
 };
+
+STEP_LABELS.fr.push("Trace assistant");
+STEP_LABELS.ar.push("Trace assistant");
 
 const LS_KEY = "firasa_eval_job";
 
@@ -89,7 +93,7 @@ export default function EvaluationReport({ lang, api, onBack }) {
   const ar = lang === "ar";
   const t  = TEXTS[lang] || TEXTS.fr;
   const stepLabels = STEP_LABELS[lang] || STEP_LABELS.fr;
-  const done = progress === 3;
+  const done = progress === TOTAL_STEPS;
 
   // Warn before leaving page while eval is running
   useEffect(() => {
@@ -172,12 +176,12 @@ export default function EvaluationReport({ lang, api, onBack }) {
     <div style={{ maxWidth: 1100, margin: "0 auto 32px", padding: "0 24px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <span style={{ fontSize: "0.85rem", color: "var(--text-sub)" }}>
-          {done ? (lang === "ar" ? "اكتمل التقييم" : "Évaluation terminée") : `${progress}/3 — ${stepLabels[progress] || ""}`}
+          {done ? (lang === "ar" ? "اكتمل التقييم" : "Évaluation terminée") : `${progress}/${TOTAL_STEPS} — ${stepLabels[progress] || ""}`}
         </span>
-        <span style={{ fontSize: "0.85rem", color: "var(--cyan)", fontWeight: 700 }}>{Math.round(progress / 3 * 100)}%</span>
+        <span style={{ fontSize: "0.85rem", color: "var(--cyan)", fontWeight: 700 }}>{Math.round(progress / TOTAL_STEPS * 100)}%</span>
       </div>
       <div style={{ height: 6, background: "var(--border)", borderRadius: 3, overflow: "hidden" }}>
-        <div style={{ height: "100%", width: `${progress / 3 * 100}%`, background: done ? "var(--green)" : "var(--cyan)", transition: "width 0.4s ease", borderRadius: 3 }} />
+        <div style={{ height: "100%", width: `${progress / TOTAL_STEPS * 100}%`, background: done ? "var(--green)" : "var(--cyan)", transition: "width 0.4s ease", borderRadius: 3 }} />
       </div>
       {running && (
         <p style={{ fontSize: "0.78rem", color: "var(--text-dim)", marginTop: 8 }}>
@@ -200,7 +204,7 @@ export default function EvaluationReport({ lang, api, onBack }) {
     );
   }
 
-  const { diagnostic, rag_retrieval, scoring_consistency } = partialData;
+  const { diagnostic, rag_retrieval, scoring_consistency, assistant_tool_trace } = partialData;
 
   return (
     <div className="hist-wrap" dir={ar ? "rtl" : "ltr"} style={{ padding: "40px 24px" }}>
@@ -403,6 +407,48 @@ export default function EvaluationReport({ lang, api, onBack }) {
                         {c.passes ? "✓ CONFORME" : "✗ ANOMALIE"}
                       </span>
                     </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>}
+
+        {/* SECTION 4: ASSISTANT TOOL TRACE */}
+        {!assistant_tool_trace && running && progress >= 3 && <div style={{ textAlign: "center", padding: 40, color: "var(--text-dim)" }}><span className="spinner" style={{ display: "inline-block", width: 28, height: 28 }} /></div>}
+        {assistant_tool_trace && <section className="panel" style={{ padding: 24, marginTop: 24, border: "1px solid var(--border)", borderRadius: "var(--r-xl)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+            <div>
+              <h3>4. Assistant tool-call trace</h3>
+              <p className="sub" style={{ fontSize: "0.82rem", color: "var(--text-sub)", marginTop: 4 }}>
+                Mesure si l'assistant appelle le bon outil pour chaque intention sans devenir le moteur de scoring ou de classification.
+              </p>
+            </div>
+            <span className={`plan-badge ${assistant_tool_trace.passes ? "pro" : "free"}`} style={{ padding: "6px 14px", fontSize: "0.78rem" }}>
+              {assistant_tool_trace.passes ? t.pass : t.fail}
+            </span>
+          </div>
+          <div style={{ padding: 16, background: "rgba(255,255,255,0.01)", border: "1px solid var(--border)", borderRadius: "var(--r-md)", textAlign: "center", maxWidth: 260, margin: "24px 0" }}>
+            <div style={{ fontSize: "0.74rem", color: "var(--text-dim)", textTransform: "uppercase" }}>Tool-call accuracy</div>
+            <div style={{ fontSize: "2rem", fontWeight: 800, color: "var(--cyan)", marginTop: 8 }}>{(assistant_tool_trace.accuracy * 100).toFixed(1)}%</div>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.84rem" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--border)", textAlign: ar ? "right" : "left" }}>
+                  <th style={{ padding: 10 }}>Question</th>
+                  <th style={{ padding: 10 }}>Expected</th>
+                  <th style={{ padding: 10 }}>Actual</th>
+                  <th style={{ padding: 10 }}>{t.status}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {assistant_tool_trace.rows.map((r, i) => (
+                  <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.02)" }}>
+                    <td style={{ padding: 10 }}>{r.question}</td>
+                    <td style={{ padding: 10 }}>{r.expected.join(", ") || "none"}</td>
+                    <td style={{ padding: 10 }}>{r.actual.join(", ") || "none"}</td>
+                    <td style={{ padding: 10, color: r.passes ? "var(--green)" : "var(--red)", fontWeight: 700 }}>{r.passes ? "OK" : "FAIL"}</td>
                   </tr>
                 ))}
               </tbody>

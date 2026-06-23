@@ -62,3 +62,64 @@ def test_assistant_document_grounding():
     store.delete_document("doc1")
     store.delete_document("doc2")
     store.delete_project(pid)
+
+
+def test_assistant_small_talk_skips_grounding_with_documents():
+    profile = ProjectProfile(
+        name="Small Talk Project",
+        language="fr",
+        owner_user_id="dev-owner"
+    )
+    store.save(profile)
+    pid = profile.project_id
+    store.save_document(
+        doc_id="doc_smalltalk",
+        project_id=pid,
+        owner_user_id="dev-owner",
+        filename="secret_plan.txt",
+        storage_path="/tmp/secret_plan.txt",
+        extracted_text="This should not be injected for a greeting."
+    )
+
+    async def run_reply():
+        return await grounded_assistant_reply(profile, "hi")
+
+    res = asyncio.run(run_reply())
+
+    assert res["grounding"] is None
+    assert res["sources_used"] == []
+    assert res["trace"] == ["assistant:start", "assistant:no_tool"]
+
+    store.delete_document("doc_smalltalk")
+    store.delete_project(pid)
+
+
+def test_assistant_document_question_uses_document_tool():
+    profile = ProjectProfile(
+        name="Document Tool Project",
+        language="fr",
+        owner_user_id="dev-owner"
+    )
+    store.save(profile)
+    pid = profile.project_id
+    store.save_document(
+        doc_id="doc_tool",
+        project_id=pid,
+        owner_user_id="dev-owner",
+        filename="memo.txt",
+        storage_path="/tmp/memo.txt",
+        extracted_text="Validation client: trois lettres d'intention signées."
+    )
+
+    async def run_reply():
+        return await grounded_assistant_reply(profile, "Quelles infos sont dans mes documents ?")
+
+    res = asyncio.run(run_reply())
+
+    assert "tool:retrieve_documents" in res["trace"]
+    assert "memo.txt" in res["grounding"]
+    assert "Validation client" in res["grounding"]
+    assert res["sources_used"]
+
+    store.delete_document("doc_tool")
+    store.delete_project(pid)

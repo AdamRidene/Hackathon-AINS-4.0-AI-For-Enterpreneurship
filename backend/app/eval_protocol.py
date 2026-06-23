@@ -491,10 +491,32 @@ def eval_scoring_consistency() -> dict:
     }
 
 
+def eval_assistant_tool_trace() -> dict:
+    """Cheap trace metric: did the assistant planner select the expected tool?"""
+    from .orchestrator import _plan_assistant_tools
+
+    cases = [
+        ("hi", []),
+        ("Pourquoi mon score Marché est-il plafonné ?", ["get_scores"]),
+        ("Quelle est ma prochaine étape prioritaire ?", ["build_roadmap"]),
+        ("Quels programmes de financement sont pertinents ?", ["retrieve_kb"]),
+        ("Quelles infos clés dans mes documents ?", ["retrieve_documents"]),
+    ]
+    rows = []
+    hits = 0
+    for question, expected in cases:
+        actual = _plan_assistant_tools(question)
+        ok = all(tool in actual for tool in expected) and (bool(actual) == bool(expected))
+        hits += int(ok)
+        rows.append({"question": question, "expected": expected, "actual": actual, "passes": ok})
+    return {"n": len(cases), "accuracy": round(hits / len(cases), 3), "passes": hits == len(cases), "rows": rows}
+
+
 def main() -> None:
     diag = eval_diagnostic()
     rag = eval_rag()
     scoring = eval_scoring_consistency()
+    assistant = eval_assistant_tool_trace()
 
     print("=" * 70)
     print(" FIRASA SYSTEM EVALUATION REPORT")
@@ -516,6 +538,9 @@ def main() -> None:
     print("\n4. SCORING CONSISTENCY & COHEN'S KAPPA (Adversarial Check)")
     print(f"   * Weighted Kappa : {scoring['cohens_weighted_kappa']:.3f}  (Target: >= 0.70)")
     print(f"   * Status         : {'PASS' if scoring['passes'] else 'FAIL'}")
+    print("\n5. ASSISTANT TOOL-CALL TRACE")
+    print(f"   * Tool Accuracy  : {assistant['accuracy'] * 100:.1f}%")
+    print(f"   * Status         : {'PASS' if assistant['passes'] else 'FAIL'}")
     print("=" * 70)
 
 
