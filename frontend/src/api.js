@@ -121,10 +121,10 @@ export const api = {
 
   audit: (pid) => req(`/api/projects/${pid}/audit`, { method: "POST" }),
 
-  assistant: (pid, question) =>
+  assistant: (pid, question, lang = "fr") =>
     req(`/api/projects/${pid}/assistant`, {
       method: "POST",
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, lang }),
     }),
 
   // History / management

@@ -237,7 +237,7 @@ export default function Assistant({ pid, lang = "fr" }) {
     setLog((l) => [...l, { role: "user", text: question }]);
     setBusy(true);
     try {
-      const res = await api.assistant(pid, question);
+      const res = await api.assistant(pid, question, lang);
       setLog((l) => [
         ...l,
         { role: "bot", text: cleanAssistantText(res.reply), grounding: res.grounding },
