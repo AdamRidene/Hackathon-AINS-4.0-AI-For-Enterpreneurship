@@ -16,6 +16,24 @@ import Toast from "./components/Toast.jsx";
 import ConfirmDialog from "./components/ConfirmDialog.jsx";
 
 
+function phaseToPath(phase, pid) {
+  if (!phase || phase === "start" || phase === "processing") return "/";
+  if (pid) return `/${phase}/${pid}`;
+  return `/${phase}`;
+}
+
+function pathToState(pathname) {
+  const parts = pathname.split("/").filter(Boolean);
+  const seg = parts[0];
+  const id = parts[1] || null;
+  const withPid = ["dashboard", "intake", "audit", "parcours"];
+  const solo = ["history", "profile", "eval"];
+  if (!seg) return { phase: "start", pid: null };
+  if (solo.includes(seg)) return { phase: seg, pid: null };
+  if (withPid.includes(seg) && id) return { phase: seg, pid: id };
+  return { phase: "start", pid: null };
+}
+
 /** React Error Boundary — prevents white-screen crashes in production. */
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -91,8 +109,9 @@ export default function App() {
     if (restoringNav.current) { restoringNav.current = false; return; }
     if (phase === "processing") return;          // transient spinner — no history entry
     const entry = { phase, pid };
-    if (firstNav.current) { firstNav.current = false; window.history.replaceState(entry, ""); }
-    else window.history.pushState(entry, "");
+    const path = phaseToPath(phase, pid);
+    if (firstNav.current) { firstNav.current = false; window.history.replaceState(entry, "", path); }
+    else window.history.pushState(entry, "", path);
   }, [phase, pid]);
   useEffect(() => {
     const onPop = (e) => {
@@ -174,6 +193,13 @@ export default function App() {
 
       // DEV ONLY: auto-create mock user for local development
       await autoLogin();
+
+      // Restore view from URL path after auth resolves (deep-link support)
+      const { phase: urlPhase, pid: urlPid } = pathToState(window.location.pathname);
+      if (urlPhase !== "start") {
+        if (urlPid) setPid(urlPid);
+        setPhase(urlPhase);
+      }
     }
     bootstrap().catch((err) => {
       console.error("Bootstrap failed:", err);
