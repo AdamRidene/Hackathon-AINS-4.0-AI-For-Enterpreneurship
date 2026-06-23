@@ -106,6 +106,7 @@ class AnswerBody(BaseModel):
 
 class AssistantBody(BaseModel):
     question: str
+    lang: Optional[str] = None
 
 
 # --------------------------------------------------------------------------- #
@@ -663,7 +664,7 @@ async def diagnose(request: Request, pid: str, user: dict = Depends(get_current_
 @limiter.limit("20/minute")
 async def assistant(request: Request, pid: str, body: AssistantBody, user: dict = Depends(get_current_user)) -> dict:
     profile = _require_owned(pid, user)
-    return await grounded_assistant_reply(profile, body.question)
+    return await grounded_assistant_reply(profile, body.question, lang=body.lang)
 
 
 @app.get("/api/projects/{pid}/audit-history")

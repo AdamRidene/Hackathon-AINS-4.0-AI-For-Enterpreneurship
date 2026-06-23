@@ -273,17 +273,19 @@ def _needs_grounding(question: str) -> bool:
     return False
 
 
-async def grounded_assistant_reply(profile: ProjectProfile, question: str) -> dict:
+async def grounded_assistant_reply(profile: ProjectProfile, question: str, lang: Optional[str] = None) -> dict:
     """Secondary conversational layer — grounded ONLY in structured outputs and uploaded documents.
 
     The assistant never answers from general knowledge: its context is the
     audit (diagnostic, scores, roadmap) and supporting evidence documents.
     This satisfies the 'assistant is a layer, not the product' requirement.
     """
+    # Use the provided lang if available, otherwise fall back to project language
+    effective_lang = lang or profile.language
 
     # Skip grounding for small talk / general questions — no project keywords detected
     if not _needs_grounding(question):
-        reply = await get_llm().chat(question, "", lang=profile.language)
+        reply = await get_llm().chat(question, "", lang=effective_lang)
         return {"reply": reply, "grounding": None, "sources_used": []}
 
     # Fetch uploaded documents
@@ -320,7 +322,7 @@ async def grounded_assistant_reply(profile: ProjectProfile, question: str) -> di
         # Reconstruct the context from the cached audit dict
         diag_stage = audit_data.get("diagnostic", {}).get("classified_stage_name", "Inconnu")
         gap_msg = audit_data.get("perception_reality_gap", {}).get("message_fr", "")
-        if profile.language == "ar":
+        if effective_lang == "ar":
             gap_msg = audit_data.get("perception_reality_gap", {}).get("message_ar", gap_msg)
 
         vector = audit_data.get("scores", {}).get("vector", [0, 0, 0, 0, 0])
@@ -331,9 +333,9 @@ async def grounded_assistant_reply(profile: ProjectProfile, question: str) -> di
             order = m.get("order")
             title = m.get("title")
             horizon = m.get("horizon_fr")
-            if profile.language == "ar":
+            if effective_lang == "ar":
                 horizon = m.get("horizon_ar") or horizon
-            timeline = m.get("timeline_ar") if profile.language == "ar" else m.get("timeline_fr")
+            timeline = m.get("timeline_ar") if effective_lang == "ar" else m.get("timeline_fr")
             timeline = timeline or m.get("timeline_fr") or m.get("timeline_ar") or ""
             srcs = ", ".join(dict.fromkeys(
                 s.get("institution", "") for s in m.get("sources", []) if s.get("institution")
@@ -342,20 +344,20 @@ async def grounded_assistant_reply(profile: ProjectProfile, question: str) -> di
 
         # Include cached anomalies in grounding context
         cached_anomalies = audit_data.get("anomalies", [])
-        anomalies_ctx = _build_anomalies_context(cached_anomalies, profile.language)
+        anomalies_ctx = _build_anomalies_context(cached_anomalies, effective_lang)
 
         ctx = _format_grounding(diag_stage, gap_msg, vector, roadmap_prose,
                                 docs_context, anomalies_context=anomalies_ctx,
-                                lang=profile.language)
+                                lang=effective_lang)
         sources_used = [s for m in roadmap_items[:5] for s in m.get("sources", [])]
     else:
         # Fallback to running run_audit
         audit = await run_audit(profile)
-        gap_msg = audit.gap.message_ar if profile.language == "ar" else audit.gap.message_fr
+        gap_msg = audit.gap.message_ar if effective_lang == "ar" else audit.gap.message_fr
         roadmap_prose = []
         for m in audit.roadmap[:5]:
-            horizon = getattr(m, "horizon_ar", "") or m.horizon_fr if profile.language == "ar" else m.horizon_fr
-            timeline = getattr(m, "timeline_ar", "") if profile.language == "ar" else getattr(m, "timeline_fr", "")
+            horizon = getattr(m, "horizon_ar", "") or m.horizon_fr if effective_lang == "ar" else m.horizon_fr
+            timeline = getattr(m, "timeline_ar", "") if effective_lang == "ar" else getattr(m, "timeline_fr", "")
             timeline = timeline or getattr(m, "timeline_fr", "") or getattr(m, "timeline_ar", "")
             srcs = ", ".join(dict.fromkeys(
                 s["institution"] for s in m.sources if s.get("institution")
@@ -363,13 +365,13 @@ async def grounded_assistant_reply(profile: ProjectProfile, question: str) -> di
             roadmap_prose.append(f"{m.order}. {m.title} ({horizon}) [{timeline}] — {srcs}")
 
         # Include live anomalies in grounding context
-        anomalies_ctx = _build_anomalies_context(audit.anomalies, profile.language)
+        anomalies_ctx = _build_anomalies_context(audit.anomalies, effective_lang)
 
         ctx = _format_grounding(audit.diagnostic.classified_stage_name, gap_msg,
                                 audit.scores.vector(), roadmap_prose,
                                 docs_context, anomalies_context=anomalies_ctx,
-                                lang=profile.language)
+                                lang=effective_lang)
         sources_used = [s for m in audit.roadmap[:5] for s in m.sources]
 
-    reply = await get_llm().chat(question, ctx, lang=profile.language)
+    reply = await get_llm().chat(question, ctx, lang=effective_lang)
     return {"reply": reply, "grounding": ctx, "sources_used": sources_used}
