@@ -14,6 +14,7 @@ import Topbar from "./components/Topbar.jsx";
 import EvaluationReport from "./components/EvaluationReport.jsx";
 import Toast from "./components/Toast.jsx";
 import ConfirmDialog from "./components/ConfirmDialog.jsx";
+import Assistant from "./components/Assistant.jsx";
 
 
 function phaseToPath(phase, pid) {
@@ -96,6 +97,7 @@ export default function App() {
 
   const [user, setUser] = useState(null);
   const [plan, setPlan] = useState("free");
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [toast, setToast] = useState(null);
@@ -658,6 +660,24 @@ export default function App() {
         </div>
       )}
     </>
+      {/* Floating assistant — visible whenever a project is loaded */}
+      {pid && phase !== "processing" && phase !== "intake" && (
+        <>
+          <button
+            className="float-assistant-btn"
+            onClick={() => setAssistantOpen(o => !o)}
+            title={lang === "ar" ? "المستشار" : "Assistant"}
+          >
+            {assistantOpen ? "✕" : "💬"}
+          </button>
+          {assistantOpen && (
+            <div className="float-assistant-panel" dir={lang === "ar" ? "rtl" : "ltr"}>
+              <Assistant pid={pid} lang={lang} />
+            </div>
+          )}
+        </>
+      )}
+
       <Toast toast={toast} onDismiss={() => setToast(null)} lang={lang} />
       <ConfirmDialog
         isOpen={!!confirmDialog}

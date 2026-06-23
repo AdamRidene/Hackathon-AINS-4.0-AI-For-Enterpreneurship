@@ -202,14 +202,29 @@ class LLMProvider(ABC):
         return context  # the structured context is itself a faithful explanation
 
     async def chat(self, question: str, context: str, lang: str = "fr") -> str:
-        """Grounded Q&A: answer ONLY from the structured context provided."""
-        if lang == "ar":
+        """Grounded Q&A: answer ONLY from the structured context provided.
+        When context is empty (small-talk path), use a free conversational prompt."""
+        if not context:
+            # Small-talk / general question — no diagnostic constraint
+            if lang == "ar":
+                prompt = (
+                    "أنت مساعد فراسة، مستشار في ريادة الأعمال لمنطقة الشرق الأوسط وشمال أفريقيا. "
+                    "أجب بشكل طبيعي وودي بالعربية. جملة أو جملتان كحد أقصى.\n\n"
+                    f"السؤال: {question}\n\nالجواب:"
+                )
+            else:
+                prompt = (
+                    "Tu es l'assistant Firasa, un conseiller en entrepreneuriat pour la région MENA. "
+                    "Réponds naturellement et de façon concise en français. Une à deux phrases maximum.\n\n"
+                    f"Question: {question}\n\nRéponse:"
+                )
+        elif lang == "ar":
             prompt = (
                 "أنت مساعد فراسة. أجب على سؤال المؤسس بالعربية "
                 "(العربية التونسية أو العربية الفصحى المبسطة)، معتمداً فقط على السياق "
                 "المنظم (التشخيص، المؤشرات، خارطة الطريق). لا تخترع أي برنامج.\n"
                 "أعطِ فقط الجواب النهائي، بدون أي تفكير داخلي أو شرح للمراحل أو <think>.\n"
-                "للتغطية القصيرة: جملة واحدة. وللسؤال الحقيقي: جملة تلخيص قصيرة ثم 2 إلى 4 نقاط كحد أقصى.\n\n"
+                "للسؤال الحقيقي: جملة تلخيص قصيرة ثم 2 إلى 4 نقاط كحد أقصى.\n\n"
                 f"السياق:\n{context}\n\nالسؤال: {question}\n\nالجواب:"
             )
         else:
@@ -219,9 +234,7 @@ class LLMProvider(ABC):
                 "(diagnostic, scores, feuille de route). N'invente aucun programme.\n"
                 "Réponds uniquement avec la réponse finale. N'inclus aucun raisonnement, "
                 "aucune chaîne de pensée, aucun <think> et aucune explication de ta méthode.\n"
-                "Adapte la longueur à la question : pour une simple salutation ou une "
-                "question courte, réponds en UNE phrase. Pour une vraie question seulement : "
-                "une phrase de synthèse puis 2 à 4 points « • » maximum.\n\n"
+                "Une phrase de synthèse puis 2 à 4 points « • » maximum.\n\n"
                 f"Contexte:\n{context}\n\nQuestion: {question}\n\nRéponse:"
             )
         prompt = apply_language_directive(prompt, lang)
@@ -233,6 +246,9 @@ class LLMProvider(ABC):
         except Exception:
             pass
         # Deterministic grounded fallback: surface the context directly.
+        # Skip when context is empty (small-talk / no-grounding path).
+        if not context:
+            return "Bonjour !" if lang != "ar" else "مرحباً !"
         if lang == "ar":
             return (
                 "وفقًا لتشخيصك، إليك العناصر المهيكلة ذات الصلة — "

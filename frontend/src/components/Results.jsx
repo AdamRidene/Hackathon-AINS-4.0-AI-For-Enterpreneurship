@@ -1,5 +1,4 @@
 import { useState } from "react";
-import Assistant from "./Assistant.jsx";
 import ScoreDeltas from "./ScoreDeltas.jsx";
 import ProfileEditor from "./ProfileEditor.jsx";
 import { SECTOR_LABELS as SECTOR_L, STAGE_LABELS as STAGE_L } from "../constants.js";
@@ -61,7 +60,7 @@ const COPY = {
   fr: {
     newAudit: "Nouvel audit",
     editProfile: "Ajuster les réponses",
-    tabs: ["Diagnostic", "Scores", "Feuille de route", "Assistant"],
+    tabs: ["Diagnostic", "Scores", "Feuille de route"],
     confidence: "Confiance",
     activeGate: "PORTE ACTIVE",
     declared: "Stade déclaré",
@@ -88,7 +87,7 @@ const COPY = {
   ar: {
     newAudit: "تدقيق جديد",
     editProfile: "تعديل الإجابات",
-    tabs: ["التشخيص", "المؤشرات", "خارطة الطريق", "المستشار"],
+    tabs: ["التشخيص", "المؤشرات", "خارطة الطريق"],
     confidence: "الثقة",
     activeGate: "البوابة النشطة",
     declared: "المرحلة المعلنة",
@@ -555,11 +554,6 @@ export default function Results({ audit, pid, lang, onNewAudit, onBackToDashboar
           </div>
         )}
 
-        {activeTab === 3 && (
-          <div className="results-section">
-            <Assistant pid={pid} lang={lang} />
-          </div>
-        )}
       </div>
 
       {showEditor && (
