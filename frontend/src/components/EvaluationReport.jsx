@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 
+
 const TEXTS = {
   fr: {
     title: "Rapport d'Évaluation & Rigueur (Rubrique)",
@@ -67,24 +68,65 @@ const TEXTS = {
   }
 };
 
+const STEPS = ["diagnostic", "rag_retrieval", "scoring_consistency"];
+const STEP_LABELS = {
+  fr: ["Moteur de diagnostic", "Récupération RAG", "Cohérence du scoring"],
+  ar: ["محرك التشخيص", "محرك RAG", "اتساق التقييم"],
+};
+
 export default function EvaluationReport({ lang, api, onBack }) {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [partialData, setPartialData] = useState({});  // populated step by step
+  const [progress, setProgress] = useState(0);          // 0-3
+  const [running, setRunning]   = useState(false);
+  const [error, setError]       = useState(null);
+  const [jobId, setJobId]       = useState(null);
 
   const ar = lang === "ar";
-  const t = TEXTS[lang] || TEXTS.fr;
+  const t  = TEXTS[lang] || TEXTS.fr;
+  const stepLabels = STEP_LABELS[lang] || STEP_LABELS.fr;
+  const done = progress === 3;
+
+  // Poll backend every 3s while job is running
+  useEffect(() => {
+    if (!jobId || done || error) return;
+    const iv = setInterval(async () => {
+      try {
+        const job = await api.evalStatus(jobId);
+        // Merge newly completed steps into partialData
+        if (job.result) {
+          setPartialData(prev => ({ ...prev, ...job.result }));
+          setProgress(job.progress);
+        }
+        if (job.status === "done") {
+          setRunning(false);
+          clearInterval(iv);
+        } else if (job.status === "failed") {
+          setError(job.error || "Evaluation failed");
+          setRunning(false);
+          clearInterval(iv);
+        }
+      } catch (e) {
+        setError(e.message);
+        setRunning(false);
+        clearInterval(iv);
+      }
+    }, 3000);
+    return () => clearInterval(iv);
+  }, [jobId, done, error]);
 
   function runEval() {
-    setLoading(true);
+    setRunning(true);
     setError(null);
-    setData(null);
-    api.eval()
-      .then(res => { setData(res); setLoading(false); })
-      .catch(err => { setError(err.message); setLoading(false); });
+    setPartialData({});
+    setProgress(0);
+    setJobId(null);
+    api.evalStart()
+      .then(res => setJobId(res.job_id))
+      .catch(err => { setError(err.message); setRunning(false); });
   }
 
-  if (!data && !loading && !error) {
+  // Landing screen
+  if (!running && progress === 0 && !error) {
     return (
       <div className="hist-wrap" dir={ar ? "rtl" : "ltr"} style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24 }}>
         <button className="ghost-btn" onClick={onBack} style={{ alignSelf: ar ? "flex-end" : "flex-start", padding: "8px 16px", margin: "0 24px" }}>{t.back}</button>
@@ -97,50 +139,67 @@ export default function EvaluationReport({ lang, api, onBack }) {
     );
   }
 
-  if (loading) {
-    return (
-      <div className="hist-wrap" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ textAlign: "center" }}>
-          <span className="spinner" style={{ display: "inline-block", width: 36, height: 36, marginBottom: 16 }} />
-          <p className="muted">{t.loading}</p>
-        </div>
+  // Progress bar header (shown while running or after done)
+  const ProgressHeader = (
+    <div style={{ maxWidth: 1100, margin: "0 auto 32px", padding: "0 24px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <span style={{ fontSize: "0.85rem", color: "var(--text-sub)" }}>
+          {done ? (lang === "ar" ? "اكتمل التقييم" : "Évaluation terminée") : `${progress}/3 — ${stepLabels[progress] || ""}`}
+        </span>
+        <span style={{ fontSize: "0.85rem", color: "var(--cyan)", fontWeight: 700 }}>{Math.round(progress / 3 * 100)}%</span>
       </div>
-    );
-  }
+      <div style={{ height: 6, background: "var(--border)", borderRadius: 3, overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${progress / 3 * 100}%`, background: done ? "var(--green)" : "var(--cyan)", transition: "width 0.4s ease", borderRadius: 3 }} />
+      </div>
+      {running && (
+        <p style={{ fontSize: "0.78rem", color: "var(--text-dim)", marginTop: 8 }}>
+          {lang === "ar" ? "جاري التحليل... كل خطوة تستغرق دقيقة تقريباً" : "Analyse en cours… chaque étape prend ~1 min"}
+        </p>
+      )}
+    </div>
+  );
 
   if (error) {
     return (
       <div className="hist-wrap" style={{ minHeight: "100vh", padding: "40px 20px" }}>
         <div className="error-banner" style={{ maxWidth: 800, margin: "0 auto" }}>
           <span>Erreur : {error}</span>
-          <button className="primary" onClick={onBack} style={{ marginTop: 16 }}>{t.back}</button>
+          <button className="primary" onClick={runEval} style={{ marginTop: 16 }}>
+            {lang === "ar" ? "إعادة المحاولة" : "Réessayer"}
+          </button>
         </div>
       </div>
     );
   }
 
-  const { diagnostic, rag_retrieval, scoring_consistency } = data;
+  const { diagnostic, rag_retrieval, scoring_consistency } = partialData;
 
   return (
     <div className="hist-wrap" dir={ar ? "rtl" : "ltr"} style={{ padding: "40px 24px" }}>
       <div className="hist-content" style={{ maxWidth: 1100, margin: "0 auto" }}>
-        
+
         {/* Header */}
-        <div className="page-header" style={{ marginBottom: 40 }}>
+        <div className="page-header" style={{ marginBottom: 32 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
             <button className="ghost-btn" onClick={onBack} style={{ padding: "8px 16px", display: "inline-flex", alignItems: "center", gap: 8 }}>
               {t.back}
             </button>
-            <button className="ghost-btn" onClick={runEval} style={{ padding: "8px 16px" }}>
-              {lang === "ar" ? "إعادة التشغيل" : "Re-lancer"}
-            </button>
+            {done && (
+              <button className="ghost-btn" onClick={runEval} style={{ padding: "8px 16px" }}>
+                {lang === "ar" ? "إعادة التشغيل" : "Re-lancer"}
+              </button>
+            )}
           </div>
           <h1 className="hist-title">{t.title}</h1>
           <p className="hist-sub" style={{ color: "var(--text-sub)", marginTop: 6 }}>{t.sub}</p>
         </div>
 
+        {/* Progress bar */}
+        {ProgressHeader}
+
         {/* SECTION 1: DIAGNOSTIC */}
-        <section className="panel" style={{ padding: 24, marginBottom: 24, border: "1px solid var(--border)", borderRadius: "var(--r-xl)" }}>
+        {!diagnostic && running && <div style={{ textAlign: "center", padding: 40, color: "var(--text-dim)" }}><span className="spinner" style={{ display: "inline-block", width: 28, height: 28 }} /></div>}
+        {diagnostic && <section className="panel" style={{ padding: 24, marginBottom: 24, border: "1px solid var(--border)", borderRadius: "var(--r-xl)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
             <div>
               <h3>{t.diagnosticTitle}</h3>
@@ -213,10 +272,11 @@ export default function EvaluationReport({ lang, api, onBack }) {
               </tbody>
             </table>
           </div>
-        </section>
+        </section>}
 
         {/* SECTION 2: RAG RETRIEVAL */}
-        <section className="panel" style={{ padding: 24, marginBottom: 24, border: "1px solid var(--border)", borderRadius: "var(--r-xl)" }}>
+        {!rag_retrieval && running && progress >= 1 && <div style={{ textAlign: "center", padding: 40, color: "var(--text-dim)" }}><span className="spinner" style={{ display: "inline-block", width: 28, height: 28 }} /></div>}
+        {rag_retrieval && <section className="panel" style={{ padding: 24, marginBottom: 24, border: "1px solid var(--border)", borderRadius: "var(--r-xl)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
             <div>
               <h3>{t.ragTitle}</h3>
@@ -266,10 +326,11 @@ export default function EvaluationReport({ lang, api, onBack }) {
               </tbody>
             </table>
           </div>
-        </section>
+        </section>}
 
         {/* SECTION 3: CONSISTENCY CHECKS */}
-        <section className="panel" style={{ padding: 24, border: "1px solid var(--border)", borderRadius: "var(--r-xl)" }}>
+        {!scoring_consistency && running && progress >= 2 && <div style={{ textAlign: "center", padding: 40, color: "var(--text-dim)" }}><span className="spinner" style={{ display: "inline-block", width: 28, height: 28 }} /></div>}
+        {scoring_consistency && <section className="panel" style={{ padding: 24, border: "1px solid var(--border)", borderRadius: "var(--r-xl)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
             <div>
               <h3>{t.consistencyTitle}</h3>
@@ -319,7 +380,7 @@ export default function EvaluationReport({ lang, api, onBack }) {
               </tbody>
             </table>
           </div>
-        </section>
+        </section>}
 
       </div>
     </div>
