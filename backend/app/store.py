@@ -467,6 +467,7 @@ def update_user_plan(user_id: str, plan: str) -> dict | None:
 
 def update_user_profile(
     user_id: str, name: str,
+    email: str | None = None,
     bio: str | None = None, phone: str | None = None,
     role: str | None = None, company: str | None = None,
     photo: str | None = None, birth_date: str | None = None,
@@ -475,12 +476,21 @@ def update_user_profile(
     with _lock:
         if _DB_ENABLED:
             with db_session() as conn:
-                conn.execute(
-                    """UPDATE users SET name = ?, bio = ?, phone = ?, role = ?,
-                       company = ?, photo = ?, birth_date = ?, location = ?
-                       WHERE id = ?""",
-                    (name, bio, phone, role, company, photo, birth_date, location, user_id),
-                )
+                if email:
+                    email = _normalise_email(email)
+                    conn.execute(
+                        """UPDATE users SET name = ?, email = ?, bio = ?, phone = ?, role = ?,
+                           company = ?, photo = ?, birth_date = ?, location = ?
+                           WHERE id = ?""",
+                        (name, email, bio, phone, role, company, photo, birth_date, location, user_id),
+                    )
+                else:
+                    conn.execute(
+                        """UPDATE users SET name = ?, bio = ?, phone = ?, role = ?,
+                           company = ?, photo = ?, birth_date = ?, location = ?
+                           WHERE id = ?""",
+                        (name, bio, phone, role, company, photo, birth_date, location, user_id),
+                    )
                 row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
             return _user_from_row(row)
         else:
@@ -488,6 +498,8 @@ def update_user_profile(
             if u:
                 u.update(name=name, bio=bio, phone=phone, role=role,
                          company=company, photo=photo, birth_date=birth_date, location=location)
+                if email:
+                    u["email"] = _normalise_email(email)
                 return dict(u)
         return None
 

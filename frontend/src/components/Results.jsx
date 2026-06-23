@@ -477,6 +477,11 @@ export default function Results({ audit, pid, lang, onNewAudit, onBackToDashboar
                 {SECTOR_L[lang][audit.sector] || audit.sector}
               </span>
             )}
+            {audit.location && (
+              <span className="results-meta-chip">
+                📍 {audit.location}
+              </span>
+            )}
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button className="ghost" onClick={onBackToDashboard} style={{ border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "10px 16px", cursor: "pointer" }}>

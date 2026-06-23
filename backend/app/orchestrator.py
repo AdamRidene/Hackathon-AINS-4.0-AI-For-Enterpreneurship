@@ -53,6 +53,7 @@ class AuditResult:
             "project_id": self.profile.project_id,
             "project_name": self.profile.name,
             "sector": self.profile.sector.value if self.profile.sector else None,
+            "location": self.profile.location.value if self.profile.location else None,
             "diagnostic": self.diagnostic.to_dict(),
             "perception_reality_gap": self.gap.to_dict(),
             "anomalies": self.anomalies,

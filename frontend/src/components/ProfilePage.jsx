@@ -136,6 +136,7 @@ export default function ProfilePage({ user, plan, history, lang, api, onBack, on
   const [photoPreview, setPhotoPreview] = useState(user?.photo || "");
   const [form, setForm] = useState({
     name: user?.name || "",
+    email: user?.email || "",
     role: user?.role || "",
     company: user?.company || "",
     phone: user?.phone || "",
@@ -160,6 +161,7 @@ export default function ProfilePage({ user, plan, history, lang, api, onBack, on
   useEffect(() => {
     setForm({
       name: user?.name || "",
+      email: user?.email || "",
       role: user?.role || "",
       company: user?.company || "",
       phone: user?.phone || "",
@@ -196,6 +198,7 @@ export default function ProfilePage({ user, plan, history, lang, api, onBack, on
     try {
       const nextUser = await api.updateProfile({
         name: form.name.trim(),
+        email: form.email.trim() || null,
         role: form.role.trim() || null,
         company: form.company.trim() || null,
         phone: form.phone.trim() || null,
@@ -331,6 +334,10 @@ export default function ProfilePage({ user, plan, history, lang, api, onBack, on
               <label className="profile-field">
                 <span>{ar ? "الاسم الكامل" : "Nom complet"}</span>
                 <input value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} />
+              </label>
+              <label className="profile-field">
+                <span>{t.email}</span>
+                <input type="email" value={form.email} onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))} placeholder="email@example.com" />
               </label>
               <label className="profile-field">
                 <span>{t.role}</span>

@@ -86,6 +86,28 @@ class Sector(str, Enum):
     OTHER = "other"
 
 
+class MenaCountry(str, Enum):
+    TUNISIA = "Tunisie"
+    ALGERIA = "Algérie"
+    MOROCCO = "Maroc"
+    LIBYA = "Libye"
+    EGYPT = "Égypte"
+    JORDAN = "Jordanie"
+    LEBANON = "Liban"
+    UAE = "Émirats arabes unis"
+    SAUDI = "Arabie saoudite"
+    QATAR = "Qatar"
+    KUWAIT = "Koweït"
+    BAHRAIN = "Bahreïn"
+    OMAN = "Oman"
+    IRAQ = "Irak"
+    SYRIA = "Syrie"
+    PALESTINE = "Palestine"
+    SUDAN = "Soudan"
+    MAURITANIA = "Mauritanie"
+    OTHER = "Autre"
+
+
 # --------------------------------------------------------------------------- #
 # Dimension blocks (mirror the five scoring dimensions)                        #
 # --------------------------------------------------------------------------- #
@@ -179,6 +201,10 @@ class ProjectProfile(BaseModel):
     innovation: InnovationScope = Field(default_factory=InnovationScope)
     scalability: ScalabilityIndex = Field(default_factory=ScalabilityIndex)
     green: GreenMatrices = Field(default_factory=GreenMatrices)
+
+    # Geography & accompaniment history (improve program routing)
+    location: Optional[MenaCountry] = None
+    accompaniment_history: list[str] = Field(default_factory=list)
 
     # Verified facts collected by intake (evidence tokens)
     legal_form: Optional[LegalForm] = None

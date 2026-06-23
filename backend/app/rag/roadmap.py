@@ -298,7 +298,13 @@ async def build_roadmap(
         routed = retriever.retrieve(gap_cat, query, k=k_per_gap)
         if not routed.chunks:
             continue
-        fresh = [c for c in routed.chunks if c.id not in seen_resources]
+        # Filter out already-seen resources AND institutions already in accompaniment history
+        done_programs = {p.lower() for p in (profile.accompaniment_history or [])}
+        fresh = [c for c in routed.chunks
+                 if c.id not in seen_resources
+                 and c.institution.lower() not in done_programs]
+        if not fresh:
+            fresh = [c for c in routed.chunks if c.id not in seen_resources]
         if not fresh:
             fresh = routed.chunks  # allow reuse rather than drop the milestone
         for c in fresh:

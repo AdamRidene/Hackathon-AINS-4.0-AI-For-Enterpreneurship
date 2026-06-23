@@ -68,9 +68,10 @@ class Retriever:
                 chunks=[], scores=[],
             )
 
-        # Use semantic embeddings if available, otherwise TF-IDF
-        if self.kb.has_embeddings():
-            q_emb = self.kb.query_embedding(query)
+        # Use semantic embeddings if available, otherwise TF-IDF.
+        # Fall back to TF-IDF if query embedding returns None (Cohere rate-limit).
+        q_emb = self.kb.query_embedding(query) if self.kb.has_embeddings() else None
+        if q_emb is not None:
             candidate_embs = [self.kb._embeddings[self.kb.chunks.index(c)] for c in candidates]
             scored = sorted(
                 ((c, self.kb.cosine_dense(q_emb, c_emb))
