@@ -2,6 +2,29 @@ import { useState, useEffect, useCallback } from "react";
 import { SECTOR_LABELS, STAGE_LABELS } from "../constants.js";
 import AgentTrace from "./AgentTrace.jsx";
 
+const QUESTION_DIMENSION = {
+  name: "profil", problem_statement: "profil", sector: "profil",
+  declared_stage: "profil", legal_form: "profil", user_segment: "marché",
+  tam: "marché", competitors: "marché", validation: "marché",
+  validation_proof: "marché", revenue_model: "marché",
+  vp_narrative: "offre", mvp_stage: "offre", pricing: "offre",
+  unit_economics: "offre", repeatable_sales: "offre",
+  geo_novelty: "innovation", tech_stack: "innovation", ip_status: "innovation",
+  human_dependency: "scalabilité", equipment_cost: "scalabilité",
+  monthly_overhead: "scalabilité", cross_border: "scalabilité",
+  agri_footprint: "green", digital_footprint: "green", footprint: "green",
+  agri_circular: "green", circular: "green", sdg: "green",
+};
+
+const DIMENSIONS = [
+  { key: "profil",      fr: "Profil",      ar: "الملف",    color: "var(--text-sub)" },
+  { key: "marché",      fr: "Marché",      ar: "السوق",    color: "var(--primary)" },
+  { key: "offre",       fr: "Offre",       ar: "العرض",    color: "var(--cyan)" },
+  { key: "innovation",  fr: "Innovation",  ar: "الابتكار", color: "var(--amber)" },
+  { key: "scalabilité", fr: "Scalabilité", ar: "التوسع",   color: "var(--green)" },
+  { key: "green",       fr: "Green / ESG", ar: "البيئة",   color: "#10b981" },
+];
+
 const SHORT_NAMES = {
   fr: {
     name: "Nom", sector: "Secteur", declared_stage: "Stade", problem_statement: "Problème",
@@ -153,6 +176,8 @@ export default function Interview({ lang, question, progress, busy, onSubmit, on
   const T = COPY[lang];
   const prompt = (ar && question?.prompt_ar) ? question.prompt_ar : question?.prompt_fr;
   const help   = (ar && question?.help_ar)   ? question.help_ar   : question?.help_fr;
+  const currentDim = QUESTION_DIMENSION[question?.id];
+  const dimInfo = DIMENSIONS.find(d => d.key === currentDim);
 
   return (
     <div className="interview-wrap" dir={ar ? "rtl" : "ltr"}>
@@ -160,8 +185,21 @@ export default function Interview({ lang, question, progress, busy, onSubmit, on
       {/* Orange progress line fixed at top */}
       <div className="interview-progress-line" style={{ width: `${pct}%` }} />
 
+      {/* Dimension strip */}
+      <div className="dimension-strip">
+        {DIMENSIONS.map(d => (
+          <span
+            key={d.key}
+            className={`dim-pill${d.key === currentDim ? " active" : ""}`}
+            style={d.key === currentDim ? { color: d.color, borderColor: d.color, background: `${d.color}14` } : {}}
+          >
+            {ar ? d.ar : d.fr}
+          </span>
+        ))}
+      </div>
+
       {/* Question body */}
-      <div className="interview-body" style={{ paddingTop: "40px" }}>
+      <div className="interview-body" style={{ paddingTop: "16px" }}>
         
         {/* Answered questions horizontal chip summary */}
         {answeredList.length > 0 && (
@@ -227,6 +265,11 @@ export default function Interview({ lang, question, progress, busy, onSubmit, on
 
         {/* key forces animation replay on question change */}
         <div key={question?.id} className="interview-question-block" style={{ marginTop: 10 }}>
+          {dimInfo && currentDim !== "profil" && (
+            <div className="dim-score-badge" style={{ borderColor: dimInfo.color, color: dimInfo.color }}>
+              ↗ {ar ? `يؤثر على مؤشر ${dimInfo.ar}` : `Affecte votre score ${dimInfo.fr}`}
+            </div>
+          )}
           <div className="interview-prompt">{prompt}</div>
           {help && <div className="interview-help">{help}</div>}
 

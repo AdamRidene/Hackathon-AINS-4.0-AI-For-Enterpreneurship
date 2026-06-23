@@ -29,6 +29,8 @@ const TEXTS = {
     refresh: "Actualiser",
     scores: "Évolution des scores",
     noScores: "Pas de scores disponibles",
+    markDone: "Marquer comme fait",
+    scoreDelta: "Δ scores",
   },
   ar: {
     title: "مسارِي",
@@ -46,6 +48,8 @@ const TEXTS = {
     refresh: "تحديث",
     scores: "تطور المؤشرات",
     noScores: "لا توجد مؤشرات متاحة",
+    markDone: "وضع علامة منجز",
+    scoreDelta: "فروق المؤشرات",
   },
 };
 
@@ -53,40 +57,56 @@ export default function MonParcours({ pid, lang, api, onBack, checkedMilestones,
   const [audits, setAudits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [completing, setCompleting] = useState(null);
 
   const ar = lang === "ar";
   const t = TEXTS[lang];
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const [history, project] = await Promise.all([
-          api.getAuditHistory(pid).catch(() => []),
-          api.getProject(pid).catch(() => null),
-        ]);
-        const formatted = Array.isArray(history) ? history.map(h => ({
-          date: h.audited_at,
-          stage: h.stage || h.diagnostic?.classified_stage || 1,
-          scores: h.scores?.vector || h.vector,
-          roadmap: h.roadmap || [],
-          gap: h.perception_reality_gap,
-        })) : [];
-        setAudits(formatted);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
+  async function loadAudits() {
+    try {
+      const history = await api.getAuditHistory(pid).catch(() => []);
+      const formatted = Array.isArray(history) ? history.map(h => ({
+        date: h.audited_at,
+        stage: h.stage || h.diagnostic?.classified_stage || 1,
+        scores: h.scores?.vector || h.vector,
+        roadmap: h.roadmap || [],
+        gap: h.perception_reality_gap,
+      })) : [];
+      setAudits(formatted);
+    } catch (err) {
+      setError(err.message);
     }
-    load();
+  }
+
+  useEffect(() => {
+    setLoading(true);
+    loadAudits().finally(() => setLoading(false));
   }, [pid]);
+
+  async function handleMarkDone(milestone) {
+    setCompleting(milestone.id);
+    try {
+      await api.completeMilestone(pid, milestone.id, milestone.trigger);
+      await loadAudits();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCompleting(null);
+    }
+  }
 
   if (loading) {
     return <div className="dash-loading" dir={ar ? "rtl" : "ltr"}>...</div>;
   }
 
   const latest = audits[0];
+  const prev = audits[1];
   const currentStage = latest?.stage || 1;
+
+  // Score deltas: latest vs previous audit [M, C, I, S, G]
+  const deltas = (latest?.scores && prev?.scores)
+    ? latest.scores.map((v, i) => Math.round(v) - Math.round(prev.scores[i] ?? v))
+    : null;
   const stageName = STAGE_LABELS[lang]?.[currentStage] || `Stage ${currentStage}`;
   const milestoneKeys = Object.keys(checkedMilestones || {})
     .filter(k => k.startsWith(`${pid}_`));
@@ -140,6 +160,20 @@ export default function MonParcours({ pid, lang, api, onBack, checkedMilestones,
                 );
               })}
             </div>
+            {deltas && (
+              <div style={{ marginTop: 8, display: "flex", gap: 10, flexWrap: "wrap", fontSize: "0.78rem" }}>
+                <span style={{ color: "var(--text-sub)" }}>{t.scoreDelta}:</span>
+                {["M", "C", "I", "S", "G"].map((dim, i) => {
+                  const d = deltas[i];
+                  const color = d > 0 ? "var(--green)" : d < 0 ? "var(--red)" : "var(--text-dim)";
+                  return (
+                    <span key={dim} style={{ color, fontWeight: 600 }}>
+                      {dim} {d > 0 ? `+${d}` : d}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -166,23 +200,37 @@ export default function MonParcours({ pid, lang, api, onBack, checkedMilestones,
                     background: done ? "rgba(34,197,94,0.04)" : "rgba(255,255,255,0.01)",
                     border: `1px solid ${done ? "rgba(34,197,94,0.2)" : "var(--border)"}`,
                     opacity: done ? 0.7 : 1,
-                    cursor: "pointer",
-                  }} onClick={() => onToggleMilestone && onToggleMilestone(m.id)}>
+                  }}>
                     <span style={{
                       minWidth: 20, height: 20, borderRadius: "50%",
                       background: done ? "var(--green)" : "var(--border)",
                       display: "grid", placeItems: "center",
                       fontSize: "0.7rem", color: done ? "#fff" : "var(--text-dim)",
-                    }}>
+                      cursor: "pointer", flexShrink: 0,
+                    }} onClick={() => onToggleMilestone && onToggleMilestone(m.id)}>
                       {done ? "✓" : m.order}
                     </span>
-                    <div>
+                    <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, fontSize: "0.88rem", textDecoration: done ? "line-through" : "none" }}>
                         {m.title}
                       </div>
                       {timeline && <div style={{ fontSize: "0.74rem", color: "var(--orange)", marginTop: 2 }}>{timeline}</div>}
                       {rat && <div style={{ fontSize: "0.78rem", color: "var(--text-sub)", marginTop: 2 }}>{rat}</div>}
                     </div>
+                    {!done && m.trigger && (
+                      <button
+                        style={{
+                          flexShrink: 0, fontSize: "0.72rem", padding: "4px 10px",
+                          borderRadius: "var(--r-sm)", border: "1px solid var(--green)",
+                          background: "transparent", color: "var(--green)", cursor: "pointer",
+                          opacity: completing === m.id ? 0.5 : 1,
+                        }}
+                        disabled={completing === m.id}
+                        onClick={() => handleMarkDone(m)}
+                      >
+                        {completing === m.id ? "…" : t.markDone}
+                      </button>
+                    )}
                   </div>
                 );
               })}

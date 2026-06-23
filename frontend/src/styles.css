@@ -877,6 +877,38 @@ label {
   z-index: 200;
 }
 
+/* Dimension awareness strip */
+.dimension-strip {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 12px 0 4px;
+  max-width: 640px;
+  margin: 0 auto;
+}
+.dim-pill {
+  font-size: .72rem;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  padding: 3px 10px;
+  transition: all .2s;
+}
+.dim-pill.active {
+  font-weight: 700;
+}
+.dim-score-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: .75rem;
+  font-weight: 600;
+  border: 1px solid;
+  border-radius: var(--r-sm);
+  padding: 4px 10px;
+  margin-bottom: 12px;
+  opacity: 0.9;
+}
+
 /* Minimal header row */
 .interview-header {
   display: flex;
