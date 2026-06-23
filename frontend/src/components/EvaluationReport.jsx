@@ -69,23 +69,33 @@ const TEXTS = {
 
 export default function EvaluationReport({ lang, api, onBack }) {
   const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const ar = lang === "ar";
   const t = TEXTS[lang] || TEXTS.fr;
 
-  useEffect(() => {
+  function runEval() {
+    setLoading(true);
+    setError(null);
+    setData(null);
     api.eval()
-      .then(res => {
-        setData(res);
-        setLoading(false);
-      })
-      .catch(err => {
-        setError(err.message);
-        setLoading(false);
-      });
-  }, [api]);
+      .then(res => { setData(res); setLoading(false); })
+      .catch(err => { setError(err.message); setLoading(false); });
+  }
+
+  if (!data && !loading && !error) {
+    return (
+      <div className="hist-wrap" dir={ar ? "rtl" : "ltr"} style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24 }}>
+        <button className="ghost-btn" onClick={onBack} style={{ alignSelf: ar ? "flex-end" : "flex-start", padding: "8px 16px", margin: "0 24px" }}>{t.back}</button>
+        <h1 style={{ fontFamily: "var(--f-display)", fontStyle: "italic", textAlign: "center", padding: "0 24px" }}>{t.title}</h1>
+        <p style={{ color: "var(--text-sub)", textAlign: "center", maxWidth: 520, padding: "0 24px" }}>{t.sub}</p>
+        <button className="primary" onClick={runEval} style={{ padding: "12px 32px", fontSize: "1rem" }}>
+          {lang === "ar" ? "تشغيل التقييم" : "Lancer l'évaluation"}
+        </button>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -117,9 +127,14 @@ export default function EvaluationReport({ lang, api, onBack }) {
         
         {/* Header */}
         <div className="page-header" style={{ marginBottom: 40 }}>
-          <button className="ghost-btn" onClick={onBack} style={{ padding: "8px 16px", marginBottom: 16, display: "inline-flex", alignItems: "center", gap: 8 }}>
-            {t.back}
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
+            <button className="ghost-btn" onClick={onBack} style={{ padding: "8px 16px", display: "inline-flex", alignItems: "center", gap: 8 }}>
+              {t.back}
+            </button>
+            <button className="ghost-btn" onClick={runEval} style={{ padding: "8px 16px" }}>
+              {lang === "ar" ? "إعادة التشغيل" : "Re-lancer"}
+            </button>
+          </div>
           <h1 className="hist-title">{t.title}</h1>
           <p className="hist-sub" style={{ color: "var(--text-sub)", marginTop: 6 }}>{t.sub}</p>
         </div>
