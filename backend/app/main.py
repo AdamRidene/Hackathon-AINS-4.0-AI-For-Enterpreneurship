@@ -607,6 +607,75 @@ def delete_project(pid: str, user: dict = Depends(get_current_user)) -> dict:
     return {"deleted": pid}
 
 
+# --------------------------------------------------------------------------- #
+# Milestone completion — triggers re-score when profile mutation applies      #
+# --------------------------------------------------------------------------- #
+TRIGGER_MUTATIONS: dict[str, dict] = {
+    "missing_market_validation": {"market.customer_validation_evidence": True},
+    "missing_legal_form": {"legal_form": "SUARL"},
+    "premature_fundraising": {},
+    "tech_hype": {},
+    "green": {},
+    "scalability": {},
+    "missing_commercial_offer": {},
+}
+
+
+class MilestoneCompleteBody(BaseModel):
+    trigger: str
+
+
+@app.post("/api/project/{pid}/milestone/{mid}/complete")
+async def milestone_complete(
+    pid: str, mid: str, body: MilestoneCompleteBody,
+    user: dict = Depends(get_current_user),
+) -> dict:
+    """Mark a milestone done; apply profile mutations and re-score if applicable."""
+    profile = _require_owned(pid, user)
+    mutations = TRIGGER_MUTATIONS.get(body.trigger, {})
+
+    if mutations:
+        from .schema import LegalForm
+        for path, value in mutations.items():
+            parts = path.split(".")
+            obj = profile
+            for part in parts[:-1]:
+                obj = getattr(obj, part)
+            field_name = parts[-1]
+            # Coerce string values to LegalForm enum when needed
+            if isinstance(value, str):
+                try:
+                    value = LegalForm(value)
+                except (ValueError, TypeError):
+                    pass
+            setattr(obj, field_name, value)
+        profile.updated_at = datetime.now(timezone.utc)
+        store.save(profile)
+
+        result = await run_audit(profile)
+        result_dict = result.to_dict()
+        stage = result.gap.classified_stage
+        store.save_audit(
+            pid=pid, owner_user_id=user["id"],
+            name=profile.name,
+            sector=profile.sector.value if profile.sector else None,
+            stage=int(stage) if stage else None,
+            vector=profile.last_score_vector,
+            audit_dict=result_dict,
+        )
+        store.append_audit_history(
+            pid=pid, owner_user_id=user["id"],
+            stage=int(stage) if stage else None,
+            vector=profile.last_score_vector,
+            audit_dict=result_dict,
+        )
+        new_scores = profile.last_score_vector
+        return {"applied": True, "new_scores": new_scores}
+
+    _logger.info("Milestone %s completed for project %s (no mutation for trigger=%s)", mid, pid, body.trigger)
+    return {"applied": False, "new_scores": None}
+
+
 # Convenience: audit an ad-hoc profile without the intake flow (for demos/tests).
 @app.post("/api/audit")
 async def audit_adhoc(profile: ProjectProfile) -> dict:

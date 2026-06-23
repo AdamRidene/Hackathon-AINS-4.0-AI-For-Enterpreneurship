@@ -259,6 +259,14 @@ async def build_roadmap(
     for gap_cat, label_fr, label_ar, rat_fr, rat_ar in _score_triggers(scores):
         triggers.append((gap_cat, label_fr, label_ar, rat_fr, rat_ar, diagnostic.classified_stage))
 
+    # 2b) Gap-category triggers from GapReport (unmet gates -> retriever routing).
+    if gap and gap.gap_categories:
+        existing_cats = {t[0] for t in triggers}
+        for cat in gap.gap_categories:
+            if cat not in existing_cats:
+                triggers.append((cat, f"Porte manquante: {cat}", f"بوابة ناقصة: {cat}",
+                                  gap.message_fr, gap.message_ar, diagnostic.classified_stage))
+
     # 3) Anomaly-driven triggers — escalate priority for structural inconsistencies.
     if anomalies:
         for anom in anomalies:

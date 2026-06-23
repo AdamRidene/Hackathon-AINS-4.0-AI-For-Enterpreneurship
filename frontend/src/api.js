@@ -133,4 +133,10 @@ export const api = {
   getAuditHistory: (pid) => req(`/api/projects/${pid}/audit-history`),
   deleteProject: (pid) => req(`/api/projects/${pid}`, { method: "DELETE" }),
   eval: () => req("/api/eval"),
+
+  completeMilestone: (pid, mid, trigger) =>
+    req(`/api/project/${pid}/milestone/${mid}/complete`, {
+      method: "POST",
+      body: JSON.stringify({ trigger }),
+    }),
 };

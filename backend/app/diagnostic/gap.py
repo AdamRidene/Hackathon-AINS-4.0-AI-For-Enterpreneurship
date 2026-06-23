@@ -40,6 +40,15 @@ from ..llm import get_llm
 from .classifier import DiagnosticResult, STAGE_NAMES, STAGE_NAMES_AR
 
 
+DOMAIN_TO_GAP_CAT = {
+    "market": "missing_market_validation",
+    "commercial": "missing_commercial_offer",
+    "innovation": "tech_hype",
+    "scalability": "scalability",
+    "green": "green",
+}
+
+
 @dataclass
 class GapReport:
     has_gap: bool
@@ -52,6 +61,7 @@ class GapReport:
     diverging_dimensions: list[dict] = field(default_factory=list)
     message_fr: str = ""
     message_ar: str = ""
+    gap_categories: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -67,6 +77,7 @@ class GapReport:
             "diverging_dimensions": self.diverging_dimensions,
             "message_fr": self.message_fr,
             "message_ar": self.message_ar,
+            "gap_categories": self.gap_categories,
         }
 
 
@@ -121,11 +132,12 @@ def detect_gap(p: ProjectProfile, diag: DiagnosticResult) -> GapReport:
             + "البوابات الناقصة: "
             + ", ".join(d["name_ar"] for d in diverging) + "."
         )
+        gap_cats = list({DOMAIN_TO_GAP_CAT[d["domain"]] for d in diverging if d["domain"] in DOMAIN_TO_GAP_CAT})
         return GapReport(
             has_gap=True, kind="overestimation", declared_stage=declared,
             classified_stage=classified, magnitude=magnitude, severity=severity,
             override_applied=override, diverging_dimensions=diverging, message_fr=msg,
-            message_ar=msg_ar,
+            message_ar=msg_ar, gap_categories=gap_cats,
         )
 
     # Underestimation
@@ -145,11 +157,12 @@ def detect_gap(p: ProjectProfile, diag: DiagnosticResult) -> GapReport:
         "العمل الهيكلي المنجز بالفعل: "
         + ", ".join(d["name_ar"] for d in diverging) + "."
     )
+    gap_cats = list({DOMAIN_TO_GAP_CAT[d["domain"]] for d in diverging if d["domain"] in DOMAIN_TO_GAP_CAT})
     return GapReport(
         has_gap=True, kind="underestimation", declared_stage=declared,
         classified_stage=classified, magnitude=magnitude, severity="mild",
         override_applied=False, diverging_dimensions=diverging, message_fr=msg,
-        message_ar=msg_ar,
+        message_ar=msg_ar, gap_categories=gap_cats,
     )
 
 
