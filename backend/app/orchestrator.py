@@ -18,7 +18,9 @@ Anomaly integration (v2):
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass, field
+from typing import Optional
 
 from .schema import ProjectProfile
 from .intake import IntakeStateMachine
@@ -34,6 +36,8 @@ from .rag.retriever import Retriever
 from .llm import get_llm
 from . import explain
 from . import store
+
+_logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -304,6 +308,147 @@ def _needs_grounding(question: str) -> bool:
     return False
 
 
+_SMALL_TALK = {
+    "hi", "hello", "hey", "bonjour", "bonsoir", "salut", "merci", "thanks",
+    "thank you", "مرحبا", "أهلا", "اهلا", "سلام", "شكرا",
+}
+_DOC_KEYWORDS = {
+    "document", "documents", "doc", "pdf", "fichier", "business plan",
+    "piece jointe", "pièce jointe", "uploaded", "attached", "مستند", "وثيقة",
+}
+
+
+def _is_small_talk(question: str) -> bool:
+    q = question.strip().lower().strip("!?.،؛ ")
+    if not q:
+        return True
+    if q in _SMALL_TALK:
+        return True
+    words = q.split()
+    return len(words) <= 3 and any(w in _SMALL_TALK for w in words)
+
+
+def _asks_about_docs(question: str) -> bool:
+    q = question.lower()
+    return any(kw in q for kw in _DOC_KEYWORDS)
+
+
+def _plan_assistant_tools(question: str) -> list[str]:
+    """Pick the existing engine wrappers the assistant should call."""
+    if _is_small_talk(question):
+        return []
+
+    q = question.lower()
+    tools: list[str] = []
+    if any(k in q for k in ("diagnostic", "stade", "stage", "maturit", "class", "تشخيص")):
+        tools.append("run_classifier")
+    if any(k in q for k in ("score", "marché", "market", "commercial", "innovation", "scalabil", "green", "مؤشر")):
+        tools.append("get_scores")
+    if any(k in q for k in ("écart", "ecart", "gap", "perception", "réalité", "realite", "anomal", "فرق")):
+        tools.append("detect_gap")
+    if any(k in q for k in ("programme", "source", "financement", "kb", "ressource", "apii", "bfpme", "flat6", "تمويل")):
+        tools.append("retrieve_kb")
+    if any(k in q for k in ("roadmap", "feuille", "recommand", "prochaine", "étape", "etape", "action", "parcours", "خطوة")):
+        tools.append("build_roadmap")
+    if _asks_about_docs(question):
+        tools.append("retrieve_documents")
+
+    if not tools and _needs_grounding(question):
+        tools = ["run_classifier", "get_scores", "detect_gap"]
+    return list(dict.fromkeys(tools))
+
+
+async def _audit_dict(profile: ProjectProfile) -> dict:
+    cached = store.get_audit(profile.project_id)
+    if cached:
+        return cached
+    return (await run_audit(profile)).to_dict()
+
+
+def _sources_from_chunks(chunks) -> list[dict]:
+    return [
+        {
+            "institution": c.institution,
+            "title": c.title,
+            "title_ar": c.title_ar,
+            "url": c.url,
+            "citation": c.cite(),
+        }
+        for c in chunks
+    ]
+
+
+async def _run_assistant_tool(
+    tool: str,
+    profile: ProjectProfile,
+    question: str,
+    lang: str,
+    state: dict,
+) -> tuple[str, list[dict]]:
+    if tool == "run_classifier":
+        audit_data = state.get("audit") or await _audit_dict(profile)
+        state["audit"] = audit_data
+        diag = audit_data.get("diagnostic", {})
+        rationale = diag.get("rationale_ar" if lang == "ar" else "rationale_fr", "")
+        return f"Stade objectif: {diag.get('classified_stage_name', 'Inconnu')}. Diagnostic: {rationale}", []
+
+    if tool == "get_scores":
+        audit_data = state.get("audit") or await _audit_dict(profile)
+        state["audit"] = audit_data
+        scores = audit_data.get("scores", {})
+        return f"Scores (M,C,I,S,G): {scores.get('vector', [0, 0, 0, 0, 0])}.", []
+
+    if tool == "detect_gap":
+        audit_data = state.get("audit") or await _audit_dict(profile)
+        state["audit"] = audit_data
+        gap = audit_data.get("perception_reality_gap", {})
+        msg = gap.get("message_ar" if lang == "ar" else "message_fr", "")
+        return f"Écart perception-réalité: {msg}", []
+
+    if tool == "retrieve_kb":
+        audit_data = state.get("audit") or await _audit_dict(profile)
+        state["audit"] = audit_data
+        gap_data = audit_data.get("perception_reality_gap", {})
+        categories = gap_data.get("gap_categories") or ["general"]
+        retriever = Retriever()
+        lines: list[str] = []
+        sources: list[dict] = []
+        for cat in categories[:3]:
+            result = retriever.retrieve(cat, query=question, k=2)
+            if result.chunks:
+                sources.extend(_sources_from_chunks(result.chunks))
+                lines.extend(f"{c.institution}: {c.title}" for c in result.chunks)
+        return "Sources KB: " + " | ".join(lines), sources
+
+    if tool == "build_roadmap":
+        audit_data = state.get("audit") or await _audit_dict(profile)
+        state["audit"] = audit_data
+        roadmap_items = audit_data.get("roadmap", [])[:5]
+        lines = []
+        sources: list[dict] = []
+        for m in roadmap_items:
+            horizon = m.get("horizon_ar") if lang == "ar" else m.get("horizon_fr")
+            timeline = m.get("timeline_ar") if lang == "ar" else m.get("timeline_fr")
+            srcs = ", ".join(dict.fromkeys(
+                s.get("institution", "") for s in m.get("sources", []) if s.get("institution")
+            ))
+            lines.append(f"{m.get('order')}. {m.get('title')} ({horizon}) [{timeline or ''}] — {srcs}")
+            sources.extend(m.get("sources", []))
+        return "Feuille de route: " + " | ".join(lines), sources
+
+    if tool == "retrieve_documents":
+        docs = store.list_documents(profile.project_id)
+        lines: list[str] = []
+        sources: list[dict] = []
+        for d in docs[:5]:
+            preview = d.get("extracted_preview") or "[Contenu vide]"
+            lines.append(f"- {d['filename']}: {preview[:700]}")
+            sources.append({"institution": "Document joint", "title": d["filename"], "citation": d["filename"]})
+        return "Documents joints par l'entrepreneur:\n" + "\n".join(lines), sources
+
+    return "", []
+
+
 async def grounded_assistant_reply(profile: ProjectProfile, question: str, lang: Optional[str] = None) -> dict:
     """Secondary conversational layer — grounded ONLY in structured outputs and uploaded documents.
 
@@ -318,6 +463,49 @@ async def grounded_assistant_reply(profile: ProjectProfile, question: str, lang:
         effective_lang = "fr"
 
     # Skip grounding for small talk / general questions — no project keywords detected
+    trace = ["assistant:start"]
+    tools = _plan_assistant_tools(question)
+    if not tools:
+        trace.append("assistant:no_tool")
+        reply = await get_llm().chat(question, "", lang=effective_lang)
+        return {"reply": reply, "grounding": None, "sources_used": [], "trace": trace}
+
+    def _build_agent_anomalies_context(anomaly_list: list[dict], lang: str = "fr") -> str:
+        if not anomaly_list:
+            return ""
+        ctx = "\n\nIncohérences structurelles détectées:\n"
+        for a in anomaly_list:
+            sev = a.get("severity", "medium").upper()
+            title = a.get("title_fr", "") if lang != "ar" else a.get("title_ar", "")
+            detail = a.get("detail_fr", "") if lang != "ar" else a.get("detail_ar", "")
+            ctx += f"- [{sev}] {title}: {detail[:200]}\n"
+        return ctx
+
+    state: dict = {}
+    context_parts: list[str] = []
+    sources_used: list[dict] = []
+    for tool in tools:
+        trace.append(f"tool:{tool}")
+        part, sources = await _run_assistant_tool(tool, profile, question, effective_lang, state)
+        if part:
+            context_parts.append(part)
+        sources_used.extend(sources)
+
+    audit_data = state.get("audit")
+    if audit_data and audit_data.get("anomalies"):
+        context_parts.append(_build_agent_anomalies_context(audit_data.get("anomalies", []), effective_lang))
+
+    ctx = "\n".join(p for p in context_parts if p)
+    reply = await get_llm().chat(question, ctx, lang=effective_lang)
+    trace.append("assistant:chat")
+    _logger.info("assistant tool trace project=%s trace=%s", profile.project_id, trace)
+    return {
+        "reply": reply,
+        "grounding": ctx if sources_used else None,
+        "sources_used": sources_used,
+        "trace": trace,
+    }
+
     if not _needs_grounding(question):
         reply = await get_llm().chat(question, "", lang=effective_lang)
         return {"reply": reply, "grounding": None, "sources_used": []}

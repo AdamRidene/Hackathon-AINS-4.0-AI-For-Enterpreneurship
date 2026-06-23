@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { api } from "../api.js";
+import GraphMap from "./GraphMap.jsx";
 
 // ---------------------------------------------------------------------------
 // Grounding formatter — parses the compact grounding string into score chips,
@@ -200,13 +201,15 @@ function cleanAssistantText(text) {
   return cleaned;
 }
 
-function BotMessage({ text, grounding, lang }) {
+function BotMessage({ text, grounding, sourcesUsed, trace, lang }) {
   const [showGrounding, setShowGrounding] = useState(false);
   const ar = lang === "ar";
+  const hasSources = Array.isArray(sourcesUsed) && sourcesUsed.length > 0;
   return (
     <div className="chat-msg bot">
       <div style={{ whiteSpace: "pre-line" }}>{text}</div>
-      {grounding && (
+      <GraphMap trace={trace} lang={lang} />
+      {grounding && hasSources && (
         <>
           <div 
             className="grounding-toggle" 
@@ -276,7 +279,7 @@ export default function Assistant({ pid, lang = "fr" }) {
       const res = await api.assistant(pid, question, lang);
       setLog((l) => [
         ...l,
-        { role: "bot", text: cleanAssistantText(res.reply), grounding: res.grounding },
+        { role: "bot", text: cleanAssistantText(res.reply), grounding: res.grounding, sourcesUsed: res.sources_used, trace: res.trace },
       ]);
     } catch (err) {
       setLog((l) => [...l, { role: "bot", text: ar ? `خطأ: ${err.message}` : `Erreur : ${err.message}` }]);
@@ -294,7 +297,7 @@ export default function Assistant({ pid, lang = "fr" }) {
       .then((res) => {
         setLog((l) => [
           ...l,
-          { role: "bot", text: cleanAssistantText(res.reply), grounding: res.grounding },
+          { role: "bot", text: cleanAssistantText(res.reply), grounding: res.grounding, sourcesUsed: res.sources_used, trace: res.trace },
         ]);
       })
       .catch((err) => {
@@ -387,6 +390,8 @@ export default function Assistant({ pid, lang = "fr" }) {
                 key={i} 
                 text={m.text} 
                 grounding={m.grounding} 
+                sourcesUsed={m.sourcesUsed}
+                trace={m.trace}
                 lang={lang} 
               />
             );
