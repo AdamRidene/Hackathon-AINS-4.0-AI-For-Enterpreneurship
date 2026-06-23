@@ -332,12 +332,10 @@ def update_profile(body: ProfileUpdateBody, user: dict = Depends(get_current_use
 # --------------------------------------------------------------------------- #
 @app.post("/api/projects")
 async def create_project(body: CreateProjectBody, user: dict = Depends(get_current_user)) -> dict:
-    limit = store.PLAN_LIMITS[user["plan"]]
-    if store.count_projects_for_owner(user["id"]) >= limit:
-        raise HTTPException(
-            403,
-            f"Project limit reached for plan {user['plan']} ({limit} projects).",
-        )
+    # ponytail: plan gating disabled for demo — re-enable when payments are wired
+    # limit = store.PLAN_LIMITS[user["plan"]]
+    # if store.count_projects_for_owner(user["id"]) >= limit:
+    #     raise HTTPException(403, f"Project limit reached for plan {user['plan']} ({limit} projects).")
     profile = ProjectProfile(
         name=body.name,
         language=body.language,
