@@ -700,7 +700,7 @@ def save_document(
         if _DB_ENABLED:
             with db_session() as conn:
                 conn.execute(
-                    """INSERT INTO project_documents (id, project_id, owner_user_id,
+                    """INSERT OR REPLACE INTO project_documents (id, project_id, owner_user_id,
                        filename, storage_path, extracted_text, uploaded_at)
                        VALUES (?, ?, ?, ?, ?, ?, ?)""",
                     (doc_id, project_id, owner_user_id, filename, storage_path, extracted_text, now),

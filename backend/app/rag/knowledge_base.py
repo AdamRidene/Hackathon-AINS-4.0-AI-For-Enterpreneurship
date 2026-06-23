@@ -181,6 +181,9 @@ class KnowledgeBase:
     def _try_load_sentence_transformers(self) -> None:
         """Load sentence-transformers if available and pre-compute embeddings."""
         try:
+            import logging
+            logging.getLogger("transformers.modeling_utils").setLevel(logging.ERROR)
+            logging.getLogger("transformers").setLevel(logging.ERROR)
             from sentence_transformers import SentenceTransformer
         except ImportError:
             return  # TF-IDF fallback path

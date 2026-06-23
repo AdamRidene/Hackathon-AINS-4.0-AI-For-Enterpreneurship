@@ -63,6 +63,15 @@ function formatGrounding(text) {
       const items = raw.split(/\s*\|\s*/).filter(Boolean);
       roadmapItems = items.map((item, i) => {
         const cleaned = item.replace(/^\d+\.\s*/, "");
+        const timelineMatch = cleaned.match(/^(.*)\s\[(.*)\]\s—\s(.*)$/);
+        if (timelineMatch) {
+          const [, headline, timeline, rest] = timelineMatch;
+          return (
+            <li key={i} style={{ marginBottom: 4, lineHeight: 1.5 }}>
+              {headline} <span style={{ color: "var(--orange)", fontWeight: 700 }}>[{timeline}]</span> — {rest}
+            </li>
+          );
+        }
         return (
           <li key={i} style={{ marginBottom: 4, lineHeight: 1.5 }}>
             {cleaned}
@@ -129,6 +138,52 @@ const TEXTS = {
   }
 };
 
+function cleanAssistantText(text) {
+  if (!text || typeof text !== "string") return "";
+  let cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  const lowered = cleaned.toLowerCase();
+  const markers = [
+    "final answer:",
+    "réponse finale:",
+    "reponse finale:",
+    "answer:",
+    "réponse:",
+    "reponse:",
+  ];
+
+  for (const marker of markers) {
+    const idx = lowered.indexOf(marker);
+    if (idx >= 0) {
+      cleaned = cleaned.slice(idx + marker.length).trim();
+      break;
+    }
+  }
+
+  const reasoningPrefixes = [
+    "here's a thinking process",
+    "here is a thinking process",
+    "thinking process",
+    "reasoning:",
+    "analysis:",
+    "analyse:",
+  ];
+  if (reasoningPrefixes.some((prefix) => lowered.startsWith(prefix))) {
+    const lines = cleaned.split(/\r?\n/).filter((line) => line.trim());
+    const answerIndex = lines.findIndex((line) =>
+      markers.some((marker) => line.toLowerCase().startsWith(marker))
+    );
+    if (answerIndex >= 0) {
+      cleaned = lines.slice(answerIndex).join("\n").trim();
+    } else if (lines.length > 1) {
+      cleaned = lines.slice(1).join("\n").trim();
+    } else {
+      cleaned = "";
+    }
+  }
+
+  return cleaned;
+}
+
 function BotMessage({ text, grounding, lang }) {
   const [showGrounding, setShowGrounding] = useState(false);
   const ar = lang === "ar";
@@ -185,7 +240,7 @@ export default function Assistant({ pid, lang = "fr" }) {
       const res = await api.assistant(pid, question);
       setLog((l) => [
         ...l,
-        { role: "bot", text: res.reply, grounding: res.grounding },
+        { role: "bot", text: cleanAssistantText(res.reply), grounding: res.grounding },
       ]);
     } catch (err) {
       setLog((l) => [...l, { role: "bot", text: ar ? `خطأ: ${err.message}` : `Erreur : ${err.message}` }]);

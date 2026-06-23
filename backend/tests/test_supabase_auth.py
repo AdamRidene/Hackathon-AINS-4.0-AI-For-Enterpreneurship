@@ -123,3 +123,6 @@ class TestHealthEndpoint:
         assert "auth_mode" in data
         assert "llm_provider" in data
         assert "llm_model" in data
+        assert "llm_provider_env" in data
+        assert "llm_configured" in data
+        assert "cohere_embedding_model" in data

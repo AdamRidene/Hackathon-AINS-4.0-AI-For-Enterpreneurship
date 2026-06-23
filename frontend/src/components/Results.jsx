@@ -351,6 +351,7 @@ function RoadmapTab({ audit, pid, lang, T, checked, onToggle, plan, openProfile 
           const key = `${pid}_${m.id}`;
           const done = !!checked[key];
           const horizon = ar ? m.horizon_ar || m.horizon_fr : m.horizon_fr;
+          const timeline = ar ? m.timeline_ar || m.timeline_fr : m.timeline_fr || m.timeline_ar;
           const rat = ar ? m.rationale_ar || m.rationale_fr : m.rationale_fr;
           const action = ar ? m.action_ar || m.action_fr : m.action_fr;
 
@@ -367,6 +368,7 @@ function RoadmapTab({ audit, pid, lang, T, checked, onToggle, plan, openProfile 
                   <span className="ms-title">{m.title}</span>
                   {horizon && <span className="ms-horizon">{horizon}</span>}
                 </div>
+                {timeline && <div className="ms-timeline">{timeline}</div>}
                 {rat && <div className="ms-rationale">{rat}</div>}
                 {action && <div className="ms-action">{action}</div>}
                 {m.sources?.length > 0 && (

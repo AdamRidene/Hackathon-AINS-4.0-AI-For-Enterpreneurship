@@ -132,10 +132,24 @@ def _require_owned(pid: str, user: dict) -> ProjectProfile:
 def health() -> dict:
     kb = get_kb()
     llm = get_llm()
+    llm_env = os.getenv("FIRASA_LLM_PROVIDER") or settings.llm_provider
+    llm_configured = True
+    if llm.name == "openai":
+        llm_configured = bool(settings.openai_api_key)
+    elif llm.name == "groq":
+        llm_configured = bool(settings.groq_api_key)
+    elif llm.name == "huggingface":
+        llm_configured = bool(settings.hf_token)
+    elif llm.name == "deepseek":
+        llm_configured = bool(settings.deepseek_api_key)
+    elif llm.name == "gemini":
+        llm_configured = bool(settings.gemini_api_key)
     model_names = {
         "ollama": settings.llm_model,
         "huggingface": settings.hf_model,
         "openai": settings.openai_model,
+        "groq": settings.groq_model,
+        "deepseek": settings.deepseek_model,
         "gemini": settings.gemini_model,
         "stub": "stub",
     }
@@ -143,9 +157,15 @@ def health() -> dict:
         "status": "ok",
         "version": __version__,
         "auth_mode": settings.auth_mode,
+        "llm_provider_env": llm_env,
         "llm_provider": llm.name,
         "llm_model": model_names.get(llm.name, "unknown"),
+        "llm_configured": llm_configured,
         "kb_resources": len(kb),
+        "kb_embedding_model": kb.meta.get("embedding_model"),
+        "cohere_embedding_model": settings.cohere_embedding_model,
+        "cohere_api_key_set": bool(settings.cohere_api_key or os.getenv("COHERE_API_KEY")),
+        "cohere_embeddings_enabled": kb.meta.get("embedding_model", "").startswith("cohere/"),
     }
 
 
@@ -354,15 +374,22 @@ async def answer(pid: str, body: AnswerBody, user: dict = Depends(get_current_us
     # Only auto-run the full audit pipeline when intake is complete
     # (last question answered, no pending probe). Intermediate answers just
     # update the profile.
+    follow_up = None
     if profile.intake_complete:
-        await _run_owned_audit(pid, user)
+        audit_dict = await _run_owned_audit(pid, user)
+        follow_up = audit_dict.get("follow_up_suggested")
 
-    return {"accepted": True, "next_question": turn["next_question"],
-            "progress": IntakeStateMachine(profile).progress(),
-            "intake_complete": profile.intake_complete,
-            # Per-turn LangGraph node trace, for the frontend "agent decision
-            # timeline" (explainability). e.g. ["answer:name","probe_emitted:..."].
-            "trace": turn["trace"]}
+    response_dict = {
+        "accepted": True, "next_question": turn["next_question"],
+        "progress": IntakeStateMachine(profile).progress(),
+        "intake_complete": profile.intake_complete,
+        # Per-turn LangGraph node trace, for the frontend "agent decision
+        # timeline" (explainability). e.g. ["answer:name","probe_emitted:..."].
+        "trace": turn["trace"],
+    }
+    if follow_up:
+        response_dict["follow_up_suggested"] = follow_up
+    return response_dict
 
 
 # --------------------------------------------------------------------------- #
@@ -399,7 +426,8 @@ async def autofill_apply(pid: str, body: AutofillApplyBody,
     result = apply_autofill(profile, [i.model_dump() for i in body.confirmed])
     store.save(profile)
     if profile.intake_complete:
-        await _run_owned_audit(pid, user)
+        audit_dict = await _run_owned_audit(pid, user)
+        result["follow_up_suggested"] = audit_dict.get("follow_up_suggested")
     return {"accepted": True, **result}
 
 

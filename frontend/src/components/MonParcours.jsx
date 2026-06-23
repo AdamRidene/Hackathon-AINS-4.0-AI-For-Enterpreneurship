@@ -165,6 +165,7 @@ export default function MonParcours({ pid, lang, api, onBack, checkedMilestones 
                 const key = `${pid}_${m.id}`;
                 const done = !!checkedMilestones?.[key];
                 const rat = ar ? m.rationale_ar || m.rationale_fr : m.rationale_fr;
+                const timeline = ar ? m.timeline_ar || m.timeline_fr : m.timeline_fr || m.timeline_ar;
                 return (
                   <div key={i} style={{
                     display: "flex", alignItems: "flex-start", gap: 10,
@@ -185,6 +186,7 @@ export default function MonParcours({ pid, lang, api, onBack, checkedMilestones 
                       <div style={{ fontWeight: 600, fontSize: "0.88rem", textDecoration: done ? "line-through" : "none" }}>
                         {m.title}
                       </div>
+                      {timeline && <div style={{ fontSize: "0.74rem", color: "var(--orange)", marginTop: 2 }}>{timeline}</div>}
                       {rat && <div style={{ fontSize: "0.78rem", color: "var(--text-sub)", marginTop: 2 }}>{rat}</div>}
                     </div>
                   </div>

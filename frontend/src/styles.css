@@ -2181,6 +2181,13 @@ label {
   flex-shrink: 0;
 }
 
+.ms-timeline {
+  font-size: .76rem;
+  color: var(--orange);
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
 .ms-rationale {
   font-size: .82rem;
   color: var(--text-sub);
@@ -4466,4 +4473,4 @@ label {
 .doc-item-delete-btn:hover {
   color: var(--red) !important;
   background: var(--red-soft) !important;
-}
+}
