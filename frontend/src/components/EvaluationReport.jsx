@@ -128,8 +128,8 @@ export default function EvaluationReport({ lang, api, onBack }) {
   // Landing screen
   if (!running && progress === 0 && !error) {
     return (
-      <div className="hist-wrap" dir={ar ? "rtl" : "ltr"} style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24 }}>
-        <button className="ghost-btn" onClick={onBack} style={{ alignSelf: ar ? "flex-end" : "flex-start", padding: "8px 16px", margin: "0 24px" }}>{t.back}</button>
+      <div className="hist-wrap" dir={ar ? "rtl" : "ltr"} style={{ minHeight: "100vh", position: "relative", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24 }}>
+        <button className="ghost-btn" onClick={onBack} style={{ position: "absolute", top: 24, [ar ? "right" : "left"]: 24, padding: "8px 16px" }}>{t.back}</button>
         <h1 style={{ fontFamily: "var(--f-display)", fontStyle: "italic", textAlign: "center", padding: "0 24px" }}>{t.title}</h1>
         <p style={{ color: "var(--text-sub)", textAlign: "center", maxWidth: 520, padding: "0 24px" }}>{t.sub}</p>
         <button className="primary" onClick={runEval} style={{ padding: "12px 32px", fontSize: "1rem" }}>
