@@ -2144,9 +2144,10 @@ label {
   inset: 0;
   z-index: 1200;
   display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: center;
   padding: 24px;
+  overflow-y: auto;
   background: rgba(7, 8, 16, .58);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -2154,9 +2155,9 @@ label {
 }
 
 .score-explanation-content {
-  width: min(520px, calc(100vw - 48px));
-  max-height: min(82vh, 760px);
-  overflow: auto;
+  width: min(920px, calc(100vw - 48px));
+  max-height: none;
+  overflow: visible;
   border-radius: 22px;
   border: 1px solid var(--border-accent);
   background:
@@ -2267,7 +2268,6 @@ label {
 }
 
 .formula-display {
-  overflow-x: auto;
   border-radius: var(--r-md);
   border: 1px solid var(--border);
   background: rgba(0, 0, 0, .22);
@@ -2297,8 +2297,8 @@ label {
 }
 
 .contributions-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -2343,17 +2343,12 @@ label {
   overflow-wrap: anywhere;
 }
 
-[dir="rtl"] .score-explanation-overlay {
-  justify-content: flex-start;
-}
-
 [dir="rtl"] .score-explanation-header {
   flex-direction: row-reverse;
 }
 
 @media (max-width: 720px) {
   .score-explanation-overlay {
-    align-items: flex-end;
     justify-content: center;
     padding: 12px;
   }
@@ -2376,6 +2371,10 @@ label {
 
   .return-button {
     width: 100%;
+  }
+
+  .contributions-list {
+    grid-template-columns: 1fr;
   }
 
   .contribution-header {

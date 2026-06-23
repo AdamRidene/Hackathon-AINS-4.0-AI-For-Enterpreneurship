@@ -1,11 +1,26 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import 'katex/dist/katex.min.css';
-import TeX from 'react-katex';
+import { BlockMath } from 'react-katex';
+
+const FALLBACK_FORMULAS = {
+  Market: String.raw`S_M = w_{M1}\cdot \min\left(\frac{\ln T}{\ln 10^7},1\right)\cdot 100 + w_{M2}\cdot \max(0,100-5C) + w_{M3}\cdot R_{MV}`,
+  'Commercial Offer': String.raw`S_C = w_{C1}\cdot P_{coh} + w_{C2}\cdot R_{MVP}\cdot 100 + w_{C3}\cdot A_{price}`,
+  Innovation: String.raw`S_I = w_{I1}\cdot N_{geo} + w_{I2}\cdot \min\left(\frac{|T_{stack}|}{5},1\right)\cdot 100 + w_{I3}\cdot I_{ip}`,
+  Scalability: String.raw`S_S = w_{S1}\cdot \left(100-\frac{C_{month}}{C_{baseline}}\cdot 100\right) + w_{S2}\cdot \min\left(\frac{|E|}{3},1\right)\cdot 100 + w_{S3}\cdot \frac{10-D_{man}}{10}\cdot 100`,
+  Green: String.raw`S_G = w_{G1}\cdot F_p + w_{G2}\cdot R_c + w_{G3}\cdot \min\left(\frac{|SDG|}{17},1\right)\cdot 100`,
+};
 
 const ScoreExplanationOverlay = ({ score, onClose, lang }) => {
   const overlayRef = useRef(null);
   const returnButtonRef = useRef(null);
   const ar = lang === 'ar';
+  const formulaMath = useMemo(() => {
+    const backendFormula = score?.formula_latex?.trim();
+    if (backendFormula) {
+      return backendFormula;
+    }
+    return FALLBACK_FORMULAS[score?.dimension] || null;
+  }, [score]);
 
   // Focus management for accessibility
   useEffect(() => {
@@ -79,18 +94,18 @@ const ScoreExplanationOverlay = ({ score, onClose, lang }) => {
           )}
         </div>
         
-        {score.anchor_fr && (
-          <div className="score-anchor">
-            <strong>{ar ? 'الإطار المرجعي:' : 'Anchor:'}</strong> {ar ? score.anchor_ar : score.anchor_fr}
-          </div>
-        )}
-
-        {score.formula_latex && (
+        {formulaMath && (
           <div className="score-formula">
             <h3>{ar ? 'الصيغة الرياضية' : 'Mathematical Formula'}</h3>
             <div className="formula-display">
-              <TeX math={score.formula_latex} block />
+              <BlockMath math={formulaMath} />
             </div>
+          </div>
+        )}
+
+        {score.anchor_fr && (
+          <div className="score-anchor">
+            <strong>{ar ? 'الإطار المرجعي:' : 'Anchor:'}</strong> {ar ? score.anchor_ar : score.anchor_fr}
           </div>
         )}
 
