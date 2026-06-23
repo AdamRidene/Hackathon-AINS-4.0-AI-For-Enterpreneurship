@@ -531,6 +531,9 @@ export default function App() {
           onBack={() => setPhase("dashboard")}
           checkedMilestones={checked}
           onToggleMilestone={toggleMilestone}
+          onAuditUpdated={async () => {
+            try { const a = await api.getLastAudit(pid); if (a) setAudit(a); } catch (_) { /* silent */ }
+          }}
         />
       )}
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { api } from "../api.js";
 
 // ---------------------------------------------------------------------------
@@ -68,7 +68,7 @@ function formatGrounding(text) {
           const [, headline, timeline, rest] = timelineMatch;
           return (
             <li key={i} style={{ marginBottom: 4, lineHeight: 1.5 }}>
-              {headline} <span style={{ color: "var(--orange)", fontWeight: 700 }}>[{timeline}]</span> — {rest}
+              {headline} <span style={{ color: "var(--primary-light)", fontWeight: 700 }}>[{timeline}]</span> — {rest}
             </li>
           );
         }
@@ -82,36 +82,32 @@ function formatGrounding(text) {
 
     if (!stade && !ecart && !scoreChips && !roadmapItems) throw new Error("no fields");
 
-    const sectionStyle = { marginBottom: 10 };
-    const labelStyle = { fontWeight: 700, fontSize: "0.78rem", color: "var(--text-sub, rgba(255,255,255,0.55))", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 };
-    const valueStyle = { fontSize: "0.83rem", lineHeight: 1.5 };
-
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         {stade && (
-          <div style={sectionStyle}>
-            <div style={labelStyle}>Stade objectif</div>
-            <div style={valueStyle}>{stade}</div>
+          <div className="grounding-section">
+            <div className="grounding-title-sub">Stade objectif</div>
+            <div className="grounding-value">{stade}</div>
           </div>
         )}
         {ecart && (
-          <div style={sectionStyle}>
-            <div style={labelStyle}>Écart perception / réalité</div>
-            <div style={valueStyle}>{ecart}</div>
+          <div className="grounding-section">
+            <div className="grounding-title-sub">Écart perception / réalité</div>
+            <div className="grounding-value">{ecart}</div>
           </div>
         )}
         {scoreChips && (
-          <div style={sectionStyle}>
-            <div style={labelStyle}>Scores (M / C / I / S / G)</div>
+          <div className="grounding-section">
+            <div className="grounding-title-sub">Scores (M / C / I / S / G)</div>
             <div style={{ display: "flex", flexWrap: "wrap", marginTop: 2 }}>
               {scoreChips}
             </div>
           </div>
         )}
         {roadmapItems && (
-          <div style={sectionStyle}>
-            <div style={labelStyle}>Feuille de route</div>
-            <ol style={{ margin: 0, paddingLeft: 18, fontSize: "0.83rem" }}>
+          <div className="grounding-section">
+            <div className="grounding-title-sub">Feuille de route</div>
+            <ol className="grounding-roadmap">
               {roadmapItems}
             </ol>
           </div>
@@ -125,16 +121,34 @@ function formatGrounding(text) {
 
 const TEXTS = {
   fr: {
-    sub: "Réponses fondées uniquement sur votre audit structuré. Aucune connaissance générale, aucun programme inventé.",
+    title: "Conseiller Firasa",
+    status: "En ligne",
+    sub: "Réponses fondées uniquement sur votre audit structuré.",
     placeholder: "Posez une question sur votre audit...",
     send: "Envoyer",
-    noMsg: "Ex. « Pourquoi mon score Marché est-il plafonné ? » · « Quelle est ma prochaine étape prioritaire ? »",
+    clear: "Effacer la conversation",
+    noMsg: "Comment puis-je vous aider aujourd'hui ?",
+    suggestionsLabel: "Suggestions de questions :",
+    suggestions: [
+      { icon: "fa-solid fa-lightbulb", text: "Pourquoi mon score Marché est-il plafonné ?" },
+      { icon: "fa-solid fa-bullseye", text: "Quelle est ma prochaine étape prioritaire ?" },
+      { icon: "fa-solid fa-chart-line", text: "Que révèle l'écart perception / réalité ?" }
+    ]
   },
   ar: {
-    sub: "إجابات مبنية حصرياً على نتائج تدقيقك الهيكلي. لا معرفة عامة ولا برامج مخترعة.",
+    title: "مستشار فِراسة",
+    status: "متصل",
+    sub: "إجابات مبنية حصرياً على نتائج تدقيقك الهيكلي.",
     placeholder: "اطرح سؤالاً حول تدقيقك...",
     send: "إرسال",
-    noMsg: "أمثلة: « لماذا تم وضع سقف لنتيجة السوق ؟ » · « ما هي خطوتي التالية ذات الأولوية ؟ »",
+    clear: "مسح المحادثة",
+    noMsg: "كيف يمكنني مساعدتك اليوم؟",
+    suggestionsLabel: "اقتراحات الأسئلة:",
+    suggestions: [
+      { icon: "fa-solid fa-lightbulb", text: "لماذا تم وضع سقف لنتيجة السوق ؟" },
+      { icon: "fa-solid fa-bullseye", text: "ما هي خطوتي التالية ذات الأولوية ؟" },
+      { icon: "fa-solid fa-chart-line", text: "ما الذي يظهره فارق الإدراك والواقع ؟" }
+    ]
   }
 };
 
@@ -149,6 +163,8 @@ function cleanAssistantText(text) {
     "answer:",
     "réponse:",
     "reponse:",
+    "reponse finale :",
+    "réponse finale :"
   ];
 
   for (const marker of markers) {
@@ -195,17 +211,26 @@ function BotMessage({ text, grounding, lang }) {
           <div 
             className="grounding-toggle" 
             onClick={() => setShowGrounding(!showGrounding)}
-            style={{ marginTop: 8 }}
           >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transform: showGrounding ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block", marginRight: ar ? 0 : 4, marginLeft: ar ? 4 : 0 }}>
-              <polyline points="9 18 15 12 9 6"/>
-            </svg>
+            <i 
+              className="fa-solid fa-chevron-right" 
+              style={{ 
+                transform: showGrounding ? "rotate(90deg)" : "none", 
+                transition: "transform 0.15s", 
+                marginRight: ar ? 0 : 6, 
+                marginLeft: ar ? 6 : 0, 
+                fontSize: "0.68rem" 
+              }}
+            />
             <span>{ar ? "سياق الإسناد" : "Contexte d'ancrage (Grounding)"}</span>
           </div>
           {showGrounding && (
-            <div className="grounding-box" style={{ marginTop: 6 }}>
-              <div style={{ fontWeight: 700, marginBottom: 4 }}>{ar ? "المعلومات المسترجعة:" : "Données de grounding :"}</div>
-              <div style={{ opacity: 0.85 }}>{formatGrounding(grounding)}</div>
+            <div className="grounding-box">
+              <div style={{ fontWeight: 700, marginBottom: 6, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.04em", display: "flex", alignItems: "center" }}>
+                <i className="fa-solid fa-circle-nodes" style={{ marginRight: ar ? 0 : 6, marginLeft: ar ? 6 : 0, color: "var(--primary-light)" }} />
+                <span>{ar ? "المعلومات المسترجعة:" : "Données de grounding :"}</span>
+              </div>
+              <div>{formatGrounding(grounding)}</div>
             </div>
           )}
         </>
@@ -219,6 +244,7 @@ export default function Assistant({ pid, lang = "fr" }) {
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [docs, setDocs] = useState([]);
+  const logRef = useRef(null);
 
   const t = TEXTS[lang] || TEXTS.fr;
   const ar = lang === "ar";
@@ -229,8 +255,18 @@ export default function Assistant({ pid, lang = "fr" }) {
       .catch(() => {});
   }, [pid]);
 
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [log, busy]);
+
+  const handleClear = () => {
+    setLog([]);
+  };
+
   async function send(e) {
-    e.preventDefault();
+    if (e) e.preventDefault();
     const question = q.trim();
     if (!question || busy) return;
     setQ("");
@@ -249,50 +285,95 @@ export default function Assistant({ pid, lang = "fr" }) {
     }
   }
 
+  const handleSuggestionClick = (suggestionText) => {
+    if (busy) return;
+    setQ("");
+    setLog((l) => [...l, { role: "user", text: suggestionText }]);
+    setBusy(true);
+    api.assistant(pid, suggestionText, lang)
+      .then((res) => {
+        setLog((l) => [
+          ...l,
+          { role: "bot", text: cleanAssistantText(res.reply), grounding: res.grounding },
+        ]);
+      })
+      .catch((err) => {
+        setLog((l) => [...l, { role: "bot", text: ar ? `خطأ: ${err.message}` : `Erreur : ${err.message}` }]);
+      })
+      .finally(() => {
+        setBusy(false);
+      });
+  };
+
   return (
     <div className="advisor-wrap" dir={ar ? "rtl" : "ltr"}>
-      <p style={{ fontSize: "0.84rem", color: "var(--text-sub)", marginBottom: docs.length > 0 ? 10 : 16 }}>
-        {t.sub}
-      </p>
+      {/* Premium Header */}
+      <div className="advisor-header">
+        <div className="advisor-info">
+          <div className="advisor-avatar-container">
+            <i className="fa-solid fa-robot advisor-avatar-icon" style={{ color: "var(--primary-light)" }} />
+            <div className="advisor-status-badge"></div>
+          </div>
+          <div className="advisor-meta">
+            <span className="advisor-title">{t.title}</span>
+            <span className="advisor-status-text">{t.status}</span>
+          </div>
+        </div>
+        <div className="advisor-actions">
+          {log.length > 0 && (
+            <button 
+              className="advisor-btn-clear" 
+              onClick={handleClear} 
+              title={t.clear}
+            >
+              <i className="fa-solid fa-trash-can" />
+            </button>
+          )}
+        </div>
+      </div>
 
+      {/* Active Documents chips */}
       {docs.length > 0 && (
-        <div className="assistant-docs-chips" style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 6,
-          padding: "8px 12px",
-          background: "rgba(74, 123, 247, 0.04)",
-          border: "1px solid var(--border-accent)",
-          borderRadius: "var(--r-md)",
-          marginBottom: 16,
-          alignItems: "center"
-        }}>
-          <span style={{ fontSize: "0.76rem", fontWeight: 700, color: "var(--orange)", display: "flex", alignItems: "center", gap: 4 }}>
-            📚 {ar ? "المستندات النشطة:" : "Documents lus par l'IA :"}
+        <div className="assistant-docs-chips">
+          <span className="assistant-docs-title">
+            <i className="fa-solid fa-book-open" style={{ marginRight: ar ? 0 : 6, marginLeft: ar ? 6 : 0 }} />
+            {ar ? "المستندات النشطة:" : "Documents lus par l'IA :"}
           </span>
           {docs.map(d => (
-            <span key={d.id} style={{
-              fontSize: "0.72rem",
-              background: "rgba(255,255,255,0.03)",
-              border: "1px solid var(--border)",
-              borderRadius: "var(--r-sm)",
-              padding: "2px 8px",
-              color: "var(--text-sub)",
-              display: "inline-flex",
-              alignItems: "center"
-            }}>
+            <span key={d.id} className="assistant-doc-badge">
+              <i className="fa-solid fa-file-lines" style={{ marginRight: ar ? 0 : 4, marginLeft: ar ? 4 : 0, opacity: 0.8 }} />
               {d.filename}
             </span>
           ))}
         </div>
       )}
 
-      <div className="advisor-log">
+      {/* Chat Log */}
+      <div className="advisor-log" ref={logRef}>
         {log.length === 0 && (
-          <div className="muted" style={{ fontSize: "0.85rem", padding: "20px 4px", textAlign: "center" }}>
-            {t.noMsg}
+          <div className="advisor-welcome">
+            <div className="advisor-welcome-icon" style={{ color: "var(--primary-light)" }}>
+              <i className="fa-solid fa-robot" />
+            </div>
+            <div className="advisor-welcome-title">{t.noMsg}</div>
+            <div className="advisor-welcome-sub">{t.sub}</div>
+            
+            <div className="advisor-suggestions-label">{t.suggestionsLabel}</div>
+            <div className="advisor-suggestions-grid">
+              {t.suggestions.map((s, idx) => (
+                <button
+                  key={idx}
+                  className="advisor-suggestion-card"
+                  onClick={() => handleSuggestionClick(s.text)}
+                >
+                  <i className={s.icon}></i>
+                  <span>{s.text}</span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
+        
         {log.map((m, i) => {
           if (m.role === "user") {
             return (
@@ -311,31 +392,35 @@ export default function Assistant({ pid, lang = "fr" }) {
             );
           }
         })}
+        
         {busy && (
           <div className="chat-msg bot">
-            <span className="spinner" style={{ width: 14, height: 14 }} />
+            <div className="typing-indicator">
+              <span className="typing-dot" />
+              <span className="typing-dot" />
+              <span className="typing-dot" />
+            </div>
           </div>
         )}
       </div>
 
-      <form className="advisor-form" onSubmit={send}>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={t.placeholder}
-          style={{
-            padding: "10px 14px",
-            borderRadius: "var(--r-md)",
-            border: "1px solid var(--border)",
-            background: "rgba(255, 255, 255, 0.02)",
-            color: "var(--text)",
-            fontFamily: "var(--f-body)"
-          }}
-        />
-        <button className="primary" disabled={busy} style={{ cursor: "pointer", padding: "10px 20px" }}>
-          {t.send}
-        </button>
-      </form>
+      {/* Form */}
+      <div className="advisor-form-wrap">
+        <form className="advisor-form" onSubmit={send}>
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={t.placeholder}
+          />
+          <button 
+            type="submit" 
+            className="advisor-btn-send" 
+            disabled={busy || !q.trim()}
+          >
+            <i className="fa-solid fa-paper-plane" />
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

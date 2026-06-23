@@ -30,6 +30,7 @@ from .diagnostic.gap import (
 )
 from .scoring.gwlc import score_all, annotate_scores_with_anomalies, CompositeScores
 from .rag.roadmap import build_roadmap, Milestone
+from .rag.retriever import Retriever
 from .llm import get_llm
 from . import explain
 from . import store
@@ -46,9 +47,19 @@ class AuditResult:
     explanations: dict = field(default_factory=dict)
     anomalies: list[dict] = field(default_factory=list)
     score_deltas: dict = field(default_factory=dict)
+    gap_sources: dict = field(default_factory=dict)
     follow_up_suggested: Optional[dict] = None
 
     def to_dict(self) -> dict:
+        # Flatten scores explanations to top level so frontend can access
+        # audit.explanations[dimension].natural_language directly.
+        scores_expl = self.explanations.get("scores", {})
+        flat_explanations = {
+            **scores_expl,
+            "gap": self.explanations.get("gap"),
+            "pcoh_rationale": self.explanations.get("pcoh_rationale"),
+            "diagnostic_rationale": self.explanations.get("diagnostic_rationale"),
+        }
         d = {
             "project_id": self.profile.project_id,
             "project_name": self.profile.name,
@@ -61,7 +72,8 @@ class AuditResult:
             "score_deltas": self.score_deltas,
             "pcoh": round(self.pcoh, 1),
             "roadmap": [m.to_dict() for m in self.roadmap],
-            "explanations": self.explanations,
+            "explanations": flat_explanations,
+            "gap_sources": self.gap_sources,
             "intake_complete": self.profile.intake_complete,
         }
         if self.follow_up_suggested:
@@ -145,11 +157,30 @@ async def run_audit(profile: ProjectProfile) -> AuditResult:
     if profile.intake_complete:
         profile.last_score_vector = list(scores.vector())
 
+    # Fetch top-2 KB resources per gap category for inline display in the
+    # Diagnostic tab (gap → KB cross-module link).
+    gap_sources: dict = {}
+    if gap.gap_categories:
+        _retriever = Retriever()
+        for cat in gap.gap_categories:
+            result = _retriever.retrieve(cat, query=cat, k=2)
+            if result.chunks:
+                gap_sources[cat] = [
+                    {
+                        "institution": c.institution,
+                        "title": c.title,
+                        "title_ar": c.title_ar,
+                        "url": c.url,
+                        "citation": c.cite(),
+                    }
+                    for c in result.chunks
+                ]
+
     return AuditResult(
         profile=profile, diagnostic=diagnostic, gap=gap, scores=scores,
         pcoh=pcoh, roadmap=roadmap, explanations=explanations,
         anomalies=anomalies, score_deltas=score_deltas,
-        follow_up_suggested=follow_up,
+        gap_sources=gap_sources, follow_up_suggested=follow_up,
     )
 
 
