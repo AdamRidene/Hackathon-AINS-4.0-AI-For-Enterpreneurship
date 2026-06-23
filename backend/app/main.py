@@ -89,6 +89,7 @@ class PlanBody(BaseModel):
 
 class ProfileUpdateBody(BaseModel):
     name: str
+    email: Optional[str] = None
     bio: Optional[str] = None
     phone: Optional[str] = None
     role: Optional[str] = None
@@ -314,6 +315,7 @@ def update_profile(body: ProfileUpdateBody, user: dict = Depends(get_current_use
     updated = store.update_user_profile(
         user_id=user["id"],
         name=body.name,
+        email=body.email,
         bio=body.bio,
         phone=body.phone,
         role=body.role,

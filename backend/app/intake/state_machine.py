@@ -23,7 +23,7 @@ from typing import Any, Callable, Optional
 
 from ..schema import (
     ProjectProfile, MaturityStage, MVPStage, PricingFramework, GeoNovelty,
-    IPStatus, FootprintCategory, LegalForm, Sector,
+    IPStatus, FootprintCategory, LegalForm, Sector, MenaCountry,
 )
 
 
@@ -75,6 +75,11 @@ QUESTIONS: list[Question] = [
     Question("sector", "Dans quel secteur opérez-vous ?", "sector", "enum",
              [s.value for s in Sector],
              prompt_ar="في أي قطاع تنشط ؟"),
+    Question("location", "Dans quel pays de la région MENA êtes-vous basé ?", "location", "enum",
+             [c.value for c in MenaCountry],
+             help_fr="Permet de vous orienter vers les programmes d'accompagnement disponibles dans votre pays.",
+             prompt_ar="في أي دولة من منطقة الشرق الأوسط وشمال أفريقيا تتمركز ؟",
+             help_ar="يساعدنا على توجيهك نحو برامج الدعم المتاحة في بلدك."),
     Question("declared_stage", "À quel stade pensez-vous que votre projet se trouve ?",
              "self_assessment.declared_stage", "enum",
              [str(int(s)) for s in MaturityStage],
@@ -187,6 +192,14 @@ QUESTIONS: list[Question] = [
              prompt_ar="ممارسات الاقتصاد الدائري / إعادة التدوير ؟"),
     Question("sdg", "Quels ODD (1-17) visez-vous ?", "green.sdg_targets", "sdg",
              prompt_ar="ما أهداف التنمية المستدامة (1-17) التي تستهدفها ؟"),
+    Question("accompaniment_history",
+             "Avez-vous déjà bénéficié d'un programme d'accompagnement ? Listez-les.",
+             "accompaniment_history", "tags",
+             help_fr="Ex: BFPME, APII, Flat6Labs, Startup Act. Laissez vide si aucun. "
+                     "Évite de vous proposer des programmes déjà suivis.",
+             prompt_ar="هل استفدت من برنامج دعم أو مرافقة مسبقاً ؟ اذكرها.",
+             help_ar="مثال: BFPME، APII، Flat6Labs. اتركه فارغاً إن لم يوجد. "
+                     "يمنع اقتراح برامج سبق الاستفادة منها."),
 
     # --- Team & Organization (gate: Structuration+) ------------------------ #
     Question("team_size", "Combien de co-fondateurs et employés compte votre équipe ?",

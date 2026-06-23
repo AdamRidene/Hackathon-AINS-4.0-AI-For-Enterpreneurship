@@ -249,7 +249,9 @@ class KnowledgeBase:
 
     @staticmethod
     def cosine_dense(a, b) -> float:
-        """Cosine similarity between two dense numpy arrays."""
+        """Cosine similarity between two dense numpy arrays. Returns 0 if either is None."""
+        if a is None or b is None:
+            return 0.0
         import numpy as np
         dot = np.dot(a, b)
         na = np.linalg.norm(a)
