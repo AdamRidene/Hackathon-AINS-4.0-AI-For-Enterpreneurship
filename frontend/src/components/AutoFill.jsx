@@ -12,7 +12,7 @@ const T = {
     upload: "📄 Importer un document",
     uploading: "Téléversement…",
     analyzeExisting: "✨ Analyser un document déjà importé",
-    hint: "Importez un pitch deck / business plan (PDF, MD ou TXT). L'IA pré-remplit le formulaire — vous validez avant d'appliquer.",
+    hint: "Importez un ou plusieurs documents (pitch deck, business plan, CV…) en PDF, MD ou TXT. L'IA pré-remplit le formulaire — vous validez avant d'appliquer.",
     analyzing: "Analyse du document…",
     title: "Champs extraits — vérifiez avant d'appliquer",
     none: "Aucun champ exploitable trouvé. Répondez aux questions manuellement.",
@@ -28,7 +28,7 @@ const T = {
     upload: "📄 تحميل وثيقة",
     uploading: "جارٍ الرفع…",
     analyzeExisting: "✨ تحليل وثيقة محمّلة مسبقاً",
-    hint: "حمّل عرضاً تقديمياً أو خطة عمل (PDF أو MD أو TXT). يملأ الذكاء الاصطناعي النموذج — وتؤكّد قبل التطبيق.",
+    hint: "حمّل وثيقة أو أكثر (عرض تقديمي، خطة عمل، CV…) بصيغة PDF أو MD أو TXT. يملأ الذكاء الاصطناعي النموذج — وتؤكّد قبل التطبيق.",
     analyzing: "تحليل الوثيقة…",
     title: "الحقول المستخرجة — تحقق قبل التطبيق",
     none: "لم يُعثر على حقول قابلة للاستخدام. أجب على الأسئلة يدوياً.",
@@ -51,13 +51,14 @@ export default function AutoFill({ pid, api, lang, onApplied }) {
   const [values, setValues] = useState({});   // qid -> edited value
   const [error, setError] = useState(null);
 
-  async function handleUpload(file) {
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) { setError("Fichier > 10 Mo."); return; }
+  async function handleUpload(files) {
+    if (!files?.length) return;
+    const oversized = Array.from(files).find(f => f.size > 10 * 1024 * 1024);
+    if (oversized) { setError(`Fichier > 10 Mo : ${oversized.name}`); return; }
     setPhase("uploading"); setError(null);
     try {
-      await api.uploadDocument(pid, file);
-      await analyze();           // upload done (text extracted server-side) -> propose
+      for (const file of files) await api.uploadDocument(pid, file);
+      await analyze();
     } catch (err) {
       setError(err.message); setPhase("idle");
     }
@@ -128,9 +129,9 @@ export default function AutoFill({ pid, api, lang, onApplied }) {
           <label htmlFor={inputId} style={{ ...btn, fontWeight: 700, opacity: busy ? 0.6 : 1 }}>
             {phase === "uploading" ? t.uploading : (phase === "loading" ? t.analyzing : t.upload)}
           </label>
-          <input id={inputId} type="file" style={{ display: "none" }} disabled={busy}
+          <input id={inputId} type="file" multiple style={{ display: "none" }} disabled={busy}
             accept=".pdf,.txt,.md,.markdown,text/plain,text/markdown,application/pdf"
-            onChange={(e) => handleUpload(e.target.files[0])} />
+            onChange={(e) => handleUpload(e.target.files)} />
           <button className="ghost" onClick={analyze} disabled={busy}
             style={{ ...btn, opacity: busy ? 0.6 : 1 }}>
             {t.analyzeExisting}
