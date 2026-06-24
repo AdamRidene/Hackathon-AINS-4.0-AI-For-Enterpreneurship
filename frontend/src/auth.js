@@ -174,28 +174,16 @@ export const auth = {
       return { id: "dev-user-001", email: "dev@firasa.local", name: name || "Dev Entrepreneur", plan: "pro" };
     }
     if (_mode === "supabase") {
-      const data = await supabaseRegister(email, password, name);
-      // No session means Supabase sent a confirmation email — gate the app.
-      if (!data.session) {
-        return {
-          id: data.user?.id,
-          email: data.user?.email || email,
-          name: name || email.split("@")[0],
-          plan: "free",
-          pendingEmailConfirmation: true,
-        };
-      }
-      try {
-        const me = await apiReq("/api/auth/me");
-        return me.user;
-      } catch {
-        return {
-          id: data.user?.id,
-          email: data.user?.email,
-          name: name || email.split("@")[0],
-          plan: "free",
-        };
-      }
+      // Use backend admin API — avoids Supabase sending its own confirmation email.
+      // Backend creates the user, generates a token, and sends our custom SMTP email.
+      const res = await apiReq("/api/auth/register", {
+        method: "POST",
+        body: JSON.stringify({ email, password, name }),
+        anonymous: true,
+      });
+      // Keep credentials for auto-login once email is verified (same tab, sessionStorage)
+      sessionStorage.setItem("firasa_pending_creds", JSON.stringify({ email, password }));
+      return res.user; // always has pendingEmailConfirmation: true
     }
     const res = await apiReq("/api/auth/register", {
       method: "POST",
@@ -236,7 +224,10 @@ export const auth = {
 
   async resendConfirmation(email) {
     if (_mode === "supabase") {
-      await supabaseResendConfirmation(email);
+      await apiReq("/api/auth/resend-verification", {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      });
     }
   },
 

@@ -161,7 +161,7 @@ function ArabicWindBackground({ theme }) {
   );
 }
 
-export default function Landing({ lang, setLang, theme, setTheme, health, history, busy, onStart, onViewProject, onViewHistory, user, plan, openProfile }) {
+export default function Landing({ lang, setLang, theme, setTheme, health, history, busy, onStart, onViewProject, onViewHistory, user, plan, openProfile, openAuth }) {
 
   const [projectName, setProjectName] = useState("");
   const ar = lang === "ar";

@@ -91,6 +91,19 @@ class AuthBody(BaseModel):
         return v
 
 
+class DeleteUnverifiedBody(BaseModel):
+    email: str
+
+
+class ConfirmEmailBody(BaseModel):
+    email: str
+    token: str
+
+
+class ResendVerificationBody(BaseModel):
+    email: str
+
+
 class ForgotPasswordBody(BaseModel):
     email: str
 
@@ -271,13 +284,80 @@ def auth_config() -> dict:
 # Auth endpoints (local mode only)                                            #
 # --------------------------------------------------------------------------- #
 @app.post("/api/auth/register")
-def register(body: AuthBody) -> dict:
+async def register(body: AuthBody) -> dict:
     if settings.auth_mode == "none":
-        # In bypass mode, return the mock dev user immediately
         from .auth import _MOCK_USER
         return {"token": "dev-token", "user": dict(_MOCK_USER)}
+
     if settings.is_supabase_auth:
-        raise HTTPException(404, "Registration is managed by Supabase Auth in production mode.")
+        service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        supabase_url = settings.supabase_url
+        if not service_role_key or not supabase_url:
+            raise HTTPException(500, "SUPABASE_SERVICE_ROLE_KEY is not set on the server.")
+
+        clean_email = body.email.strip().lower()
+        display_name = (body.name or "").strip() or clean_email.split("@")[0]
+
+        # Create user via admin API — Supabase does NOT send any confirmation email this way
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.post(
+                f"{supabase_url.rstrip('/')}/auth/v1/admin/users",
+                headers={
+                    "apikey": service_role_key,
+                    "Authorization": f"Bearer {service_role_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "email": clean_email,
+                    "password": body.password,
+                    "email_confirm": False,
+                    "user_metadata": {"full_name": display_name},
+                },
+            )
+
+        if res.status_code in (400, 422):
+            err = res.json() if res.content else {}
+            msg = err.get("msg") or err.get("message") or ""
+            if "already" in msg.lower() or "exists" in msg.lower() or res.status_code == 422:
+                raise HTTPException(409, "Un compte existe déjà avec cet e-mail. / حساب بهذا البريد موجود بالفعل.")
+            raise HTTPException(400, msg or "Données invalides.")
+        if res.status_code not in (200, 201):
+            detail = res.text
+            try:
+                detail = res.json().get("msg") or res.text
+            except Exception:
+                pass
+            raise HTTPException(500, f"Échec de la création du compte: {detail}")
+
+        user_data = res.json()
+        user_id = user_data.get("id")
+
+        # Generate 24-hour verification token and send our own SMTP email
+        token = uuid4().hex
+        VERIFICATION_STORE[clean_email + "_verify"] = {
+            "token": token,
+            "expires_at": time.time() + 86400,
+            "user_id": user_id,
+        }
+
+        app_url = os.getenv("FIRASA_APP_URL", "http://localhost:5173")
+        verify_link = f"{app_url}/verify?token={token}&email={clean_email}"
+        try:
+            send_verification_email_via_smtp(clean_email, display_name, verify_link)
+        except Exception as exc:
+            _logger.warning("Failed to send verification email to %s: %s", clean_email, exc)
+
+        return {
+            "user": {
+                "id": user_id,
+                "email": clean_email,
+                "name": display_name,
+                "plan": "free",
+                "pendingEmailConfirmation": True,
+            }
+        }
+
+    # Local auth mode
     try:
         user = store.create_user(
             body.email,
@@ -310,9 +390,63 @@ def login(body: AuthBody) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# OTP Store & SMTP helper for forgot password                                 #
+# Token stores & SMTP helpers                                                 #
 # --------------------------------------------------------------------------- #
 OTP_STORE: dict[str, dict] = {}
+VERIFICATION_STORE: dict[str, dict] = {}  # keyed by email+"_verify"
+
+
+def send_verification_email_via_smtp(email: str, name: str, verify_link: str) -> None:
+    smtp_user = os.getenv("SMTP_USER")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port_str = os.getenv("SMTP_PORT", "587")
+    try:
+        smtp_port = int(smtp_port_str)
+    except ValueError:
+        smtp_port = 587
+
+    if not smtp_user or not smtp_password:
+        print(f"\n[DEV MODE] Verification link for {email}:\n{verify_link}\n")
+        return
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = "Vérifiez votre compte Firasa / تأكيد حساب فراسة"
+    msg["From"] = f"Firasa <{smtp_user}>"
+    msg["To"] = email
+
+    html_content = f"""
+    <div style="font-family: sans-serif; max-width: 550px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; color: #2d3748;">
+      <div dir="rtl" style="text-align: right; margin-bottom: 24px; border-bottom: 1px solid #edf2f7; padding-bottom: 24px;">
+        <h2 style="color: #1e3a8a; margin-top: 0; font-size: 22px;">تأكيد حساب فراسة</h2>
+        <p style="color: #4a5568; font-size: 15px; margin: 8px 0 16px 0;">مرحباً {name}، انقر على الزر أدناه لتأكيد بريدك الإلكتروني وتفعيل حسابك.</p>
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="{verify_link}" style="display: inline-block; padding: 14px 36px; background: linear-gradient(135deg, #3B82F6, #2563EB); color: #ffffff; text-decoration: none; border-radius: 10px; font-size: 16px; font-weight: 700;">
+            تأكيد حسابي
+          </a>
+        </div>
+        <p style="color: #718096; font-size: 13px; margin: 12px 0 0 0;">إذا لم تقم بإنشاء هذا الحساب، انقر على الزر واختر "لم أكن أنا" لحذف الحساب.</p>
+        <p style="color: #a0aec0; font-size: 12px; margin: 6px 0 0 0;">ينتهي هذا الرابط خلال 24 ساعة.</p>
+      </div>
+      <div style="text-align: left; padding-top: 8px;">
+        <h2 style="color: #1e3a8a; margin-top: 0; font-size: 20px;">Confirmez votre compte Firasa</h2>
+        <p style="color: #4a5568; font-size: 15px; margin: 8px 0 16px 0;">Bonjour {name}, cliquez sur le bouton ci-dessous pour confirmer votre adresse e-mail et activer votre compte.</p>
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="{verify_link}" style="display: inline-block; padding: 14px 36px; background: linear-gradient(135deg, #3B82F6, #2563EB); color: #ffffff; text-decoration: none; border-radius: 10px; font-size: 16px; font-weight: 700;">
+            Vérifier mon compte
+          </a>
+        </div>
+        <p style="color: #718096; font-size: 13px; margin: 12px 0 0 0;">Si vous n'avez pas créé ce compte, cliquez sur le bouton et choisissez « Ce n'était pas moi » pour supprimer le compte.</p>
+        <p style="color: #a0aec0; font-size: 12px; margin: 6px 0 0 0;">Ce lien expire dans 24 heures.</p>
+      </div>
+    </div>
+    """
+    msg.attach(MIMEText(html_content, "html", "utf-8"))
+
+    with smtplib.SMTP(smtp_host, smtp_port) as server:
+        server.starttls()
+        server.login(smtp_user, smtp_password)
+        server.sendmail(smtp_user, email, msg.as_string())
 
 
 def send_reset_otp_via_smtp(email: str, code: str) -> None:
@@ -370,22 +504,42 @@ def send_reset_otp_via_smtp(email: str, code: str) -> None:
 
 async def _user_id_from_supabase_by_email(email: str) -> Optional[str]:
     supabase_url = settings.supabase_url
-    supabase_anon_key = settings.supabase_anon_key
-    if not supabase_url or not supabase_anon_key:
+    if not supabase_url:
         return None
-    auth_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or supabase_anon_key
+    clean = email.strip().lower()
+    service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    anon_key = settings.supabase_anon_key
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            res = await client.get(
-                f"{supabase_url.rstrip('/')}/rest/v1/profiles",
-                params={"email": f"eq.{email.strip().lower()}", "select": "id"},
-                headers={
-                    "apikey": auth_key,
-                    "Authorization": f"Bearer {auth_key}",
-                },
-            )
-            if res.status_code == 200 and res.json():
-                return res.json()[0].get("id")
+            # Try admin API first — searches auth.users (requires service role key)
+            if service_role_key:
+                res = await client.get(
+                    f"{supabase_url.rstrip('/')}/auth/v1/admin/users",
+                    params={"filter": clean, "per_page": 20},
+                    headers={
+                        "apikey": service_role_key,
+                        "Authorization": f"Bearer {service_role_key}",
+                    },
+                )
+                if res.status_code == 200:
+                    data = res.json()
+                    users = data.get("users", [])
+                    for u in users:
+                        if u.get("email", "").lower() == clean:
+                            return u.get("id")
+            # Fallback: query profiles table (works if email column exists there)
+            auth_key = service_role_key or anon_key
+            if auth_key:
+                res = await client.get(
+                    f"{supabase_url.rstrip('/')}/rest/v1/profiles",
+                    params={"email": f"eq.{clean}", "select": "id"},
+                    headers={
+                        "apikey": auth_key,
+                        "Authorization": f"Bearer {auth_key}",
+                    },
+                )
+                if res.status_code == 200 and res.json():
+                    return res.json()[0].get("id")
     except Exception as exc:
         print(f"Error querying Supabase user by email: {exc}")
     return None
@@ -394,13 +548,13 @@ async def _user_id_from_supabase_by_email(email: str) -> Optional[str]:
 @app.post("/api/auth/forgot-password")
 async def forgot_password_endpoint(body: ForgotPasswordBody) -> dict:
     clean_email = body.email.strip().lower()
-    
+
     # 1. Check if user exists in SQLite or Supabase
     user_exists = False
     sqlite_user = store.get_user_by_email(clean_email)
     if sqlite_user:
         user_exists = True
-        
+
     supabase_url = settings.supabase_url
     if supabase_url and not user_exists:
         sb_user_id = await _user_id_from_supabase_by_email(clean_email)
@@ -408,6 +562,11 @@ async def forgot_password_endpoint(body: ForgotPasswordBody) -> dict:
             user_exists = True
 
     if settings.auth_mode == "none":
+        user_exists = True
+
+    # In Supabase mode, always proceed to avoid user enumeration and because
+    # the admin API lookup may fail transiently; the reset step will catch non-existent users.
+    if settings.is_supabase_auth:
         user_exists = True
 
     if not user_exists:
@@ -515,6 +674,145 @@ def logout(
         store.delete_session(token)
     except HTTPException:
         pass
+    return {"ok": True}
+
+
+@app.delete("/api/auth/delete-unverified")
+async def delete_unverified_account(body: DeleteUnverifiedBody) -> dict:
+    """Delete an unverified account when the user clicks 'That wasn't me'."""
+    if not settings.is_supabase_auth:
+        raise HTTPException(404, "Not available in local auth mode")
+
+    service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    supabase_url = settings.supabase_url
+    if not service_role_key or not supabase_url:
+        raise HTTPException(500, "Supabase service role key not configured")
+
+    clean_email = body.email.strip().lower()
+    if not clean_email:
+        raise HTTPException(400, "Email is required")
+
+    sb_user_id = await _user_id_from_supabase_by_email(clean_email)
+    if not sb_user_id:
+        # User doesn't exist — treat as success (idempotent)
+        return {"ok": True}
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        # Fetch user to confirm they are still unverified
+        res = await client.get(
+            f"{supabase_url.rstrip('/')}/auth/v1/admin/users/{sb_user_id}",
+            headers={
+                "apikey": service_role_key,
+                "Authorization": f"Bearer {service_role_key}",
+            },
+        )
+        if res.status_code != 200:
+            raise HTTPException(500, "Failed to fetch user details from Supabase")
+
+        user_data = res.json()
+        if user_data.get("email_confirmed_at"):
+            raise HTTPException(409, "Cannot delete a verified account")
+
+        # Delete the unverified user
+        del_res = await client.delete(
+            f"{supabase_url.rstrip('/')}/auth/v1/admin/users/{sb_user_id}",
+            headers={
+                "apikey": service_role_key,
+                "Authorization": f"Bearer {service_role_key}",
+            },
+        )
+        if del_res.status_code not in (200, 204):
+            raise HTTPException(500, "Failed to delete user from Supabase")
+
+    VERIFICATION_STORE.pop(clean_email + "_verify", None)
+    return {"ok": True}
+
+
+@app.post("/api/auth/confirm-email")
+async def confirm_email(body: ConfirmEmailBody) -> dict:
+    """Confirm a user's email using our custom verification token."""
+    if not settings.is_supabase_auth:
+        raise HTTPException(404, "Not available in local auth mode")
+
+    clean_email = body.email.strip().lower()
+    record = VERIFICATION_STORE.get(clean_email + "_verify")
+
+    if not record:
+        raise HTTPException(400, "Lien invalide ou expiré. Demandez un nouveau lien. / رابط غير صالح أو منتهي الصلاحية.")
+    if time.time() > record["expires_at"]:
+        VERIFICATION_STORE.pop(clean_email + "_verify", None)
+        raise HTTPException(400, "Lien expiré. Demandez un nouveau lien. / انتهت صلاحية الرابط.")
+    if record["token"] != body.token:
+        raise HTTPException(400, "Lien invalide. / رابط غير صالح.")
+
+    service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    supabase_url = settings.supabase_url
+    if not service_role_key or not supabase_url:
+        raise HTTPException(500, "Supabase service role key not configured")
+
+    user_id = record.get("user_id") or await _user_id_from_supabase_by_email(clean_email)
+    if not user_id:
+        raise HTTPException(404, "Utilisateur introuvable. / المستخدم غير موجود.")
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.put(
+            f"{supabase_url.rstrip('/')}/auth/v1/admin/users/{user_id}",
+            headers={
+                "apikey": service_role_key,
+                "Authorization": f"Bearer {service_role_key}",
+                "Content-Type": "application/json",
+            },
+            json={"email_confirm": True},
+        )
+        if res.status_code != 200:
+            raise HTTPException(500, "Échec de la confirmation de l'e-mail.")
+
+    VERIFICATION_STORE.pop(clean_email + "_verify", None)
+    return {"ok": True}
+
+
+@app.post("/api/auth/resend-verification")
+async def resend_verification(body: ResendVerificationBody) -> dict:
+    """Resend the custom verification email."""
+    if not settings.is_supabase_auth:
+        raise HTTPException(404, "Not available in local auth mode")
+
+    clean_email = body.email.strip().lower()
+    record = VERIFICATION_STORE.get(clean_email + "_verify")
+    if not record:
+        raise HTTPException(400, "No pending verification for this email.")
+
+    user_id = record.get("user_id")
+    display_name = clean_email.split("@")[0]
+
+    service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    supabase_url = settings.supabase_url
+    if service_role_key and supabase_url and user_id:
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                res = await client.get(
+                    f"{supabase_url.rstrip('/')}/auth/v1/admin/users/{user_id}",
+                    headers={"apikey": service_role_key, "Authorization": f"Bearer {service_role_key}"},
+                )
+                if res.status_code == 200:
+                    display_name = res.json().get("user_metadata", {}).get("full_name", display_name)
+        except Exception:
+            pass
+
+    new_token = uuid4().hex
+    VERIFICATION_STORE[clean_email + "_verify"] = {
+        "token": new_token,
+        "expires_at": time.time() + 86400,
+        "user_id": user_id,
+    }
+
+    app_url = os.getenv("FIRASA_APP_URL", "http://localhost:5173")
+    verify_link = f"{app_url}/verify?token={new_token}&email={clean_email}"
+    try:
+        send_verification_email_via_smtp(clean_email, display_name, verify_link)
+    except Exception as exc:
+        raise HTTPException(500, f"Failed to send verification email: {str(exc)}")
+
     return {"ok": True}
 
 

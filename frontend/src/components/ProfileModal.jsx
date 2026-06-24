@@ -78,6 +78,15 @@ const TEXTS = {
     submitReset: "Enregistrer le mot de passe",
     passwordMismatch: "Les mots de passe ne correspondent pas.",
     passwordUpdated: "Votre mot de passe a été mis à jour avec succès !",
+    passwordMinLength: "Au moins 8 caractères",
+    passwordUppercase: "Au moins une lettre majuscule",
+    passwordLowercase: "Au moins une lettre minuscule",
+    passwordNumber: "Au moins un chiffre",
+    passwordSpecial: "Au moins un caractère spécial (ex. @, #, $, !)",
+    passwordWeak: "Faible",
+    passwordMedium: "Moyen",
+    passwordStrong: "Fort",
+    passwordValidationError: "Le mot de passe ne respecte pas les critères de sécurité.",
   },
   ar: {
     title: "فضاء رائد الأعمال",
@@ -152,6 +161,15 @@ const TEXTS = {
     submitReset: "حفظ كلمة المرور",
     passwordMismatch: "كلمتا المرور غير متطابقتين.",
     passwordUpdated: "تم تحديث كلمة المرور بنجاح!",
+    passwordMinLength: "8 أحرف على الأقل",
+    passwordUppercase: "حرف كبير واحد على الأقل",
+    passwordLowercase: "حرف صغير واحد على الأقل",
+    passwordNumber: "رقم واحد على الأقل",
+    passwordSpecial: "رمز خاص واحد على الأقل (مثل @، #، $، !)",
+    passwordWeak: "ضعيف",
+    passwordMedium: "متوسط",
+    passwordStrong: "قوي",
+    passwordValidationError: "كلمة المرور لا تستوفي معايير الأمان المطلوبة.",
   }
 };
 
@@ -172,9 +190,21 @@ const PRESET_AVATARS = [
   { emoji: "🌱", labelFr: "Sarah (Agri)", labelAr: "سارة (زراعة)" }
 ];
 
-export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout, plan, onUpgrade, history, lang, onResume, api, theme, setTheme }) {
+function getPasswordStrength(pwd) {
+  const criteria = {
+    length: pwd.length >= 8,
+    lowercase: /[a-z]/.test(pwd),
+    uppercase: /[A-Z]/.test(pwd),
+    number: /[0-9]/.test(pwd),
+    special: /[^a-zA-Z0-9]/.test(pwd),
+  };
+  const score = Object.values(criteria).filter(Boolean).length;
+  return { criteria, score };
+}
+
+export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout, plan, onUpgrade, history, lang, onResume, api, theme, setTheme, initialAuthMode = "login" }) {
   const [activeTab, setActiveTab] = useState(() => plan === "free" ? "pricing" : "projects");
-  const [authMode, setAuthMode] = useState("login"); // login | register | forgot | forgot-otp | reset-password
+  const [authMode, setAuthMode] = useState(initialAuthMode); // login | register | forgot | forgot-otp | reset-password
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState(null);
 
@@ -197,7 +227,7 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
   useEffect(() => {
     if (isOpen && !user) {
       setAnimState("loading");
-      setAuthMode("login");
+      setAuthMode(initialAuthMode);
       const timer1 = setTimeout(() => {
         setAnimState("transitioning");
       }, 2200);
@@ -211,7 +241,7 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
     } else {
       setAnimState("revealed");
     }
-  }, [isOpen, user]);
+  }, [isOpen, user, initialAuthMode]);
 
   useEffect(() => {
     if (authMode !== "forgot-otp" || timer <= 0) return;
@@ -295,6 +325,23 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
     }
   };
 
+  const handleForgotOtpPaste = (e) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+    if (!pasted) return;
+    setOtpError(false);
+    setForgotOtpSuccess(false);
+    setAuthError(null);
+    const newOtp = ["", "", "", "", "", ""];
+    for (let i = 0; i < pasted.length; i++) newOtp[i] = pasted[i];
+    setForgotOtp(newOtp);
+    const fullCode = newOtp.join("");
+    setForgotOtpCode(fullCode);
+    const lastFilled = Math.min(pasted.length, 5);
+    forgotInputRefs.current[lastFilled]?.focus();
+    if (pasted.length === 6) triggerVerifyForgotOtp(fullCode);
+  };
+
   const triggerVerifyForgotOtp = async (codeToVerify) => {
     if (verifyingRef.current) return;
     if (!codeToVerify || codeToVerify.length < 6) return;
@@ -312,6 +359,9 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
       setForgotCode(codeToVerify.trim());
       setForgotOtpSuccess(true);
       setTimeout(() => {
+        setPassword("");
+        setConfirmPassword("");
+        setAuthError(null);
         setAuthMode("reset-password");
         setForgotOtpSuccess(false);
         verifyingRef.current = false;
@@ -432,6 +482,13 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
   async function handleSubmitAuth(e) {
     e.preventDefault();
     if (!email.trim() || !password.trim()) return;
+    if (authMode === "register") {
+      const { score } = getPasswordStrength(password);
+      if (score < 5) {
+        setAuthError(t.passwordValidationError);
+        return;
+      }
+    }
     setAuthBusy(true);
     setAuthError(null);
     try {
@@ -506,7 +563,7 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
 
   return (
     <div className="modal-overlay" onClick={onClose} dir={ar ? "rtl" : "ltr"}>
-      <div className="modal-container" onClick={e => e.stopPropagation()} style={{ maxWidth: isAuthView ? 480 : (activeTab === "edit" ? 600 : 750), maxHeight: isAuthView ? "none" : "85vh" }}>
+      <div className="modal-container" onClick={e => e.stopPropagation()} style={{ maxWidth: isAuthView ? 460 : (activeTab === "edit" ? 600 : 750), maxHeight: isAuthView ? "fit-content" : "85vh", overflow: isAuthView ? "visible" : "hidden" }}>
         
         {/* Header */}
         <div className="modal-header" style={{ padding: "12px 20px" }}>
@@ -602,7 +659,7 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
           ) : (
             <>
               {!user ? (
-                <div className="modal-auth-container" style={{ position: "relative", height: "520px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                <div className="modal-auth-container" style={{ position: "relative", minHeight: "380px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
                   {animState !== "revealed" && (
                     <div style={{
                       display: "flex",
@@ -638,7 +695,7 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                       flexDirection: "column",
                       height: "100%",
                       width: "100%",
-                      padding: "20px 10px 10px 10px"
+                      padding: "16px 0 8px 0"
                     }}>
                       {/* Logo & Title */}
                       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: authMode === "register" ? "10px" : "20px" }}>
@@ -695,6 +752,55 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                               onChange={e => setPassword(e.target.value)} 
                               required 
                             />
+                            {authMode === "register" && password.length > 0 && (
+                              <div className="password-criteria-wrap">
+                                <div className="password-strength-container">
+                                  <span className="password-strength-label">
+                                    {ar ? "قوة كلمة المرور:" : "Force :"}
+                                  </span>
+                                  <div className="password-strength-bar-bg">
+                                    <div 
+                                      className={`password-strength-bar-fill ${
+                                        getPasswordStrength(password).score <= 2 ? "weak" :
+                                        getPasswordStrength(password).score <= 4 ? "medium" : "strong"
+                                      }`}
+                                      style={{ width: `${(getPasswordStrength(password).score / 5) * 100}%` }}
+                                    />
+                                  </div>
+                                  <span className={`password-strength-text ${
+                                    getPasswordStrength(password).score <= 2 ? "weak" :
+                                    getPasswordStrength(password).score <= 4 ? "medium" : "strong"
+                                  }`}>
+                                    {
+                                      getPasswordStrength(password).score <= 2 ? t.passwordWeak :
+                                      getPasswordStrength(password).score <= 4 ? t.passwordMedium : t.passwordStrong
+                                    }
+                                  </span>
+                                </div>
+                                <div className="password-criteria-list">
+                                  <div className={`password-criterion ${password.length >= 8 ? "valid" : ""}`}>
+                                    <span className="password-criterion-icon">{password.length >= 8 ? "✓" : "○"}</span>
+                                    <span>{t.passwordMinLength}</span>
+                                  </div>
+                                  <div className={`password-criterion ${/[A-Z]/.test(password) ? "valid" : ""}`}>
+                                    <span className="password-criterion-icon">{/[A-Z]/.test(password) ? "✓" : "○"}</span>
+                                    <span>{t.passwordUppercase}</span>
+                                  </div>
+                                  <div className={`password-criterion ${/[a-z]/.test(password) ? "valid" : ""}`}>
+                                    <span className="password-criterion-icon">{/[a-z]/.test(password) ? "✓" : "○"}</span>
+                                    <span>{t.passwordLowercase}</span>
+                                  </div>
+                                  <div className={`password-criterion ${/[0-9]/.test(password) ? "valid" : ""}`}>
+                                    <span className="password-criterion-icon">{/[0-9]/.test(password) ? "✓" : "○"}</span>
+                                    <span>{t.passwordNumber}</span>
+                                  </div>
+                                  <div className={`password-criterion ${/[^a-zA-Z0-9]/.test(password) ? "valid" : ""}`}>
+                                    <span className="password-criterion-icon">{/[^a-zA-Z0-9]/.test(password) ? "✓" : "○"}</span>
+                                    <span>{t.passwordSpecial}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                             {authMode === "login" && (
                               <div style={{ textAlign: ar ? "left" : "right", marginTop: "4px" }}>
                                 <span
@@ -715,7 +821,7 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                               </div>
                             )}
                           </div>
-                          <button type="submit" className="primary" style={{ marginTop: 4, padding: "8px 16px", height: "36px", fontSize: "0.88rem", display: "flex", alignItems: "center", justifyContent: "center" }} disabled={authBusy}>
+                          <button type="submit" className="primary" style={{ marginTop: 6, width: "100%", minHeight: 48, display: "flex", alignItems: "center", justifyContent: "center" }} disabled={authBusy}>
                             {authBusy ? t.loadingPay : (authMode === "register" ? t.submitRegister : t.submitLogin)}
                           </button>
 
@@ -723,12 +829,12 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                             <span>{ar ? "أو" : "ou"}</span>
                           </div>
 
-                          <button className="google-btn" type="button">
+                          <button className="google-btn" type="button" style={{ width: "100%" }}>
                             <svg width="18" height="18" viewBox="0 0 24 24">
                               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
                               <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
                               <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05" />
-                              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 2.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
                             </svg>
                             <span>{ar ? "تسجيل الدخول باستخدام Google" : "Se connecter avec Google"}</span>
                           </button>
@@ -744,30 +850,31 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                       )}
 
                       {authMode === "forgot" && (
-                        <form className="auth-form" onSubmit={handleForgotPassword} style={{ gap: "16px", display: "flex", flexDirection: "column" }}>
+                        <form className="auth-form" onSubmit={handleForgotPassword} style={{ gap: "20px", display: "flex", flexDirection: "column", alignItems: "stretch", width: "100%", padding: "8px 0" }}>
                           {authError && <div className="error-banner">{authError}</div>}
                           <div className="form-group">
-                            <label>{t.email}</label>
-                            <input 
-                              type="email" 
-                              placeholder="entrepreneur@firasa.tn" 
-                              value={email} 
-                              onChange={e => setEmail(e.target.value)} 
-                              required 
+                            <label style={{ fontSize: "0.86rem", fontWeight: 600 }}>{t.email}</label>
+                            <input
+                              type="email"
+                              placeholder="entrepreneur@firasa.tn"
+                              value={email}
+                              onChange={e => setEmail(e.target.value)}
+                              required
                               disabled={authBusy}
+                              style={{ padding: "14px 18px", fontSize: "1rem" }}
                             />
                           </div>
-                          <button type="submit" className="primary" style={{ marginTop: 8 }} disabled={authBusy}>
+                          <button type="submit" className="primary" style={{ width: "100%", height: "48px", fontSize: "0.95rem" }} disabled={authBusy}>
                             {authBusy ? t.loadingPay : t.sendOtp}
                           </button>
-                          <div style={{ textAlign: "center", marginTop: "16px" }}>
+                          <div style={{ textAlign: "center" }}>
                             <span
                               onClick={() => {
                                 setAuthError(null);
                                 setAuthMode("login");
                               }}
                               style={{
-                                fontSize: "0.82rem",
+                                fontSize: "0.84rem",
                                 color: "var(--orange)",
                                 cursor: "pointer",
                                 textDecoration: "underline",
@@ -796,6 +903,7 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                                   value={digit}
                                   onChange={(e) => handleForgotOtpChange(e.target.value, i)}
                                   onKeyDown={(e) => handleForgotOtpKeyDown(e, i)}
+                                  onPaste={handleForgotOtpPaste}
                                   className={`otp-digit-box ${digit ? "filled" : ""}`}
                                   style={{
                                     pointerEvents: "auto",

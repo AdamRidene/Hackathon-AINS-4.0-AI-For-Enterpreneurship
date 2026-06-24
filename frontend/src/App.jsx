@@ -101,6 +101,7 @@ export default function App() {
   const [pendingEmailConfirmation, setPendingEmailConfirmation] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [authModalInitMode, setAuthModalInitMode] = useState("login");
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [toast, setToast] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState(null); // { title, message, confirmLabel, cancelLabel, variant, onConfirm }
@@ -197,6 +198,20 @@ export default function App() {
 
       // DEV ONLY: auto-create mock user for local development
       await autoLogin();
+
+      // If redirected back from /verify after email confirmation, open login modal
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get("verified") === "true") {
+        setToast({
+          message: lang === "ar"
+            ? "تم التحقق من بريدك الإلكتروني! يرجى تسجيل الدخول."
+            : "E-mail vérifié ! Connectez-vous pour accéder à votre compte.",
+          type: "success",
+        });
+        setAuthModalInitMode("login");
+        setShowProfileModal(true);
+        window.history.replaceState({}, "", "/");
+      }
 
       // Restore view from URL path after auth resolves (deep-link support)
       const { phase: urlPhase, pid: urlPid } = pathToState(window.location.pathname);
@@ -447,10 +462,16 @@ export default function App() {
 
   function openProfilePage() {
     if (!user) {
+      setAuthModalInitMode("login");
       setShowProfileModal(true);
       return;
     }
     setPhase("profile");
+  }
+
+  function openAuth(mode = "login") {
+    setAuthModalInitMode(mode);
+    setShowProfileModal(true);
   }
 
   function closeProfilePage() {
@@ -479,6 +500,32 @@ export default function App() {
           lang={lang}
           user={user}
           onLogout={handleLogout}
+          onVerified={async () => {
+            setPendingEmailConfirmation(false);
+            const credsRaw = sessionStorage.getItem("firasa_pending_creds");
+            if (credsRaw) {
+              try {
+                const creds = JSON.parse(credsRaw);
+                sessionStorage.removeItem("firasa_pending_creds");
+                const loggedInUser = await auth.login(creds);
+                if (loggedInUser) {
+                  handleAuthUser(loggedInUser);
+                  setToast({
+                    message: lang === "ar"
+                      ? "مرحباً! تم التحقق من حسابك وتسجيل دخولك."
+                      : "Bienvenue ! Votre compte est vérifié et vous êtes connecté.",
+                    type: "success",
+                  });
+                  return;
+                }
+              } catch {
+                // Fall through to login modal
+              }
+            }
+            setUser(null);
+            setAuthModalInitMode("login");
+            setShowProfileModal(true);
+          }}
         />
       )}
 
@@ -491,7 +538,7 @@ export default function App() {
           user={user}
           plan={plan}
           openProfile={openProfilePage}
-          openAuth={() => setShowProfileModal(true)}
+          openAuth={openAuth}
           onLogout={handleLogout}
           openHistory={openHistory}
           health={health}
@@ -520,6 +567,7 @@ export default function App() {
           user={user}
           plan={plan}
           openProfile={openProfilePage}
+          openAuth={openAuth}
           health={health}
           history={history}
           busy={busy}
@@ -649,6 +697,7 @@ export default function App() {
         api={api}
         theme={theme}
         setTheme={setTheme}
+        initialAuthMode={authModalInitMode}
       />}
 
       {!pendingEmailConfirmation && showLimitModal && (
