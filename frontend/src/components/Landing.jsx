@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { SECTOR_LABELS } from "../constants.js";
+import { api } from "../api.js";
 
 function ArabicWindBackground({ theme }) {
   const canvasRef = useRef(null);
@@ -164,9 +165,32 @@ function ArabicWindBackground({ theme }) {
 export default function Landing({ lang, setLang, theme, setTheme, health, history, busy, onStart, onViewProject, onViewHistory, user, plan, openProfile, openAuth }) {
 
   const [projectName, setProjectName] = useState("");
+  const [visibleCount, setVisibleCount] = useState(3);
+  const [news, setNews] = useState([]);
+  const [loadingNews, setLoadingNews] = useState(false);
+
   const ar = lang === "ar";
   const t  = TEXTS[lang] || TEXTS.fr;
   const canStart = !busy && health?.status !== "down";
+
+  useEffect(() => {
+    let active = true;
+    async function loadNews() {
+      setLoadingNews(true);
+      try {
+        const res = await api.news(lang);
+        if (active) setNews(res || []);
+      } catch (err) {
+        console.error("Failed to load news:", err);
+      } finally {
+        if (active) setLoadingNews(false);
+      }
+    }
+    loadNews();
+    return () => { active = false; };
+  }, [lang]);
+
+  const displayedNews = news.slice(0, visibleCount);
 
   return (
     <div className="landing-wrap" dir={ar ? "rtl" : "ltr"}>
@@ -238,10 +262,60 @@ export default function Landing({ lang, setLang, theme, setTheme, health, histor
             </div>
           </div>
         )}
+
+        {/* ── News Section ── */}
+        <section className="news-section">
+          <h2 className="news-heading">{t.newsTitle}</h2>
+          <div className="news-grid">
+            {loadingNews ? (
+              Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="news-card skeleton" style={{ minHeight: "320px", opacity: 0.6 }}>
+                  <div className="news-image-wrapper skeleton-box" style={{ height: "200px", background: "rgba(255,255,255,0.05)" }} />
+                  <div className="news-content" style={{ display: "flex", flexDirection: "column", gap: "12px", padding: "24px" }}>
+                    <div className="skeleton-line" style={{ height: "20px", width: "80%", background: "rgba(255,255,255,0.05)", borderRadius: "4px" }} />
+                    <div className="skeleton-line" style={{ height: "14px", width: "95%", background: "rgba(255,255,255,0.05)", borderRadius: "4px" }} />
+                    <div className="skeleton-line" style={{ height: "14px", width: "60%", background: "rgba(255,255,255,0.05)", borderRadius: "4px" }} />
+                  </div>
+                </div>
+              ))
+            ) : (
+              displayedNews.map((item) => (
+                <a
+                  key={item.id}
+                  href={item.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="news-card"
+                >
+                  <div className="news-image-wrapper">
+                    <img src={item.image} alt={item.title} className="news-image" loading="lazy" />
+                    <span className="news-badge">{item.category}</span>
+                  </div>
+                  <div className="news-content">
+                    <h3 className="news-title">{item.title}</h3>
+                    <p className="news-desc">{item.desc}</p>
+                  </div>
+                </a>
+              ))
+            )}
+          </div>
+          {!loadingNews && visibleCount < news.length && (
+            <div className="news-more-wrap">
+              <button
+                type="button"
+                className="ghost news-more-btn"
+                onClick={() => setVisibleCount(prev => prev + 3)}
+              >
+                {t.seeMore}
+              </button>
+            </div>
+          )}
+        </section>
       </main>
     </div>
   );
 }
+
 
 const TEXTS = {
   fr: {
@@ -255,6 +329,8 @@ const TEXTS = {
     cta: "Démarrer l'audit →",
     recent: "Reprendre un audit",
     historyBtn: "Historique",
+    newsTitle: "Actualités & Ressources pour Entrepreneurs",
+    seeMore: "Voir plus d'actualités",
   },
   ar: {
     brandTitle: "فِراسة", brandSub: "محرّك التوجيه الريادي",
@@ -267,5 +343,7 @@ const TEXTS = {
     cta: "← بدء التدقيق",
     recent: "استئناف تدقيق",
     historyBtn: "السجل",
+    newsTitle: "أخبار وموارد لرواد الأعمال",
+    seeMore: "عرض المزيد من الأخبار",
   },
 };

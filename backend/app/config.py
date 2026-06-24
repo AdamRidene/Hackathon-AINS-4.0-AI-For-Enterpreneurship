@@ -25,6 +25,9 @@ class Settings(BaseSettings):
 
     # Auth
     auth_mode: Literal["local", "supabase", "none"] = "local"
+    newsapi_key: str = Field(
+        "", validation_alias=AliasChoices("FIRASA_NEWSAPI_KEY", "NEWSAPI_KEY")
+    )
     supabase_url: str = Field(
         "", validation_alias=AliasChoices("FIRASA_SUPABASE_URL", "SUPABASE_URL")
     )

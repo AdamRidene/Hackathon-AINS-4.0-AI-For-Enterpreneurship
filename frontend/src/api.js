@@ -167,4 +167,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ trigger }),
     }),
+
+  news: (lang = "fr") => req(`/api/news?lang=${lang}`),
 };
