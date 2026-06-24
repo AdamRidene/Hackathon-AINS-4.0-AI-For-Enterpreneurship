@@ -8,56 +8,142 @@ The frontend discovers the active mode via GET /api/auth/config.
 """
 from __future__ import annotations
 
+import base64
 import os
 import re
+import time
 from typing import Optional
 
 from fastapi import Header, HTTPException
-from jose import jwt, JWTError
+from jose import jwt, JWTError, jwk
 from jose.exceptions import ExpiredSignatureError
 
 from .config import settings
 from . import store
 
 
+# ── JWKS cache ─────────────────────────────────────────────────────────────────
+
+_jwks_cache: dict = {"keys": [], "expires_at": 0.0}
+
+
+def _fetch_jwks() -> list[dict]:
+    """Fetch the JWKS (JSON Web Key Set) from Supabase's public endpoint.
+
+    Supabase Cloud now defaults to ES256 (ECDSA) for signing JWTs instead of
+    the older HS256 (HMAC).  The public keys are published at:
+      https://<project>.supabase.co/auth/v1/.well-known/jwks.json
+    """
+    now = time.time()
+    if _jwks_cache["keys"] and now < _jwks_cache["expires_at"]:
+        return _jwks_cache["keys"]
+
+    supabase_url = settings.supabase_url
+    if not supabase_url:
+        return []
+
+    import httpx
+
+    try:
+        resp = httpx.get(
+            f"{supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json",
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            keys = resp.json().get("keys", [])
+            _jwks_cache["keys"] = keys
+            _jwks_cache["expires_at"] = now + 3600  # cache 1 hour
+            return keys
+    except Exception as exc:
+        print(f"DEBUG: Failed to fetch Supabase JWKS: {exc}")
+
+    return _jwks_cache["keys"]  # return stale cache on error
+
+
 # ── Supabase JWT validation ────────────────────────────────────────────────────
+
 
 def _get_auth_mode() -> str:
     """Read auth mode from settings."""
     return settings.auth_mode
 
 
+_HMAC_ALGS = ("HS256", "HS384", "HS512")
+
+
 def _validate_supabase_jwt(token: str) -> dict:
     """Validate a Supabase-issued JWT and return the decoded payload.
 
-    Uses the symmetric HMAC secret for fast offline validation.
+    Tries multiple strategies in order:
+      1. Symmetric HMAC with the raw JWT secret string (older Supabase projects).
+      2. Symmetric HMAC with base64-decoded JWT secret bytes.
+      3. Asymmetric verification via JWKS (Supabase Cloud ES256 default).
     """
     jwt_secret = settings.supabase_jwt_secret
 
-    if not jwt_secret:
-        raise HTTPException(
-            500,
-            "FIRASA_SUPABASE_JWT_SECRET is not set. "
-            "Get it from Supabase Dashboard → Project Settings → API → JWT Secret.",
-        )
+    # ── Strategy 1 & 2: symmetric HMAC ──
+    if jwt_secret:
+        secrets_to_try = [jwt_secret]
+        try:
+            secrets_to_try.append(base64.b64decode(jwt_secret))
+        except Exception:
+            pass
 
+        for key in secrets_to_try:
+            for alg in _HMAC_ALGS:
+                try:
+                    payload = jwt.decode(
+                        token,
+                        key,
+                        algorithms=[alg],
+                        options={"verify_aud": False},
+                    )
+                    print(f"DEBUG: JWT validated with HMAC-{alg}")
+                    return payload
+                except (ExpiredSignatureError, JWTError):
+                    continue
+
+    # ── Strategy 3: asymmetric via JWKS (ES256 / RS256 / …) ──
     try:
-        payload = jwt.decode(
-            token,
-            jwt_secret,
-            algorithms=["HS256", "RS256"],  # Allow RS256 as well just in case
-            options={"verify_aud": False},  # Supabase JWTs don't always encode audience
-        )
-        return payload
+        header = jwt.get_unverified_header(token)
+        kid = header.get("kid")
+        alg = header.get("alg", "")
+        print(f"DEBUG: JWT header alg={alg} kid={kid}")
+
+        if kid and alg.startswith(("ES", "RS")):
+            keys = _fetch_jwks()
+            for key_data in keys:
+                if key_data.get("kid") == kid:
+                    constructed = jwk.construct(key_data)
+                    payload = jwt.decode(
+                        token,
+                        constructed,
+                        algorithms=[alg],
+                        options={"verify_aud": False},
+                    )
+                    print(f"DEBUG: JWT validated with JWKS {alg}")
+                    return payload
     except ExpiredSignatureError:
         raise HTTPException(401, "Session expired. Please sign in again.")
     except JWTError as e:
-        try:
-            header = jwt.get_unverified_header(token)
-            print(f"DEBUG: JWT Error: {e}, Header: {header}")
-        except Exception as he:
-            print(f"DEBUG: JWT Error: {e}, Failed to get header: {he}")
         raise HTTPException(401, f"Invalid authentication token: {str(e)}")
+    except Exception as exc:
+        print(f"DEBUG: JWKS verification error: {exc}")
+
+    # ── No method worked ──
+    try:
+        hdr = jwt.get_unverified_header(token)
+        print(f"DEBUG: JWT validation exhausted. Header alg={hdr.get('alg')} kid={hdr.get('kid')}")
+    except Exception:
+        pass
+
+    raise HTTPException(
+        401,
+        "Invalid authentication token. The JWT signing algorithm may have changed "
+        "(Supabase Cloud recently switched to ES256). "
+        "Ensure FIRASA_SUPABASE_JWT_SECRET is correct, or if using the new ES256 "
+        "default the backend will auto-fetch public keys via JWKS.",
+    )
 
 
 def _get_or_create_supabase_user(payload: dict) -> dict:
@@ -72,13 +158,22 @@ def _get_or_create_supabase_user(payload: dict) -> dict:
         raise HTTPException(401, "Invalid token: missing 'sub' claim")
 
     email = payload.get("email", "")
+    metadata = payload.get("user_metadata", {}) or {}
     name = (
-        payload.get("user_metadata", {}).get("full_name")
-        or payload.get("user_metadata", {}).get("name")
+        metadata.get("full_name")
+        or metadata.get("name")
         or email.split("@")[0]
     )
+    photo = (
+        metadata.get("avatar_url")
+        or metadata.get("picture")
+        or payload.get("picture")
+        or None
+    )
 
-    user = store.get_or_create_supabase_user(sub=sub, email=email, name=name)
+    user = store.get_or_create_supabase_user(
+        sub=sub, email=email, name=name, photo=photo,
+    )
     return user
 
 

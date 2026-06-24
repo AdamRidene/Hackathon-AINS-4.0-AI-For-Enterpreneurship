@@ -84,21 +84,32 @@ export default function Topbar({ lang, setLang, theme, setTheme, user, plan, ope
         ) : (
           /* Authenticated: profile dropdown */
           <div style={{ display: "flex", alignItems: "center", gap: "8px", position: "relative" }}>
-            <button className="profile-btn" onClick={toggleMenu} aria-haspopup="true" aria-expanded={menuOpen}>
-              <div className="profile-avatar">
-                {user.photo ? (
-                  user.photo.startsWith("http") || user.photo.startsWith("/") ? (
-                    <img src={user.photo} alt="" />
-                  ) : (
-                    <span style={{ fontSize: "1.1rem" }}>{user.photo}</span>
-                  )
+            <button
+              className="profile-btn"
+              onClick={toggleMenu}
+              aria-haspopup="true"
+              aria-expanded={menuOpen}
+              style={{
+                width: 36, height: 36, borderRadius: "50%", padding: 0, border: "2px solid var(--border)",
+                background: "transparent", cursor: "pointer", overflow: "hidden", position: "relative",
+                transition: "border-color 0.15s, box-shadow 0.15s",
+                boxShadow: menuOpen ? "0 0 0 3px rgba(59,130,246,0.35)" : "none",
+              }}
+              onMouseEnter={e => { if (!menuOpen) e.currentTarget.style.borderColor = "var(--text-sub)"; }}
+              onMouseLeave={e => { if (!menuOpen) e.currentTarget.style.borderColor = "var(--border)"; }}
+            >
+              {user.photo ? (
+                user.photo.startsWith("http") || user.photo.startsWith("/") ? (
+                  <img src={user.photo} alt="" referrerPolicy="no-referrer" crossOrigin="anonymous" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                 ) : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M20 21a8 8 0 0 0-16 0" />
-                    <circle cx="12" cy="8" r="4" />
-                  </svg>
-                )}
-              </div>
+                  <span style={{ fontSize: "1.2rem", lineHeight: "36px", display: "block", textAlign: "center" }}>{user.photo}</span>
+                )
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", color: "var(--text-sub)" }}>
+                  <path d="M20 21a8 8 0 0 0-16 0" />
+                  <circle cx="12" cy="8" r="4" />
+                </svg>
+              )}
             </button>
             <span className={`plan-badge ${plan}`} style={{ position: "static" }}>
               {plan === "free" ? (ar ? "مجاني" : "Gratuit") : plan === "plus" ? (ar ? "بلس" : "Plus") : (ar ? "برو" : "Pro")}
@@ -106,22 +117,32 @@ export default function Topbar({ lang, setLang, theme, setTheme, user, plan, ope
 
             {menuOpen && (
               <div className={`profile-menu ${ar ? "rtl" : ""}`} role="menu">
-                <div className="profile-menu-header" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", flexDirection: ar ? "row-reverse" : "row" }}>
-                  <div className="profile-avatar" style={{ width: "26px", height: "26px", fontSize: "0.7rem", flexShrink: 0, boxShadow: "0 0 8px rgba(74, 123, 247, 0.3)" }}>
+                <div className="profile-menu-header" style={{
+                  display: "flex", alignItems: "center", gap: "12px", padding: "12px 16px",
+                  flexDirection: ar ? "row-reverse" : "row", borderBottom: "1px solid var(--border)",
+                }}>
+                  <div style={{
+                    width: 38, height: 38, borderRadius: "50%", overflow: "hidden", flexShrink: 0,
+                    background: "rgba(255,255,255,0.04)", display: "grid", placeItems: "center",
+                    border: "1px solid var(--border)", boxShadow: "0 0 8px rgba(59,130,246,0.2)",
+                  }}>
                     {user.photo ? (
                       user.photo.startsWith("http") || user.photo.startsWith("/") ? (
-                        <img src={user.photo} alt="" />
+                        <img src={user.photo} alt="" referrerPolicy="no-referrer" crossOrigin="anonymous" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                       ) : (
-                        <span>{user.photo}</span>
+                        <span style={{ fontSize: "1.2rem" }}>{user.photo}</span>
                       )
                     ) : (
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text-sub)" }}>
                         <path d="M20 21a8 8 0 0 0-16 0" />
                         <circle cx="12" cy="8" r="4" />
                       </svg>
                     )}
                   </div>
-                  <span className="profile-menu-name" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="profile-menu-name" style={{ fontWeight: 600, fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name}</div>
+                    <div style={{ fontSize: "0.72rem", color: "var(--text-sub)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.email || ""}</div>
+                  </div>
                 </div>
                 <button className="profile-menu-item" onClick={() => { setMenuOpen(false); openProfile(); }}>
                   <span className="menu-icon" aria-hidden>

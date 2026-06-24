@@ -491,7 +491,7 @@ def create_user(
     return user
 
 
-def get_or_create_supabase_user(sub: str, email: str, name: str) -> dict:
+def get_or_create_supabase_user(sub: str, email: str, name: str, photo: str | None = None) -> dict:
     now = datetime.now(timezone.utc).isoformat()
     email_norm = _normalise_email(email) if email else ""
     name_clean = (name or email_norm.split("@")[0] if email_norm else "Entrepreneur").strip()
@@ -499,10 +499,10 @@ def get_or_create_supabase_user(sub: str, email: str, name: str) -> dict:
         if _DB_ENABLED:
             with db_session() as conn:
                 conn.execute(
-                    """INSERT INTO users (id, email, name, password_hash, plan, created_at)
-                       VALUES (?, ?, ?, NULL, 'free', ?)
-                       ON CONFLICT(id) DO UPDATE SET email = excluded.email, name = excluded.name""",
-                    (sub, email_norm, name_clean, now),
+                    """INSERT INTO users (id, email, name, password_hash, plan, created_at, photo)
+                       VALUES (?, ?, ?, NULL, 'free', ?, ?)
+                       ON CONFLICT(id) DO UPDATE SET email = excluded.email, name = excluded.name, photo = COALESCE(excluded.photo, users.photo)""",
+                    (sub, email_norm, name_clean, now, photo),
                 )
                 row = conn.execute("SELECT * FROM users WHERE id = ?", (sub,)).fetchone()
             return _user_from_row(row)
@@ -510,12 +510,14 @@ def get_or_create_supabase_user(sub: str, email: str, name: str) -> dict:
             if sub in _mem_users:
                 _mem_users[sub]["email"] = email_norm
                 _mem_users[sub]["name"] = name_clean
+                if photo:
+                    _mem_users[sub]["photo"] = photo
             else:
                 _mem_users[sub] = {
                     "id": sub, "email": email_norm, "name": name_clean,
                     "plan": "free", "created_at": now, "password_hash": None,
                     "bio": None, "phone": None, "role": None, "company": None,
-                    "photo": None, "birth_date": None, "location": None,
+                    "photo": photo, "birth_date": None, "location": None,
                 }
             return dict(_mem_users[sub])
 

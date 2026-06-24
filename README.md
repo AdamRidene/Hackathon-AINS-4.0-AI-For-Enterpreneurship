@@ -35,7 +35,7 @@ Frontend, from `frontend/`:
 
 ```
 npm install
-npm run dev                            # serves http://localhost:5173, proxies /api -> :8000
+npm run dev                            # serves http://localhost:5174, proxies /api -> :8000
 ```
 
 Open the frontend, name a project, walk the adaptive intake, and read the audit. A "Audit now" action is also available mid-intake to demonstrate that the engine is robust to partial data.

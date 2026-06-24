@@ -196,10 +196,12 @@ export default function App() {
         console.log("[AUTH DEBUG] onAuthStateChange event=", event, "session_user=", session?.user?.email ?? null, "handled=", sessionHandled);
         if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session?.user && !sessionHandled) {
           sessionHandled = true;
+          const meta = session.user.user_metadata || {};
           const fallback = {
             id: session.user.id,
             email: session.user.email,
-            name: session.user.user_metadata?.full_name || session.user.email?.split("@")[0],
+            name: meta.full_name || meta.name || session.user.email?.split("@")[0],
+            photo: meta.avatar_url || meta.picture || session.user.picture || null,
             plan: "free",
           };
           console.log("[AUTH DEBUG] session found, calling /api/auth/me with token prefix=", session.access_token?.slice(0, 20));

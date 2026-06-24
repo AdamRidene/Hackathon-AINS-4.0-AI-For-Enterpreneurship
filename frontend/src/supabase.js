@@ -29,6 +29,9 @@ export async function initSupabase() {
     try {
       const { createClient } = await import("@supabase/supabase-js");
 
+      console.log("[SUPABASE] capturedUrl=", _capturedUrl);
+      console.log("[SUPABASE] capturedCode=", _capturedCode, "capturedHash=", _capturedHash?.slice(0, 50));
+
       if (_capturedCode) {
         // OAuth PKCE redirect: disable auto-detection so we can explicitly await
         // the code exchange (Supabase's background exchange fires SIGNED_IN too
@@ -39,15 +42,32 @@ export async function initSupabase() {
         if (error) {
           console.error("[SUPABASE] exchangeCodeForSession error:", error.message);
         } else {
-          console.log("[SUPABASE] exchange OK, user:", data?.user?.email);
-          // Clean the code out of the URL bar
+          console.log("[SUPABASE] exchange OK, user:", data?.user?.email, "session:", data?.session?.access_token?.slice(0, 20));
           window.history.replaceState({}, "", window.location.pathname);
         }
       } else if (_capturedHash.includes("access_token")) {
-        // Implicit flow fallback: let Supabase handle it normally
-        client = createClient(url, key);
+        // Implicit flow (hash fragment) — explicitly parse tokens and call
+        // setSession() instead of relying on the SDK's auto-detection, which
+        // can be missed in the React StrictMode double-effect cycle.
+        console.log("[SUPABASE] hash with access_token detected, manually setting session");
+        client = createClient(url, key, { auth: { detectSessionInUrl: false } });
+        const hashParams = new URLSearchParams(_capturedHash.replace(/^#/, ""));
+        const sessionTokens = {
+          access_token: hashParams.get("access_token"),
+          refresh_token: hashParams.get("refresh_token"),
+        };
+        if (sessionTokens.access_token) {
+          const { data, error } = await client.auth.setSession(sessionTokens);
+          if (error) {
+            console.error("[SUPABASE] setSession error:", error.message);
+          } else {
+            console.log("[SUPABASE] setSession OK, user:", data?.user?.email);
+            window.history.replaceState({}, "", window.location.pathname);
+          }
+        }
       } else {
         // Normal startup – no OAuth redirect in progress
+        console.log("[SUPABASE] no OAuth params in URL, checking stored session...");
         client = createClient(url, key);
       }
 

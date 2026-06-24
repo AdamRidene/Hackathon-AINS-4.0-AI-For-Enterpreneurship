@@ -44,7 +44,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 _ORIGINS = (
-    os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000")
+    os.getenv("CORS_ORIGINS", "http://localhost:5174,http://localhost:3000")
     .split(",")
 )
 app.add_middleware(
@@ -340,7 +340,7 @@ async def register(body: AuthBody) -> dict:
             "user_id": user_id,
         }
 
-        app_url = os.getenv("FIRASA_APP_URL", "http://localhost:5173")
+        app_url = os.getenv("FIRASA_APP_URL", "http://localhost:5174")
         verify_link = f"{app_url}/verify?token={token}&email={clean_email}"
         try:
             send_verification_email_via_smtp(clean_email, display_name, verify_link)
@@ -806,7 +806,7 @@ async def resend_verification(body: ResendVerificationBody) -> dict:
         "user_id": user_id,
     }
 
-    app_url = os.getenv("FIRASA_APP_URL", "http://localhost:5173")
+    app_url = os.getenv("FIRASA_APP_URL", "http://localhost:5174")
     verify_link = f"{app_url}/verify?token={new_token}&email={clean_email}"
     try:
         send_verification_email_via_smtp(clean_email, display_name, verify_link)

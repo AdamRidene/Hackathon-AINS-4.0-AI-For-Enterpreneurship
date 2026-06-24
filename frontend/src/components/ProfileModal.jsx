@@ -1101,7 +1101,7 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                         <div style={{ display: "flex", alignItems: "center", gap: "12px", flex: 1 }}>
                           {user.photo ? (
                             user.photo.startsWith("http") || user.photo.startsWith("/") ? (
-                              <img src={user.photo} alt={user.name} style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: "2px solid var(--orange-border)" }} />
+                              <img src={user.photo} alt={user.name} referrerPolicy="no-referrer" crossOrigin="anonymous" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: "2px solid var(--orange-border)" }} />
                             ) : (
                               <span style={{ fontSize: "2.4rem", lineHeight: 1 }}>{user.photo}</span>
                             )
