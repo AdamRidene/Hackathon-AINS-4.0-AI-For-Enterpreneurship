@@ -646,7 +646,7 @@ export default function ProjectDashboard({
   const [answering, setAnswering] = useState(false);
 
   const ar = lang === "ar";
-  const t = TEXTS[lang];
+  const t = TEXTS[lang] || TEXTS.fr;
   const dir = ar ? "rtl" : "ltr";
 
   function initialQuestionValue(q) {

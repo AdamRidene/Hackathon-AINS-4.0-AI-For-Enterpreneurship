@@ -165,7 +165,7 @@ export default function Landing({ lang, setLang, theme, setTheme, health, histor
 
   const [projectName, setProjectName] = useState("");
   const ar = lang === "ar";
-  const t  = TEXTS[lang];
+  const t  = TEXTS[lang] || TEXTS.fr;
   const canStart = !busy && health?.status !== "down";
 
   return (
@@ -174,11 +174,6 @@ export default function Landing({ lang, setLang, theme, setTheme, health, histor
 
       {/* ── Hero ── */}
       <main className="landing-hero">
-        <div className="landing-eyebrow">
-          <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><circle cx="4" cy="4" r="4"/></svg>
-          {t.eyebrow}
-        </div>
-
         <h1 className="landing-headline">
           {t.headline1}<br /><em>{t.headline2}</em>
         </h1>

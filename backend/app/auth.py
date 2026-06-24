@@ -45,13 +45,18 @@ def _validate_supabase_jwt(token: str) -> dict:
         payload = jwt.decode(
             token,
             jwt_secret,
-            algorithms=["HS256"],
+            algorithms=["HS256", "RS256"],  # Allow RS256 as well just in case
             options={"verify_aud": False},  # Supabase JWTs don't always encode audience
         )
         return payload
     except ExpiredSignatureError:
         raise HTTPException(401, "Session expired. Please sign in again.")
     except JWTError as e:
+        try:
+            header = jwt.get_unverified_header(token)
+            print(f"DEBUG: JWT Error: {e}, Header: {header}")
+        except Exception as he:
+            print(f"DEBUG: JWT Error: {e}, Failed to get header: {he}")
         raise HTTPException(401, f"Invalid authentication token: {str(e)}")
 
 

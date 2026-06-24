@@ -74,7 +74,7 @@ class ErrorBoundary extends Component {
 export default function App() {
   /* ── Global state ── */
   const [phase,  setPhase]  = useState("start");   // start | intake | processing | audit | history | dashboard | profile | eval
-  const [lang,   setLang]   = useState(() => localStorage.getItem("firasa_lang") || "fr");
+  const [lang,   setLang]   = useState(() => { const stored = localStorage.getItem("firasa_lang"); return (stored === "fr" || stored === "ar") ? stored : "fr"; });
   const [health, setHealth] = useState(null);
   const [error,  setError]  = useState(null);
 
@@ -491,6 +491,9 @@ export default function App() {
           user={user}
           plan={plan}
           openProfile={openProfilePage}
+          openAuth={() => setShowProfileModal(true)}
+          onLogout={handleLogout}
+          openHistory={openHistory}
           health={health}
           onLogoClick={restart}
           onHome={restart}
@@ -644,6 +647,8 @@ export default function App() {
         lang={lang}
         onResume={handleResume}
         api={api}
+        theme={theme}
+        setTheme={setTheme}
       />}
 
       {!pendingEmailConfirmation && showLimitModal && (
