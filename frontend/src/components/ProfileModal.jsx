@@ -220,9 +220,23 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
   const [timer, setTimer] = useState(120);
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isResetSuccess, setIsResetSuccess] = useState(false);
+  const [dots, setDots] = useState(".");
 
   const forgotInputRefs = useRef([]);
   const verifyingRef = useRef(false);
+
+  useEffect(() => {
+    if (animState !== "revealed") {
+      const interval = setInterval(() => {
+        setDots((prev) => {
+          if (prev === ".") return "..";
+          if (prev === "..") return "...";
+          return ".";
+        });
+      }, 500);
+      return () => clearInterval(interval);
+    }
+  }, [animState]);
 
   useEffect(() => {
     if (isOpen && !user) {
@@ -675,18 +689,8 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                       <div style={{ width: "160px", height: "160px", marginBottom: "20px", marginTop: "-40px" }}>
                         <Rive src={logoRiv} style={{ width: "100%", height: "100%" }} />
                       </div>
-                      <h3 style={{ 
-                        margin: 0, 
-                        fontFamily: "var(--f-display)", 
-                        fontStyle: "italic", 
-                        fontSize: "1.6rem", 
-                        fontWeight: 700,
-                        color: "var(--text)"
-                      }}>
-                        {ar ? "الدخول إلى فراسة" : "Accéder à Firasa"}
-                      </h3>
                       <p style={{ marginTop: "8px", fontSize: "0.9rem", color: "var(--text-sub)" }}>
-                        {ar ? "جاري التحميل..." : "Chargement..."}
+                        {ar ? `جاري التحميل${dots}` : `Chargement${dots}`}
                       </p>
                     </div>
                   )}
