@@ -2,6 +2,12 @@
 from __future__ import annotations
 
 import asyncio
+import time
+import random
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+import httpx
 from datetime import datetime, timezone
 import logging
 import os
@@ -83,6 +89,21 @@ class AuthBody(BaseModel):
         if len(v) < 6:
             raise ValueError("Password must be at least 6 characters")
         return v
+
+
+class ForgotPasswordBody(BaseModel):
+    email: str
+
+
+class VerifyForgotOtpBody(BaseModel):
+    email: str
+    code: str
+
+
+class ResetPasswordCustomBody(BaseModel):
+    email: str
+    code: str
+    password: str
 
 
 class PlanBody(BaseModel):
@@ -286,6 +307,199 @@ def login(body: AuthBody) -> dict:
         raise HTTPException(401, "Invalid email or password")
     token = store.create_session(user["id"])
     return {"token": token, "user": _public_user(user)}
+
+
+# --------------------------------------------------------------------------- #
+# OTP Store & SMTP helper for forgot password                                 #
+# --------------------------------------------------------------------------- #
+OTP_STORE: dict[str, dict] = {}
+
+
+def send_reset_otp_via_smtp(email: str, code: str) -> None:
+    smtp_user = os.getenv("SMTP_USER")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port_str = os.getenv("SMTP_PORT", "587")
+    try:
+        smtp_port = int(smtp_port_str)
+    except ValueError:
+        smtp_port = 587
+
+    # If SMTP credentials are not set, output OTP to console for local testing
+    if not smtp_user or not smtp_password:
+        print(f"\n[DEV MODE] Reset OTP generated for {email}: {code}\n")
+        return
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = "Votre code de réinitialisation Firasa / رمز إعادة تعيين كلمة المرور فراسة"
+    msg["From"] = f"Firasa <{smtp_user}>"
+    msg["To"] = email
+
+    html_content = f"""
+    <div style="font-family: sans-serif; max-width: 550px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; color: #2d3748;">
+      <div dir="rtl" style="text-align: right; margin-bottom: 24px; border-bottom: 1px solid #edf2f7; padding-bottom: 24px;">
+        <h2 style="color: #1e3a8a; margin-top: 0; font-size: 22px;">إعادة تعيين كلمة المرور - فراسة</h2>
+        <p style="color: #4a5568; font-size: 15px; margin: 8px 0 16px 0;">لقد تلقينا طلباً لإعادة تعيين كلمة المرور الخاصة بك. إليك رمز التأكيد الخاص بك:</p>
+        <div style="text-align: center; margin: 16px 0;">
+          <span style="font-size: 34px; font-weight: bold; color: #3B82F6; letter-spacing: 6px; padding: 12px 24px; background-color: #f7fafc; border: 1px dashed #3B82F6; border-radius: 8px; display: inline-block; direction: ltr;">
+            {code}
+          </span>
+        </div>
+        <p style="color: #718096; font-size: 13px; margin: 8px 0 0 0;">تنتهي صلاحية هذا الرمز خلال دقيقتين.</p>
+      </div>
+      <div style="text-align: left; padding-top: 8px;">
+        <h2 style="color: #1e3a8a; margin-top: 0; font-size: 20px;">Réinitialisation de mot de passe - Firasa</h2>
+        <p style="color: #4a5568; font-size: 15px; margin: 8px 0 16px 0;">Nous avons reçu une demande de réinitialisation de votre mot de passe. Voici votre code de confirmation :</p>
+        <div style="text-align: center; margin: 16px 0;">
+          <span style="font-size: 34px; font-weight: bold; color: #3B82F6; letter-spacing: 6px; padding: 12px 24px; background-color: #f7fafc; border: 1px dashed #3B82F6; border-radius: 8px; display: inline-block;">
+            {code}
+          </span>
+        </div>
+        <p style="color: #718096; font-size: 13px; margin: 8px 0 0 0;">Ce code expire dans 2 minutes.</p>
+      </div>
+    </div>
+    """
+    msg.attach(MIMEText(html_content, "html", "utf-8"))
+
+    # Connect and send via SMTP
+    with smtplib.SMTP(smtp_host, smtp_port) as server:
+        server.starttls()
+        server.login(smtp_user, smtp_password)
+        server.sendmail(smtp_user, email, msg.as_string())
+
+
+async def _user_id_from_supabase_by_email(email: str) -> Optional[str]:
+    supabase_url = settings.supabase_url
+    supabase_anon_key = settings.supabase_anon_key
+    if not supabase_url or not supabase_anon_key:
+        return None
+    auth_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or supabase_anon_key
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get(
+                f"{supabase_url.rstrip('/')}/rest/v1/profiles",
+                params={"email": f"eq.{email.strip().lower()}", "select": "id"},
+                headers={
+                    "apikey": auth_key,
+                    "Authorization": f"Bearer {auth_key}",
+                },
+            )
+            if res.status_code == 200 and res.json():
+                return res.json()[0].get("id")
+    except Exception as exc:
+        print(f"Error querying Supabase user by email: {exc}")
+    return None
+
+
+@app.post("/api/auth/forgot-password")
+async def forgot_password_endpoint(body: ForgotPasswordBody) -> dict:
+    clean_email = body.email.strip().lower()
+    
+    # 1. Check if user exists in SQLite or Supabase
+    user_exists = False
+    sqlite_user = store.get_user_by_email(clean_email)
+    if sqlite_user:
+        user_exists = True
+        
+    supabase_url = settings.supabase_url
+    if supabase_url and not user_exists:
+        sb_user_id = await _user_id_from_supabase_by_email(clean_email)
+        if sb_user_id:
+            user_exists = True
+
+    if settings.auth_mode == "none":
+        user_exists = True
+
+    if not user_exists:
+        raise HTTPException(404, "User not found / Utilisateur introuvable")
+
+    # 2. Generate 6-digit verification code
+    code = f"{random.randint(100000, 999999)}"
+    OTP_STORE[clean_email + "_reset"] = {
+        "code": code,
+        "expires_at": time.time() + 120,
+    }
+
+    # 3. Send email using SMTP
+    try:
+        send_reset_otp_via_smtp(clean_email, code)
+    except Exception as exc:
+        raise HTTPException(500, f"Failed to send reset email: {str(exc)}")
+
+    return {"ok": True}
+
+
+@app.post("/api/auth/verify-forgot-otp")
+def verify_forgot_otp_endpoint(body: VerifyForgotOtpBody) -> dict:
+    clean_email = body.email.strip().lower()
+    record = OTP_STORE.get(clean_email + "_reset")
+    if not record:
+        raise HTTPException(400, "No reset code generated / Pas de code de réinitialisation généré")
+    if time.time() > record["expires_at"]:
+        raise HTTPException(400, "Code expired / Code expiré")
+    if record["code"] != body.code:
+        raise HTTPException(400, "Invalid code / Code invalide")
+
+    return {"ok": True}
+
+
+@app.post("/api/auth/reset-password")
+async def reset_password_endpoint(body: ResetPasswordCustomBody) -> dict:
+    clean_email = body.email.strip().lower()
+    record = OTP_STORE.get(clean_email + "_reset")
+    
+    # 1. Verify code
+    if not record:
+        raise HTTPException(400, "No reset code generated / Pas de code de réinitialisation généré")
+    if time.time() > record["expires_at"]:
+        raise HTTPException(400, "Code expired / Code expiré")
+    if record["code"] != body.code:
+        raise HTTPException(400, "Invalid code / Code invalide")
+
+    # 2. Update password in local SQLite if user exists there
+    sqlite_user = store.get_user_by_email(clean_email)
+    if sqlite_user:
+        store.update_user_password(clean_email, body.password)
+
+    # 3. Update password in Supabase if active
+    supabase_url = settings.supabase_url
+    if supabase_url and settings.is_supabase_auth:
+        service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        if not service_role_key:
+            raise HTTPException(
+                500,
+                "Supabase service role key is missing on the server. "
+                "Please add SUPABASE_SERVICE_ROLE_KEY to your backend .env file."
+            )
+        
+        sb_user_id = await _user_id_from_supabase_by_email(clean_email)
+        if not sb_user_id:
+            raise HTTPException(404, "User profile not found in Supabase")
+
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                res = await client.put(
+                    f"{supabase_url.rstrip('/')}/auth/v1/admin/users/{sb_user_id}",
+                    headers={
+                        "apikey": service_role_key,
+                        "Authorization": f"Bearer {service_role_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={"password": body.password},
+                )
+                if res.status_code != 200:
+                    detail = res.text
+                    try:
+                        detail = res.json().get("msg") or res.text
+                    except Exception:
+                        pass
+                    raise HTTPException(500, f"Failed to update password in Supabase: {detail}")
+        except httpx.HTTPError as exc:
+            raise HTTPException(503, "Supabase service is unavailable") from exc
+
+    # Clean up OTP after reset
+    OTP_STORE.pop(clean_email + "_reset", None)
+    return {"ok": True}
 
 
 @app.post("/api/auth/logout")

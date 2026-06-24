@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { SECTOR_LABELS } from "../constants.js";
 import Rive from "@rive-app/react-canvas";
 import logoRiv from "../../assets/logo_firasa.riv";
@@ -58,6 +58,26 @@ const TEXTS = {
     saveBtn: "Enregistrer les modifications",
     savingBtn: "Enregistrement en cours...",
     saveSuccess: "Profil mis à jour avec succès !",
+    otpTitle: "Vérification",
+    otpSubtitle: "Veuillez saisir le code de 6 chiffres envoyé par e-mail.",
+    otpLabel: "Code de confirmation",
+    otpSubmit: "Confirmer le code",
+    otpCountdown: "Le code expire dans",
+    otpResend: "Renvoyer le code",
+    otpExpired: "Code expiré",
+    forgotPassword: "Mot de passe oublié ?",
+    forgotTitle: "Mot de passe oublié",
+    forgotSubtitle: "Saisissez votre e-mail pour recevoir un code de réinitialisation.",
+    sendOtp: "Envoyer le code",
+    backToLogin: "Retour à la connexion",
+    resetOtpSubtitle: "Saisissez le code de 6 chiffres envoyé par e-mail pour réinitialiser votre mot de passe.",
+    resetPasswordTitle: "Nouveau mot de passe",
+    resetPasswordSubtitle: "Saisissez votre nouveau mot de passe ci-dessous.",
+    newPasswordLabel: "Nouveau mot de passe",
+    confirmPasswordLabel: "Confirmer le mot de passe",
+    submitReset: "Enregistrer le mot de passe",
+    passwordMismatch: "Les mots de passe ne correspondent pas.",
+    passwordUpdated: "Votre mot de passe a été mis à jour avec succès !",
   },
   ar: {
     title: "فضاء رائد الأعمال",
@@ -112,6 +132,26 @@ const TEXTS = {
     saveBtn: "حفظ التغييرات",
     savingBtn: "جاري الحفظ...",
     saveSuccess: "تم تحديث الملف الشخصي بنجاح!",
+    otpTitle: "التحقق من الحساب",
+    otpSubtitle: "الرجاء إدخال الرمز المكون من 6 أرقام المرسل إلى بريدك الإلكتروني.",
+    otpLabel: "رمز التأكيد",
+    otpSubmit: "تأكيد الرمز",
+    otpCountdown: "تنتهي صلاحية الرمز خلال",
+    otpResend: "إعادة إرسال الرمز",
+    otpExpired: "انتهت صلاحية الرمز",
+    forgotPassword: "نسيت كلمة المرور؟",
+    forgotTitle: "نسيت كلمة المرور",
+    forgotSubtitle: "أدخل بريدك الإلكتروني لتلقي رمز إعادة التعيين.",
+    sendOtp: "إرسال الرمز",
+    backToLogin: "العودة لتسجيل الدخول",
+    resetOtpSubtitle: "أدخل الرمز المكون من 6 أرقام المرسل إلى بريدك الإلكتروني لإعادة تعيين كلمة المرور الخاصة بك.",
+    resetPasswordTitle: "كلمة مرور جديدة",
+    resetPasswordSubtitle: "أدخل كلمة المرور الجديدة الخاصة بك أدناه.",
+    newPasswordLabel: "كلمة المرور الجديدة",
+    confirmPasswordLabel: "تأكيد كلمة المرور",
+    submitReset: "حفظ كلمة المرور",
+    passwordMismatch: "كلمتا المرور غير متطابقتين.",
+    passwordUpdated: "تم تحديث كلمة المرور بنجاح!",
   }
 };
 
@@ -134,17 +174,30 @@ const PRESET_AVATARS = [
 
 export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout, plan, onUpgrade, history, lang, onResume, api, theme, setTheme }) {
   const [activeTab, setActiveTab] = useState(() => plan === "free" ? "pricing" : "projects");
-  const [isRegister, setIsRegister] = useState(false);
+  const [authMode, setAuthMode] = useState("login"); // login | register | forgot | forgot-otp | reset-password
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState(null);
 
   // Auth anim state
   const [animState, setAnimState] = useState("loading"); // loading | transitioning | revealed
 
+  // Forgot password OTP states
+  const [forgotOtp, setForgotOtp] = useState(["", "", "", "", "", ""]);
+  const [forgotOtpCode, setForgotOtpCode] = useState("");
+  const [forgotCode, setForgotCode] = useState("");
+  const [forgotOtpSuccess, setForgotOtpSuccess] = useState(false);
+  const [otpError, setOtpError] = useState(false);
+  const [timer, setTimer] = useState(120);
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [isResetSuccess, setIsResetSuccess] = useState(false);
+
+  const forgotInputRefs = useRef([]);
+  const verifyingRef = useRef(false);
+
   useEffect(() => {
     if (isOpen && !user) {
       setAnimState("loading");
-      setIsRegister(false);
+      setAuthMode("login");
       const timer1 = setTimeout(() => {
         setAnimState("transitioning");
       }, 2200);
@@ -159,11 +212,176 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
       setAnimState("revealed");
     }
   }, [isOpen, user]);
+
+  useEffect(() => {
+    if (authMode !== "forgot-otp" || timer <= 0) return;
+    const interval = setInterval(() => {
+      setTimer((prev) => prev - 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [authMode, timer]);
   
   // Auth Form State
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+
+  async function handleForgotPassword(e) {
+    if (e) e.preventDefault();
+    if (!email.trim()) {
+      setAuthError(lang === "ar" ? "الرجاء إدخال البريد الإلكتروني أولاً" : "Veuillez saisir votre adresse e-mail d'abord.");
+      return;
+    }
+    setAuthBusy(true);
+    setAuthError(null);
+    try {
+      await api.forgotPassword(email.trim());
+      setForgotOtp(["", "", "", "", "", ""]);
+      setForgotOtpCode("");
+      setForgotOtpSuccess(false);
+      setTimer(120);
+      setAuthMode("forgot-otp");
+    } catch (err) {
+      console.error(err);
+      setAuthError(err.message || String(err));
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  const handleForgotOtpChange = (value, index) => {
+    setOtpError(false);
+    setForgotOtpSuccess(false);
+    setAuthError(null);
+    const cleaned = value.replace(/\D/g, "");
+    if (!cleaned && value !== "") return;
+
+    const newOtp = [...forgotOtp];
+    if (cleaned.length > 1) {
+      const chars = cleaned.split("").slice(0, 6 - index);
+      for (let i = 0; i < chars.length; i++) {
+        newOtp[index + i] = chars[i];
+      }
+      setForgotOtp(newOtp);
+      const targetIndex = Math.min(index + chars.length, 5);
+      forgotInputRefs.current[targetIndex]?.focus();
+    } else {
+      newOtp[index] = cleaned;
+      setForgotOtp(newOtp);
+      if (cleaned && index < 5) {
+        forgotInputRefs.current[index + 1]?.focus();
+      }
+    }
+
+    const currentFullCode = newOtp.join("");
+    setForgotOtpCode(currentFullCode);
+
+    if (currentFullCode.length < 6) {
+      verifyingRef.current = false;
+    }
+
+    if (newOtp.every((val) => val !== "") && currentFullCode.length === 6) {
+      triggerVerifyForgotOtp(currentFullCode);
+    }
+  };
+
+  const handleForgotOtpKeyDown = (e, index) => {
+    if (e.key === "Backspace" && !forgotOtp[index] && index > 0) {
+      const newOtp = [...forgotOtp];
+      newOtp[index - 1] = "";
+      setForgotOtp(newOtp);
+      setForgotOtpCode(newOtp.join(""));
+      forgotInputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const triggerVerifyForgotOtp = async (codeToVerify) => {
+    if (verifyingRef.current) return;
+    if (!codeToVerify || codeToVerify.length < 6) return;
+    if (timer <= 0) {
+      setOtpError(true);
+      setAuthError(t.otpExpired);
+      return;
+    }
+    verifyingRef.current = true;
+    setAuthBusy(true);
+    setAuthError(null);
+    setForgotOtpSuccess(false);
+    try {
+      await api.verifyForgotOtp(email.trim(), codeToVerify.trim());
+      setForgotCode(codeToVerify.trim());
+      setForgotOtpSuccess(true);
+      setTimeout(() => {
+        setAuthMode("reset-password");
+        setForgotOtpSuccess(false);
+        verifyingRef.current = false;
+      }, 700);
+    } catch (err) {
+      console.error("Forgot OTP verify error:", err);
+      setOtpError(true);
+      setAuthError(err.message || String(err));
+      verifyingRef.current = false;
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  async function submitResetPassword(e) {
+    e.preventDefault();
+    if (password !== confirmPassword) {
+      setAuthError(t.passwordMismatch);
+      return;
+    }
+    setAuthBusy(true);
+    setAuthError(null);
+    try {
+      await api.resetPasswordCustom({ email: email.trim(), code: forgotCode, password });
+      setIsResetSuccess(true);
+      
+      setTimeout(async () => {
+        try {
+          const nextUser = await api.login({ email: email.trim(), password });
+          onLogin(nextUser);
+          setAuthMode("login");
+          setIsResetSuccess(false);
+          setEmail("");
+          setPassword("");
+          setConfirmPassword("");
+          onClose();
+        } catch (loginErr) {
+          console.error("Autologin error after reset:", loginErr);
+          setAuthMode("login");
+          setIsResetSuccess(false);
+          setPassword("");
+          setConfirmPassword("");
+        }
+      }, 1800);
+    } catch (err) {
+      console.error("Password reset error:", err);
+      setAuthError(err.message || String(err));
+      setAuthBusy(false);
+    }
+  }
+
+  async function handleResendCode() {
+    setAuthBusy(true);
+    setAuthError(null);
+    setOtpError(false);
+    setForgotOtpSuccess(false);
+    try {
+      await api.forgotPassword(email.trim());
+      setForgotOtp(["", "", "", "", "", ""]);
+      setForgotOtpCode("");
+      verifyingRef.current = false;
+      setTimer(120);
+    } catch (err) {
+      console.error("Resend OTP error:", err);
+      setAuthError(err.message || String(err));
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
   
   // Checkout State
   const [checkoutPlan, setCheckoutPlan] = useState(null); // null | 'plus' | 'pro'
@@ -217,7 +435,7 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
     setAuthBusy(true);
     setAuthError(null);
     try {
-      const nextUser = isRegister
+      const nextUser = authMode === "register"
         ? await api.register({
             email: email.trim(),
             password,
@@ -386,95 +604,303 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
               {!user ? (
                 <div className="modal-auth-container" style={{ position: "relative", height: "520px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
                   {animState !== "revealed" && (
-                    <div className={`modal-rive-container ${animState === "transitioning" ? "fade-out" : ""}`} style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", display: "flex", alignItems: "center", justifyContent: "center", width: "100%", height: "260px" }}>
-                      <Rive src={logoRiv} style={{ width: "200px", height: "200px" }} />
+                    <div style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      height: "100%",
+                      width: "100%",
+                      animation: animState === "transitioning" ? "fadeOut 0.8s forwards" : "none"
+                    }}>
+                      <div style={{ width: "160px", height: "160px", marginBottom: "20px", marginTop: "-40px" }}>
+                        <Rive src={logoRiv} style={{ width: "100%", height: "100%" }} />
+                      </div>
+                      <h3 style={{ 
+                        margin: 0, 
+                        fontFamily: "var(--f-display)", 
+                        fontStyle: "italic", 
+                        fontSize: "1.6rem", 
+                        fontWeight: 700,
+                        color: "var(--text)"
+                      }}>
+                        {ar ? "الدخول إلى فراسة" : "Accéder à Firasa"}
+                      </h3>
+                      <p style={{ marginTop: "8px", fontSize: "0.9rem", color: "var(--text-sub)" }}>
+                        {ar ? "جاري التحميل..." : "Chargement..."}
+                      </p>
                     </div>
                   )}
 
-                  {animState !== "loading" && (
-                    <div className={`modal-auth-panel ${animState === "revealed" ? "fade-in" : ""}`}>
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 16, marginTop: -12 }}>
-                        <img src={logoSvg} alt="Firasa Logo" style={{ height: "60px", width: "auto", marginBottom: 6 }} />
-                        <h3 style={{ margin: 0, fontFamily: "var(--f-display)", fontStyle: "italic", fontSize: "1.2rem", fontWeight: 700 }}>
-                          {ar ? "الدخول إلى فراسة" : "Accéder à Firasa"}
-                        </h3>
+                  {animState === "revealed" && (
+                    <div className="fade-in" style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      height: "100%",
+                      width: "100%",
+                      padding: "20px 10px 10px 10px"
+                    }}>
+                      {/* Logo & Title */}
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: authMode === "register" ? "10px" : "20px" }}>
+                        <img src={logoSvg} alt="Firasa Logo" style={{ height: authMode === "register" ? "48px" : "64px", width: "auto", marginBottom: authMode === "register" ? "0px" : "8px" }} />
+                        {authMode !== "register" && (
+                          <h3 style={{ margin: 0, fontFamily: "var(--f-display)", fontStyle: "italic", fontSize: "1.4rem", fontWeight: 700 }}>
+                            {authMode === "forgot" ? (ar ? "نسيت كلمة المرور" : "Mot de passe oublié") : 
+                             authMode === "forgot-otp" ? (ar ? "التحقق من الحساب" : "Vérification") :
+                             authMode === "reset-password" ? (ar ? "كلمة مرور جديدة" : "Nouveau mot de passe") :
+                             (ar ? "الدخول إلى فراسة" : "Accéder à Firasa")}
+                          </h3>
+                        )}
+                        {authMode !== "login" && authMode !== "register" && (
+                          <p style={{ margin: "4px 0 0 0", fontSize: "0.82rem", color: "var(--text-sub)", textAlign: "center" }}>
+                            {authMode === "forgot" ? (ar ? "أدخل بريدك الإلكتروني لتلقي رمز إعادة التعيين." : "Saisissez votre e-mail pour recevoir un code de réinitialisation.") :
+                             authMode === "forgot-otp" ? (ar ? "أدخل الرمز المكون من 6 أرقام المرسل إلى بريدك الإلكتروني لإعادة تعيين كلمة المرور الخاصة بك." : "Saisissez le code de 6 chiffres envoyé par e-mail.") :
+                             authMode === "reset-password" ? (ar ? "أدخل كلمة المرور الجديدة الخاصة بك أدناه." : "Saisissez votre nouveau mot de passe ci-dessous.") : null}
+                          </p>
+                        )}
                       </div>
                       
-                      <form className="auth-form" onSubmit={handleSubmitAuth} style={{ gap: "10px" }}>
-                        {authError && <div className="error-banner">{authError}</div>}
-                        {isRegister && (
-                          <div className="form-group">
-                            <label>{t.name}</label>
-                            <input
-                              type="text"
-                              placeholder="e.g. Elyes Riden"
-                              value={name}
-                              onChange={e => setName(e.target.value)}
-                              required
-                            />
-                          </div>
-                        )}
-                        <div className="form-group">
-                          <label>{t.email}</label>
-                          <input 
-                            type="email" 
-                            placeholder="entrepreneur@firasa.tn" 
-                            value={email} 
-                            onChange={e => setEmail(e.target.value)} 
-                            required 
-                          />
-                        </div>
-                        <div className="form-group">
-                          <label>{t.password}</label>
-                          <input 
-                            type="password" 
-                            placeholder="••••••••" 
-                            value={password} 
-                            onChange={e => setPassword(e.target.value)} 
-                            required 
-                          />
-                          {!isRegister && (
-                            <div style={{ textAlign: ar ? "left" : "right", marginTop: "6px" }}>
-                              <span
-                                style={{
-                                  fontSize: "0.78rem",
-                                  color: "var(--orange)",
-                                  cursor: "pointer",
-                                  textDecoration: "underline",
-                                  fontWeight: "500"
-                                }}
-                              >
-                                {ar ? "نسيت كلمة المرور؟" : "Mot de passe oublié ?"}
-                              </span>
+                      {/* Forms */}
+                      {(authMode === "login" || authMode === "register") && (
+                        <form className="auth-form" onSubmit={handleSubmitAuth} style={{ gap: "8px", display: "flex", flexDirection: "column" }}>
+                          {authError && <div className="error-banner">{authError}</div>}
+                          {authMode === "register" && (
+                            <div className="form-group">
+                              <label>{t.name}</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. Elyes Riden"
+                                value={name}
+                                onChange={e => setName(e.target.value)}
+                                required
+                              />
                             </div>
                           )}
-                        </div>
-                        <button type="submit" className="primary" style={{ marginTop: 8 }} disabled={authBusy}>
-                          {authBusy ? t.loadingPay : (isRegister ? t.submitRegister : t.submitLogin)}
-                        </button>
+                          <div className="form-group">
+                            <label>{t.email}</label>
+                            <input 
+                              type="email" 
+                              placeholder="entrepreneur@firasa.tn" 
+                              value={email} 
+                              onChange={e => setEmail(e.target.value)} 
+                              required 
+                            />
+                          </div>
+                          <div className="form-group">
+                            <label>{t.password}</label>
+                            <input 
+                              type="password" 
+                              placeholder="••••••••" 
+                              value={password} 
+                              onChange={e => setPassword(e.target.value)} 
+                              required 
+                            />
+                            {authMode === "login" && (
+                              <div style={{ textAlign: ar ? "left" : "right", marginTop: "4px" }}>
+                                <span
+                                  onClick={() => {
+                                    setAuthError(null);
+                                    setAuthMode("forgot");
+                                  }}
+                                  style={{
+                                    fontSize: "0.78rem",
+                                    color: "var(--orange)",
+                                    cursor: "pointer",
+                                    textDecoration: "underline",
+                                    fontWeight: "500"
+                                  }}
+                                >
+                                  {ar ? "نسيت كلمة المرور؟" : "Mot de passe oublié ?"}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                          <button type="submit" className="primary" style={{ marginTop: 4, padding: "8px 16px", height: "36px", fontSize: "0.88rem", display: "flex", alignItems: "center", justifyContent: "center" }} disabled={authBusy}>
+                            {authBusy ? t.loadingPay : (authMode === "register" ? t.submitRegister : t.submitLogin)}
+                          </button>
 
-                        <div className="auth-divider">
-                          <span>{ar ? "أو" : "ou"}</span>
-                        </div>
+                          <div className="auth-divider" style={{ margin: "4px 0" }}>
+                            <span>{ar ? "أو" : "ou"}</span>
+                          </div>
 
-                        <button className="google-btn" type="button">
-                          <svg width="18" height="18" viewBox="0 0 24 24">
-                            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-                            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05" />
-                            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-                          </svg>
-                          <span>{ar ? "تسجيل الدخول باستخدام Google" : "Se connecter avec Google"}</span>
-                        </button>
-                      </form>
+                          <button className="google-btn" type="button">
+                            <svg width="18" height="18" viewBox="0 0 24 24">
+                              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05" />
+                              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                            </svg>
+                            <span>{ar ? "تسجيل الدخول باستخدام Google" : "Se connecter avec Google"}</span>
+                          </button>
 
-                      <div className="auth-toggle-msg">
-                        {isRegister ? (
-                          <p>{t.hasAccount}<span onClick={() => setIsRegister(false)}>{t.login}</span></p>
-                        ) : (
-                          <p>{t.noAccount}<span onClick={() => setIsRegister(true)}>{t.register}</span></p>
-                        )}
-                      </div>
+                          <div className="auth-toggle-msg" style={{ marginTop: "auto", paddingTop: "12px", textAlign: "center" }}>
+                            {authMode === "register" ? (
+                              <p>{t.hasAccount}<span style={{ color: "var(--orange)", cursor: "pointer", textDecoration: "underline", fontWeight: "600" }} onClick={() => setAuthMode("login")}>{t.login}</span></p>
+                            ) : (
+                              <p>{t.noAccount}<span style={{ color: "var(--orange)", cursor: "pointer", textDecoration: "underline", fontWeight: "600" }} onClick={() => setAuthMode("register")}>{t.register}</span></p>
+                            )}
+                          </div>
+                        </form>
+                      )}
+
+                      {authMode === "forgot" && (
+                        <form className="auth-form" onSubmit={handleForgotPassword} style={{ gap: "16px", display: "flex", flexDirection: "column" }}>
+                          {authError && <div className="error-banner">{authError}</div>}
+                          <div className="form-group">
+                            <label>{t.email}</label>
+                            <input 
+                              type="email" 
+                              placeholder="entrepreneur@firasa.tn" 
+                              value={email} 
+                              onChange={e => setEmail(e.target.value)} 
+                              required 
+                              disabled={authBusy}
+                            />
+                          </div>
+                          <button type="submit" className="primary" style={{ marginTop: 8 }} disabled={authBusy}>
+                            {authBusy ? t.loadingPay : t.sendOtp}
+                          </button>
+                          <div style={{ textAlign: "center", marginTop: "16px" }}>
+                            <span
+                              onClick={() => {
+                                setAuthError(null);
+                                setAuthMode("login");
+                              }}
+                              style={{
+                                fontSize: "0.82rem",
+                                color: "var(--orange)",
+                                cursor: "pointer",
+                                textDecoration: "underline",
+                                fontWeight: "500"
+                              }}
+                            >
+                              {t.backToLogin}
+                            </span>
+                          </div>
+                        </form>
+                      )}
+
+                      {authMode === "forgot-otp" && (
+                        <form className="auth-form" onSubmit={(e) => { e.preventDefault(); triggerVerifyForgotOtp(forgotOtp.join("")); }} style={{ gap: "12px", display: "flex", flexDirection: "column" }}>
+                          {authError && !otpError && <div className="error-banner">{authError}</div>}
+                          <label style={{ textAlign: "center", display: "block", marginBottom: "8px", fontSize: "0.9rem", color: "var(--text-sub)" }}>{t.otpLabel}</label>
+                          <div className="otp-input-wrapper" style={{ pointerEvents: "auto", display: "flex", justifyContent: "center", margin: "10px 0" }}>
+                            <div className={`otp-boxes-container ${authBusy && !forgotOtpSuccess ? "checking" : ""} ${otpError ? "error" : ""} ${forgotOtpSuccess ? "success" : ""}`} style={{ display: "flex", gap: "8px" }}>
+                              {forgotOtp.map((digit, i) => (
+                                <input
+                                  key={i}
+                                  ref={(el) => (forgotInputRefs.current[i] = el)}
+                                  type="text"
+                                  inputMode="numeric"
+                                  maxLength={1}
+                                  value={digit}
+                                  onChange={(e) => handleForgotOtpChange(e.target.value, i)}
+                                  onKeyDown={(e) => handleForgotOtpKeyDown(e, i)}
+                                  className={`otp-digit-box ${digit ? "filled" : ""}`}
+                                  style={{
+                                    pointerEvents: "auto",
+                                    textAlign: "center",
+                                    outline: "none",
+                                    width: "48px",
+                                    height: "54px",
+                                    fontSize: "1.4rem",
+                                    borderRadius: "var(--r-md)",
+                                    border: "1px solid var(--border)",
+                                    background: "rgba(255,255,255,0.02)",
+                                    color: "var(--text)"
+                                  }}
+                                  disabled={authBusy}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                          <div className="otp-timer-box" style={{ textAlign: "center", margin: "12px 0", fontSize: "0.88rem" }}>
+                            {timer > 0 ? (
+                              <span className="muted">
+                                {t.otpCountdown} : <strong style={{ color: "var(--orange)" }}>{Math.floor(timer / 60)}:{(timer % 60).toString().padStart(2, '0')}</strong>
+                              </span>
+                            ) : (
+                              <span style={{ color: "var(--red)", fontWeight: "600" }}>{t.otpExpired}</span>
+                            )}
+                          </div>
+                          <button className="primary" type="submit" disabled={authBusy} style={{ display: "none" }}>
+                            {t.otpSubmit}
+                          </button>
+                          <div style={{ textAlign: "center", marginTop: "16px" }}>
+                            <span
+                              onClick={authBusy ? undefined : handleResendCode}
+                              style={{
+                                fontSize: "0.82rem",
+                                color: "var(--orange)",
+                                cursor: authBusy ? "not-allowed" : "pointer",
+                                textDecoration: "underline",
+                                fontWeight: "500",
+                                opacity: authBusy ? 0.5 : 1,
+                              }}
+                            >
+                              {t.otpResend}
+                            </span>
+                          </div>
+                          <div style={{ textAlign: "center", marginTop: "8px" }}>
+                            <span
+                              onClick={() => {
+                                setAuthError(null);
+                                setAuthMode("login");
+                              }}
+                              style={{
+                                fontSize: "0.78rem",
+                                color: "var(--text-sub)",
+                                cursor: "pointer",
+                                textDecoration: "underline"
+                              }}
+                            >
+                              {t.backToLogin}
+                            </span>
+                          </div>
+                        </form>
+                      )}
+
+                      {authMode === "reset-password" && (
+                        <>
+                          {!isResetSuccess ? (
+                            <form className="auth-form" onSubmit={submitResetPassword} style={{ gap: "16px", display: "flex", flexDirection: "column" }}>
+                              {authError && <div className="error-banner">{authError}</div>}
+                              <div className="form-group">
+                                <label>{t.newPasswordLabel}</label>
+                                <input
+                                  type="password"
+                                  value={password}
+                                  onChange={(e) => setPassword(e.target.value)}
+                                  placeholder=""
+                                  required
+                                  disabled={authBusy}
+                                />
+                              </div>
+                              <div className="form-group" style={{ marginBottom: "12px" }}>
+                                <label>{t.confirmPasswordLabel}</label>
+                                <input
+                                  type="password"
+                                  value={confirmPassword}
+                                  onChange={(e) => setConfirmPassword(e.target.value)}
+                                  placeholder=""
+                                  required
+                                  disabled={authBusy}
+                                />
+                              </div>
+                              <button className="primary" type="submit" disabled={authBusy}>
+                                {authBusy ? t.loadingPay : t.submitReset}
+                              </button>
+                            </form>
+                          ) : (
+                            <div className="otp-success-animation" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "20px 0" }}>
+                              <div className="lock-icon-container" style={{ margin: "0 auto 16px", background: "rgba(34,197,94,0.08)", borderColor: "rgba(34,197,94,0.25)", color: "var(--green)", boxShadow: "0 0 20px var(--green-glow)" }}>✓</div>
+                              <h2 className="success-title" style={{ marginTop: "12px", color: "var(--text)", fontFamily: "var(--f-display)", fontStyle: "italic", fontSize: "1.2rem", textAlign: "center" }}>
+                                {lang === "ar" ? "تم تحديث كلمة المرور بنجاح" : "Mot de passe mis à jour"}
+                              </h2>
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
                   )}
                 </div>

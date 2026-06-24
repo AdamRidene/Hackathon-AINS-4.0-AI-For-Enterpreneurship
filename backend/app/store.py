@@ -561,6 +561,34 @@ def get_user_by_id(user_id: str) -> dict | None:
         return dict(u) if u else None
 
 
+def get_user_by_email(email: str) -> dict | None:
+    email_norm = _normalise_email(email)
+    if _DB_ENABLED:
+        with db_session() as conn:
+            row = conn.execute("SELECT * FROM users WHERE email = ?", (email_norm,)).fetchone()
+        return _user_from_row(row)
+    else:
+        for u in _mem_users.values():
+            if u["email"] == email_norm:
+                return dict(u)
+        return None
+
+
+def update_user_password(email: str, password: str) -> None:
+    email_norm = _normalise_email(email)
+    hashed = _hash_password(password)
+    with _lock:
+        if _DB_ENABLED:
+            with db_session() as conn:
+                conn.execute("UPDATE users SET password_hash = ? WHERE email = ?", (hashed, email_norm))
+        else:
+            for u in _mem_users.values():
+                if u["email"] == email_norm:
+                    u["password_hash"] = hashed
+                    break
+
+
+
 def get_user_by_token(token: str) -> dict | None:
     if _DB_ENABLED:
         with db_session() as conn:
