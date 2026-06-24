@@ -4,6 +4,17 @@
 
 # Firasa · فِراسة
 
+<p align="center">
+  <img alt="Python" src="https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white">
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white">
+  <img alt="Pydantic" src="https://img.shields.io/badge/Pydantic-v2-E92063?logo=pydantic&logoColor=white">
+  <img alt="React" src="https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black">
+  <img alt="Vite" src="https://img.shields.io/badge/Vite-5-646CFF?logo=vite&logoColor=white">
+  <img alt="TF-IDF" src="https://img.shields.io/badge/Retrieval-TF--IDF-blueviolet">
+  <img alt="Rive" src="https://img.shields.io/badge/Animation-Rive-FF6B6B?logo=rive&logoColor=white">
+  <img alt="LLM Providers" src="https://img.shields.io/badge/LLM-Ollama%20%7C%20HF%20%7C%20Groq%20%7C%20OpenAI%20%7C%20Gemini-orange">
+</p>
+
 **Algorithmic audit engine for entrepreneurial maturity, built for the Tunisian ecosystem.**
 
 Firasa runs a structured audit instead of a freeform chat. It asks adaptive questions, classifies the project stage, scores five business dimensions with transparent gated formulas, detects perception-reality gaps, and generates a roadmap where every recommendation traces to a real Tunisian resource. The LLM is a secondary layer -- it never drives classification or scoring, and the pipeline works end-to-end without it.
