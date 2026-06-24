@@ -44,6 +44,71 @@ _STOP = _FR_STOP | _AR_STOP
 # Arabic stems are dense, so 2-char Arabic tokens are retained.
 _AR_RE = re.compile(r"[\u0600-\u06ff]")
 
+# ── Chunking (Phase 5.2) ─────────────────────────────────────────────────────
+
+_SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?\n])\s+")
+
+
+def _chunk_text(text: str, max_chars: int = 500, min_chars: int = 250) -> list[str]:
+    """Split *text* into chunks targeting `max_chars` per chunk, breaking at
+    sentence boundaries. Returns a list of non-empty strings."""
+    if len(text) <= max_chars:
+        return [text]
+    sentences = _SENTENCE_BOUNDARY.split(text.replace("\n", ". "))
+    chunks: list[str] = []
+    buf: list[str] = []
+    buf_len = 0
+    for s in sentences:
+        s = s.strip()
+        if not s:
+            continue
+        if buf_len + len(s) > max_chars and buf_len >= min_chars:
+            chunks.append(" ".join(buf))
+            buf, buf_len = [], 0
+        buf.append(s)
+        buf_len += len(s)
+    if buf:
+        chunks.append(" ".join(buf))
+    return chunks or [text]
+
+
+def chunk_kb_entries(path: Path | None = None) -> int:
+    """Rewrite *kb.json* with long entries split into multiple chunks.
+    Each chunk gets an id of the form ``{base}-chunk-{n}``.
+    Returns the number of new chunks created."""
+    if path is None:
+        path = _KB_PATH
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    new_resources: list[dict] = []
+    split_count = 0
+    for r in raw["resources"]:
+        fr_chunks = _chunk_text(r["content"])
+        ar_chunks = _chunk_text(r.get("content_ar", ""))
+        # align chunk count to the longer side
+        n = max(len(fr_chunks), len(ar_chunks))
+        if n == 1:
+            new_resources.append(r)
+        else:
+            # pad shorter side with empty strings
+            fr_chunks += [""] * (n - len(fr_chunks))
+            ar_chunks += [""] * (n - len(ar_chunks))
+            for i in range(n):
+                chunk = dict(r)
+                chunk["id"] = f"{r['id']}-chunk-{i + 1}"
+                chunk["content"] = fr_chunks[i]
+                chunk["content_ar"] = ar_chunks[i]
+                new_resources.append(chunk)
+            split_count += n - 1  # (n chunks - 1 original)
+    raw["resources"] = new_resources
+    raw["_meta"]["count"] = len(new_resources)
+    raw["_meta"]["chunked"] = True
+    path.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
+    get_kb.cache_clear()
+    return split_count
+
+
+# ── Tokeniser ────────────────────────────────────────────────────────────────
+
 
 def _tokenise(text: str) -> list[str]:
     out = []
@@ -117,14 +182,17 @@ class KnowledgeBase:
                 horizon=r["horizon"], content=r["content"], vector=vec,
                 title_ar=r.get("title_ar", ""), content_ar=r.get("content_ar", "")))
 
-        # ── Optional embedding-based retrieval (lazy-loaded on first query) ──
+        # ── Optional embedding-based retrieval (pre-loaded eagerly at init) ──
         self._embeddings = None   # list[ndarray] parallel to self.chunks
         self._embedder = None
         self._embeddings_loaded = False  # tri-state: False=unattempted, None=failed
         self._embeddings_lock = threading.Lock()
+        # Pre-load embeddings eagerly so the first query is not penalised by
+        # lazy-load latency (~500ms on Cohere / sentence-transformers).
+        self._ensure_embeddings()
 
     def _ensure_embeddings(self) -> None:
-        """Lazy-load sentence-transformers on first query (avoids ~90MB download at startup)."""
+        """Pre-load embeddings at init time (or skip gracefully if unavailable)."""
         if self._embeddings_loaded:
             return  # already succeeded
         with self._embeddings_lock:
@@ -162,7 +230,7 @@ class KnowledgeBase:
                 arr = np.load(str(_EMBED_CACHE), allow_pickle=False)
             else:
                 co = cohere.Client(api_key)
-                texts = [c.content + " " + c.title for c in self.chunks]
+                texts = [f"{c.content} {c.title} {c.content_ar} {c.title_ar}" for c in self.chunks]
                 resp = co.embed(
                     texts=texts,
                     model="embed-multilingual-v3.0",
@@ -192,10 +260,11 @@ class KnowledgeBase:
 
         try:
             model = SentenceTransformer("all-MiniLM-L6-v2")
-            texts = [c.content for c in self.chunks]
+            texts = [f"{c.content} {c.content_ar}" if c.content_ar else c.content
+                     for c in self.chunks]
             self._embeddings = model.encode(texts, show_progress_bar=False)
             self._embedder = model
-            self.meta["embedding_model"] = "all-MiniLM-L6-v2"
+            self.meta["embedding_model"] = "all-MiniLM-L6-v2 (bilingual text)"
             self.meta["embedding_dim"] = int(self._embeddings[0].shape[0])
         except Exception:
             self._embeddings = None

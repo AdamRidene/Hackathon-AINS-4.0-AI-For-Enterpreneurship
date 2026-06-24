@@ -70,11 +70,12 @@ export default function EmailConfirmationGate({ lang = "fr", user, onLogout, onV
   }, [user?.email, onVerified]);
 
   async function handleResend() {
-    if (resendState === "sending" || resendState === "done") return;
+    if (resendState === "sending") return;
     setResendState("sending");
     try {
       await auth.resendConfirmation(user?.email);
       setResendState("done");
+      setTimeout(() => setResendState("idle"), 30000); // allow re-send after 30s
     } catch {
       setResendState("error");
     }
@@ -221,7 +222,7 @@ export default function EmailConfirmationGate({ lang = "fr", user, onLogout, onV
         {/* Resend button */}
         <button
           onClick={handleResend}
-          disabled={resendState === "sending" || resendState === "done"}
+          disabled={resendState === "sending"}
           style={{
             width: "100%",
             padding: "11px 20px",

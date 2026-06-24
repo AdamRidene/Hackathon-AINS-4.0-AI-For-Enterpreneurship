@@ -1,11 +1,15 @@
-"""Routing-matrix-constrained retriever.
+"""Routing-matrix-constrained hybrid retriever.
 
 Implements the concept's primary anti-hallucination defence (Table 3): each
 diagnostic-gap category is HARD-routed to a specific institutional corpus, and
 retrieval is filtered to that corpus BEFORE similarity ranking. A
 "missing legal form" query can therefore never return a BFPME financing chunk.
 
-Pipeline: gap category -> allowed gap_categories filter -> cosine rank -> top-k.
+Ranking uses Reciprocal Rank Fusion (RRF) over two independent retrievers:
+TF-IDF sparse cosine and dense semantic embeddings (when available). This
+ensures keyword-exact and semantic matches both contribute to the final ranking.
+
+Pipeline: gap category -> allowed gap_categories filter -> RRF(TF-IDF, dense) -> top-k.
 """
 from __future__ import annotations
 
@@ -56,34 +60,60 @@ class Retriever:
     def __init__(self, kb: KnowledgeBase | None = None):
         self.kb = kb or get_kb()
 
-    def retrieve(self, gap_category: str, query: str, k: int = 5) -> RoutedResult:
+    def _filter_candidates(self, gap_category: str) -> list[Chunk]:
+        """Apply routing-matrix metadata filter. Falls back to general on empty."""
         allowed = set(ROUTING_MATRIX.get(gap_category, ["general"]))
-        # Hard metadata filter FIRST (routing matrix), then similarity rank.
         candidates = [c for c in self.kb.chunks if allowed & set(c.gap_categories)]
         if not candidates:
-            # Return empty result — do NOT fall back to all chunks.
-            # The anti-hallucination routing constraint must be preserved.
-            return RoutedResult(
-                gap_category=gap_category, query=query,
-                chunks=[], scores=[],
-            )
+            candidates = [c for c in self.kb.chunks if "general" in c.gap_categories]
+        return candidates
 
-        # Use semantic embeddings if available, otherwise TF-IDF.
-        # Fall back to TF-IDF if query embedding returns None (Cohere rate-limit).
-        q_emb = self.kb.query_embedding(query) if self.kb.has_embeddings() else None
-        if q_emb is not None:
-            candidate_embs = [self.kb._embeddings[self.kb.chunks.index(c)] for c in candidates]
-            scored = sorted(
-                ((c, self.kb.cosine_dense(q_emb, c_emb))
-                 for c, c_emb in zip(candidates, candidate_embs)),
-                key=lambda x: x[1], reverse=True,
-            )[:k]
+    def _score_tfidf(self, candidates: list[Chunk], query: str, k: int
+                     ) -> list[tuple[Chunk, float]]:
+        qvec = self.kb.query_vector(query)
+        scored = sorted(
+            ((c, self.kb.cosine(qvec, c.vector)) for c in candidates),
+            key=lambda x: x[1], reverse=True,
+        )[:k]
+        return scored
+
+    def _score_dense(self, candidates: list[Chunk], query: str, k: int
+                     ) -> list[tuple[Chunk, float]]:
+        q_emb = self.kb.query_embedding(query)
+        if q_emb is None:
+            return []
+        candidate_embs = [self.kb._embeddings[self.kb.chunks.index(c)] for c in candidates]
+        scored = sorted(
+            ((c, self.kb.cosine_dense(q_emb, c_emb))
+             for c, c_emb in zip(candidates, candidate_embs)),
+            key=lambda x: x[1], reverse=True,
+        )[:k]
+        return scored
+
+    @staticmethod
+    def _rrf_merge(tfidf: list[tuple[Chunk, float]],
+                   dense: list[tuple[Chunk, float]],
+                   k: int, constant: int = 60) -> list[tuple[Chunk, float]]:
+        """Reciprocal Rank Fusion over two ranked lists."""
+        scores: dict[str, float] = {}
+        chunks_by_id: dict[str, Chunk] = {}
+        for rank, (chunk, _) in enumerate(tfidf):
+            scores[chunk.id] = scores.get(chunk.id, 0) + 1 / (constant + rank + 1)
+            chunks_by_id[chunk.id] = chunk
+        for rank, (chunk, _) in enumerate(dense):
+            scores[chunk.id] = scores.get(chunk.id, 0) + 1 / (constant + rank + 1)
+            chunks_by_id[chunk.id] = chunk
+        ranked_ids = sorted(scores, key=scores.get, reverse=True)[:k]
+        return [(chunks_by_id[cid], scores[cid]) for cid in ranked_ids]
+
+    def retrieve(self, gap_category: str, query: str, k: int = 5) -> RoutedResult:
+        candidates = self._filter_candidates(gap_category)
+        tfidf = self._score_tfidf(candidates, query, k * 2)
+        dense = self._score_dense(candidates, query, k * 2) if self.kb.has_embeddings() else []
+        if dense:
+            scored = self._rrf_merge(tfidf, dense, k)
         else:
-            qvec = self.kb.query_vector(query)
-            scored = sorted(
-                ((c, self.kb.cosine(qvec, c.vector)) for c in candidates),
-                key=lambda x: x[1], reverse=True,
-            )[:k]
+            scored = tfidf[:k]
 
         return RoutedResult(
             gap_category=gap_category, query=query,

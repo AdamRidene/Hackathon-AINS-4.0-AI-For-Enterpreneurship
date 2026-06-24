@@ -56,6 +56,18 @@ export const api = {
   // Auth delegated to auth module
   getToken: () => auth.getToken(),
 
+  loginWithGoogle: async () => {
+    return auth.loginWithGoogle();
+  },
+
+  forgotPassword: async (email) => {
+    return auth.forgotPassword(email);
+  },
+
+  resetPassword: async ({ token, new_password }) => {
+    return auth.resetPassword({ token, new_password });
+  },
+
   login: async ({ email, password }) => {
     return auth.login({ email, password });
   },

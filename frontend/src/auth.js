@@ -85,6 +85,16 @@ async function supabaseResendConfirmation(email) {
   if (error) throw new Error(error.message);
 }
 
+async function supabaseLoginWithGoogle() {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Supabase client not initialised");
+  const { error } = await sb.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo: window.location.origin },
+  });
+  if (error) throw new Error(error.message);
+}
+
 async function supabaseLogout() {
   const sb = getSupabase();
   if (!sb) return;
@@ -165,6 +175,30 @@ export const auth = {
     });
     setLocalToken(res.token);
     return res.user;
+  },
+
+  async loginWithGoogle() {
+    if (_mode !== "supabase") {
+      throw new Error("Google login is only available in Supabase auth mode.");
+    }
+    await supabaseLoginWithGoogle();
+    // The OAuth redirect will reload the page — this never returns
+  },
+
+  async forgotPassword(email) {
+    return apiReq("/api/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+      anonymous: true,
+    });
+  },
+
+  async resetPassword({ token, new_password }) {
+    return apiReq("/api/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ token, new_password }),
+      anonymous: true,
+    });
   },
 
   async register({ email, password, name, birth_date, location, phone, role, company }) {

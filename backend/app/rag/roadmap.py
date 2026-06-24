@@ -232,6 +232,7 @@ async def build_roadmap(
     gap: Optional[GapReport] = None,
     k_per_gap: int = 2,
     anomalies: Optional[list[dict]] = None,
+    fast: bool = False,
 ) -> list[Milestone]:
     """Build an ordered, grounded action plan from gaps, scores, and anomalies.
 
@@ -291,10 +292,19 @@ async def build_roadmap(
     # priority (stage 1/2) naturally bubble above routine blockers.
     triggers.sort(key=lambda t: t[5])
 
-    # Phase 1: Collect all retrievals (no LLM calls yet).
+    # Phase 1: Collect all retrievals (no LLM prose calls yet).
     trigger_plans: list[dict] = []
     for gap_cat, label_fr, label_ar, rat_fr, rat_ar, _stage in triggers:
-        query = f"{label_fr} {rat_fr} secteur {profile.sector.value if profile.sector else ''}"
+        raw_query = f"{label_fr} {rat_fr} secteur {profile.sector.value if profile.sector else ''}"
+        if not fast:
+            try:
+                query = await llm.reformulate_search_query(
+                    label_fr, rat_fr, lang=profile.language,
+                )
+            except Exception:
+                query = raw_query
+        else:
+            query = raw_query
         routed = retriever.retrieve(gap_cat, query, k=k_per_gap)
         if not routed.chunks:
             continue
@@ -335,8 +345,11 @@ async def build_roadmap(
             "chunks": [c.content for c in fresh],
         })
 
-    # Phase 2: Fire ALL LLM prose-generation calls in parallel.
+    # Phase 2: Fire ALL LLM prose-generation calls in parallel (skip when fast=True).
     async def _generate_action(plan: dict) -> str:
+        if fast:
+            raw = plan["chunks"][0] if plan["chunks"] else ""
+            return raw[:300] + ("..." if len(raw) > 300 else "")
         return await llm.generate_roadmap_prose(
             gap=f"{plan['label_fr']}: {plan['rat_fr']} | Timeline: {plan['timeline_fr']}",
             chunks=plan["chunks"],
