@@ -447,7 +447,7 @@ const TEXTS = {
     editing: "Modifier le profil",
     save: "Enregistrer",
     cancel: "Annuler",
-    back: "← Retour aux projets",
+    back: "Retour aux projets",
     loading: "Chargement…",
     noAudit: "Pas encore audité",
     scores: "Scores",
@@ -536,7 +536,7 @@ const TEXTS = {
     editing: "تعديل الملف",
     save: "حفظ",
     cancel: "إلغاء",
-    back: "العودة إلى المشاريع ←",
+    back: "العودة إلى المشاريع",
     loading: "جاري التحميل…",
     noAudit: "لم يتم التدقيق بعد",
     scores: "المؤشرات",
@@ -948,9 +948,7 @@ export default function ProjectDashboard({
 
         {/* ── Header ── */}
         <div className="dash-header">
-          <button className="ghost-btn" onClick={onBack} style={{ padding: "8px 16px", marginBottom: 16 }}>
-            {t.back}
-          </button>
+          <button className={"back-btn" + (ar ? " rtl" : "")} onClick={onBack} style={{ marginBottom: 16 }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>{t.back}</button>
 
           <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
             {editing ? (

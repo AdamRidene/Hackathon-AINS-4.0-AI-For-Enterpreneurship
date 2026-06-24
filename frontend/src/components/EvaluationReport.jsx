@@ -5,7 +5,7 @@ const TEXTS = {
   fr: {
     title: "Rapport d'Évaluation & Rigueur (Rubrique)",
     sub: "Performance et alignement algorithmique mesurés sur des jeux de tests et cas adverses (Rubrique 15%).",
-    back: "← Retour à l'accueil",
+    back: "Retour à l'accueil",
     loading: "Exécution des protocoles d'évaluation...",
     pass: "CONFORME",
     fail: "NON CONFORME",
@@ -37,7 +37,7 @@ const TEXTS = {
   ar: {
     title: "تقرير التقييم والدقة الخوارزمية",
     sub: "أداء وموثوقية النظام الخوارزمي مقاسة على حالات اختبار مخصصة وحالات معارضة (الشبكة التقييمية 15%).",
-    back: "الرجوع للرئيسية →",
+    back: "الرجوع للرئيسية",
     loading: "جاري تشغيل بروتوكولات التقييم والقياس...",
     pass: "متوافق",
     fail: "غير متوافق",
@@ -161,7 +161,7 @@ export default function EvaluationReport({ lang, api, onBack }) {
   if (!running && progress === 0 && !error) {
     return (
       <div className="hist-wrap" dir={ar ? "rtl" : "ltr"} style={{ minHeight: "100vh", position: "relative", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24 }}>
-        <button className="ghost-btn" onClick={onBack} style={{ position: "absolute", top: 24, [ar ? "right" : "left"]: 24, padding: "8px 16px" }}>{t.back}</button>
+        <button className={"back-btn" + (ar ? " rtl" : "")} onClick={onBack} style={{ position: "absolute", top: 24, [ar ? "right" : "left"]: 24 }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>{t.back}</button>
         <h1 style={{ fontFamily: "var(--f-display)", fontStyle: "italic", textAlign: "center", padding: "0 24px" }}>{t.title}</h1>
         <p style={{ color: "var(--text-sub)", textAlign: "center", maxWidth: 520, padding: "0 24px" }}>{t.sub}</p>
         <button className="primary" onClick={runEval} style={{ padding: "12px 32px", fontSize: "1rem" }}>
@@ -213,9 +213,7 @@ export default function EvaluationReport({ lang, api, onBack }) {
         {/* Header */}
         <div className="page-header" style={{ marginBottom: 32 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
-            <button className="ghost-btn" onClick={onBack} style={{ padding: "8px 16px", display: "inline-flex", alignItems: "center", gap: 8 }}>
-              {t.back}
-            </button>
+            <button className={"back-btn" + (ar ? " rtl" : "")} onClick={onBack}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>{t.back}</button>
             {done && (
               <button className="ghost-btn" onClick={runEval} style={{ padding: "8px 16px" }}>
                 {lang === "ar" ? "إعادة التشغيل" : "Re-lancer"}

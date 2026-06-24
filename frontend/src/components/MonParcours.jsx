@@ -22,7 +22,7 @@ const TEXTS = {
     pastRecommendations: "Recommandations passées",
     actionsTaken: "Actions réalisées",
     noHistory: "Pas encore d'historique d'audit.",
-    back: "← Retour au tableau de bord",
+    back: "Retour au tableau de bord",
     auditedOn: "Audité le",
     completed: "Complété",
     pending: "En attente",
@@ -44,7 +44,7 @@ const TEXTS = {
     pastRecommendations: "التوصيات السابقة",
     actionsTaken: "الإجراءات المنجزة",
     noHistory: "لا يوجد سجل تدقيق بعد.",
-    back: "العودة إلى لوحة القيادة ←",
+    back: "العودة إلى لوحة القيادة",
     auditedOn: "تم التدقيق في",
     completed: "مكتمل",
     pending: "قيد الانتظار",
@@ -128,9 +128,7 @@ export default function MonParcours({ pid, lang, api, onBack, checkedMilestones,
   return (
     <div className="dash-wrap" dir={ar ? "rtl" : "ltr"}>
       <div className="dash-content">
-        <button className="ghost-btn" onClick={onBack} style={{ padding: "8px 16px", marginBottom: 16 }}>
-          {t.back}
-        </button>
+        <button className={"back-btn" + (ar ? " rtl" : "")} onClick={onBack} style={{ marginBottom: 16 }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>{t.back}</button>
         <h1 className="dash-title">{t.title}</h1>
         <p style={{ color: "var(--text-sub)", marginBottom: 28 }}>{t.sub}</p>
 

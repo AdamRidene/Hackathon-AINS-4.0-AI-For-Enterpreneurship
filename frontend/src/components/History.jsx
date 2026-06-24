@@ -39,7 +39,7 @@ const TEXTS = {
   fr: {
     title: "Historique des audits",
     sub: "Tous vos projets analysés, triés par date",
-    back: "← Retour",
+    back: "Retour",
     empty: "Aucun audit enregistré.",
     emptySub: "Lancez votre premier audit depuis l'accueil.",
     view: "Voir les résultats",
@@ -55,7 +55,7 @@ const TEXTS = {
   ar: {
     title: "سجل التدقيقات",
     sub: "جميع مشاريعك المُدققة، مرتبة بالتاريخ",
-    back: "رجوع →",
+    back: "رجوع",
     empty: "لا توجد تدقيقات محفوظة.",
     emptySub: "أطلق تدقيقك الأول من الصفحة الرئيسية.",
     view: "عرض النتائج",
@@ -134,9 +134,7 @@ export default function History({ lang, api, onBack, onViewProject, user, plan, 
       <main className="hist-content">
         <div className="page-header" style={{ marginBottom: "32px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
           <div>
-            <button className="ghost-btn" onClick={onBack} style={{ padding: "8px 16px", marginBottom: "12px", display: "inline-flex", alignItems: "center", gap: "8px" }}>
-              {t.back}
-            </button>
+            <button className={"back-btn" + (ar ? " rtl" : "")} onClick={onBack} style={{ marginBottom: 12 }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>{t.back}</button>
             <h1 className="hist-title" style={{ margin: 0 }}>{t.title}</h1>
             <p className="hist-sub" style={{ margin: 0, color: "var(--text-sub)" }}>{t.sub}</p>
           </div>
@@ -179,7 +177,7 @@ export default function History({ lang, api, onBack, onViewProject, user, plan, 
             <div className="hist-empty-icon">◎</div>
             <div className="hist-empty-title">{t.empty}</div>
             <div className="hist-empty-sub">{t.emptySub}</div>
-            <button className="primary" style={{ marginTop: 24 }} onClick={onBack}>{t.back}</button>
+            <button className={"back-btn" + (ar ? " rtl" : "")} style={{ marginTop: 24 }} onClick={onBack}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>{t.back}</button>
           </div>
         )}
 

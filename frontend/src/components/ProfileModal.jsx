@@ -894,19 +894,14 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                             {authBusy ? t.loadingPay : t.sendOtp}
                           </button>
                           <div style={{ textAlign: "center" }}>
-                            <span
+                            <span className={"back-btn" + (ar ? " rtl" : "")}
                               onClick={() => {
                                 setAuthError(null);
                                 setAuthMode("login");
                               }}
-                              style={{
-                                fontSize: "0.84rem",
-                                color: "var(--orange)",
-                                cursor: "pointer",
-                                textDecoration: "underline",
-                                fontWeight: "500"
-                              }}
+                              style={{ display: "inline-flex", color: "var(--orange)", borderColor: "transparent", background: "transparent", fontSize: "0.84rem" }}
                             >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}><polyline points="15 18 9 12 15 6" /></svg>
                               {t.backToLogin}
                             </span>
                           </div>
@@ -976,18 +971,14 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                             </span>
                           </div>
                           <div style={{ textAlign: "center", marginTop: "8px" }}>
-                            <span
+                            <span className={"back-btn" + (ar ? " rtl" : "")}
                               onClick={() => {
                                 setAuthError(null);
                                 setAuthMode("login");
                               }}
-                              style={{
-                                fontSize: "0.78rem",
-                                color: "var(--text-sub)",
-                                cursor: "pointer",
-                                textDecoration: "underline"
-                              }}
+                              style={{ display: "inline-flex", color: "var(--text-sub)", borderColor: "transparent", background: "transparent", fontSize: "0.78rem" }}
                             >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13 }}><polyline points="15 18 9 12 15 6" /></svg>
                               {t.backToLogin}
                             </span>
                           </div>

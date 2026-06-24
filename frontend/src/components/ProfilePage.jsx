@@ -270,7 +270,7 @@ export default function ProfilePage({ user, plan, history, lang, api, onBack, on
           <p>{t.subtitle}</p>
         </div>
         <div className="profile-page-actions">
-          <button className="ghost" onClick={onBack}>{t.back}</button>
+          <button className={"back-btn" + (ar ? " rtl" : "")} onClick={onBack}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>{t.back}</button>
           <button className="primary" onClick={onLogout}>{ar ? "تسجيل الخروج" : "Se déconnecter"}</button>
         </div>
       </div>

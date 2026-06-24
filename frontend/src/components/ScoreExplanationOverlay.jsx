@@ -28,8 +28,8 @@ const CRITERION_LABELS_OV = {
 };
 
 const TEXTS_OV = {
-  fr: { returnTo: '← Retour au tableau', finalScore: 'Score final', formula: 'Formule mathématique', anchor: 'Cadre de référence :', contributions: 'Contributions', missing: 'Données manquantes :', gate: 'Alerte porte :', improvement: 'Recommandation :' },
-  ar: { returnTo: '← العودة إلى اللوحة', finalScore: 'النتيجة النهائية', formula: 'الصيغة الرياضية', anchor: 'الإطار المرجعي:', contributions: 'المساهمات', missing: 'البيانات المفقودة:', gate: 'تنبيه بوابة:', improvement: 'إرشادات التحسين:' },
+  fr: { returnTo: 'Retour au tableau', finalScore: 'Score final', formula: 'Formule mathématique', anchor: 'Cadre de référence :', contributions: 'Contributions', missing: 'Données manquantes :', gate: 'Alerte porte :', improvement: 'Recommandation :' },
+  ar: { returnTo: 'العودة إلى اللوحة', finalScore: 'النتيجة النهائية', formula: 'الصيغة الرياضية', anchor: 'الإطار المرجعي:', contributions: 'المساهمات', missing: 'البيانات المفقودة:', gate: 'تنبيه بوابة:', improvement: 'إرشادات التحسين:' },
 };
 
 const ScoreExplanationOverlay = ({ score, onClose, lang }) => {
@@ -103,14 +103,7 @@ const ScoreExplanationOverlay = ({ score, onClose, lang }) => {
                 : score.dimension
             }
           </h2>
-          <button 
-            ref={returnButtonRef}
-            className="return-button"
-            onClick={onClose}
-            title={ar ? 'العودة' : 'Retour'}
-          >
-            {t.returnTo}
-          </button>
+          <button ref={returnButtonRef} className={"back-btn" + (ar ? " rtl" : "")} onClick={onClose} title={ar ? 'العودة' : 'Retour'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>{t.returnTo}</button>
         </div>
         
         <div className="score-display">

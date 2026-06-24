@@ -264,18 +264,8 @@ export default function VerificationPage() {
 
         {/* Error: go home */}
         {state === "error" && (
-          <a
-            href="/"
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 8,
-              padding: "10px 24px", borderRadius: 10,
-              background: "rgba(255,255,255,0.06)",
-              border: "1px solid rgba(255,255,255,0.1)",
-              color: "var(--text, #f0f0f0)", fontSize: "0.88rem", fontWeight: 600,
-              textDecoration: "none", marginTop: 4,
-            }}
-          >
-            <i className="fa-solid fa-arrow-left" />
+          <a className={"back-btn" + (ar ? " rtl" : "")} href="/" style={{ marginTop: 4, color: "var(--text)", textDecoration: "none" }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
             {t.goHome}
           </a>
         )}

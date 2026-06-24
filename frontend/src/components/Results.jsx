@@ -637,9 +637,7 @@ export default function Results({ audit, pid, lang, onNewAudit, onBackToDashboar
             )}
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button className="ghost" onClick={onBackToDashboard} style={{ border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "10px 16px", cursor: "pointer" }}>
-              {ar ? "لوحة قيادة المشروع" : "Tableau de bord"}
-            </button>
+            <button className={"back-btn" + (ar ? " rtl" : "")} onClick={onBackToDashboard}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>{ar ? "لوحة القيادة" : "Tableau de bord"}</button>
             <button className="ghost" onClick={() => setShowEditor(true)} style={{ border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "10px 16px", cursor: "pointer" }}>
               {T.editProfile}
             </button>
