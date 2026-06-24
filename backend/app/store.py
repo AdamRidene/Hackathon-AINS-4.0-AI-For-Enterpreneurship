@@ -13,7 +13,7 @@ import json
 import secrets
 import threading
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -44,11 +44,6 @@ _mem_sessions: dict[str, dict] = {}
 _mem_projects: dict[str, dict] = {}
 _mem_audits: dict[str, dict] = {}
 _mem_docs: dict[str, dict] = {}
-_mem_conversations: dict[str, list[dict]] = {}
-_mem_clicks: list[dict] = []
-_mem_milestone_outcomes: list[dict] = []
-_mem_reset_tokens: dict[str, dict] = {}
-_mem_verify_tokens: dict[str, dict] = {}
 
 
 class _MemCursor:
@@ -222,26 +217,16 @@ def _init_db_conn_pg(conn: _PgConn) -> None:
             company       TEXT,
             photo         TEXT,
             birth_date    TEXT,
-            location      TEXT,
-            email_verified INTEGER NOT NULL DEFAULT 0
+            location      TEXT
         )
     """)
-    try:
-        conn.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0")
-    except Exception:
-        pass  # column already exists
     conn.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
             token      TEXT PRIMARY KEY,
             user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            created_at TEXT NOT NULL,
-            expires_at TEXT
+            created_at TEXT NOT NULL
         )
     """)
-    try:
-        conn.execute("ALTER TABLE sessions ADD COLUMN expires_at TEXT")
-    except Exception:
-        pass
     conn.execute("""
         CREATE TABLE IF NOT EXISTS projects (
             id            TEXT PRIMARY KEY,
@@ -286,51 +271,6 @@ def _init_db_conn_pg(conn: _PgConn) -> None:
             uploaded_at    TEXT NOT NULL
         )
     """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS conversation_memory (
-            id         TEXT PRIMARY KEY,
-            project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-            role       TEXT NOT NULL,
-            content    TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS resource_clicks (
-            id           TEXT PRIMARY KEY,
-            project_id   TEXT NOT NULL,
-            resource_url TEXT NOT NULL,
-            resource_title TEXT NOT NULL,
-            gap_category TEXT,
-            clicked_at   TEXT NOT NULL
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS milestone_outcomes (
-            id           TEXT PRIMARY KEY,
-            project_id   TEXT NOT NULL,
-            milestone_id TEXT NOT NULL,
-            milestone_title TEXT NOT NULL,
-            trigger      TEXT NOT NULL,
-            resource_urls TEXT NOT NULL,
-            resolved     INTEGER NOT NULL DEFAULT 0,
-            completed_at TEXT NOT NULL
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS password_reset_tokens (
-            token      TEXT PRIMARY KEY,
-            user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            expires_at TEXT NOT NULL
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS email_verify_tokens (
-            token      TEXT PRIMARY KEY,
-            user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            expires_at TEXT NOT NULL
-        )
-    """)
     # Idempotent column additions — PostgreSQL 9.6+ supports IF NOT EXISTS
     conn.execute("ALTER TABLE audits ADD COLUMN IF NOT EXISTS owner_user_id TEXT")
     for col in ("bio", "phone", "role", "company", "photo", "birth_date", "location"):
@@ -352,27 +292,17 @@ def _init_db_conn_sqlite(conn) -> None:
             company       TEXT,
             photo         TEXT,
             birth_date    TEXT,
-            location      TEXT,
-            email_verified INTEGER NOT NULL DEFAULT 0
+            location      TEXT
         )
     """)
-    try:
-        conn.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0")
-    except Exception:
-        pass
     conn.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
             token      TEXT PRIMARY KEY,
             user_id    TEXT NOT NULL,
             created_at TEXT NOT NULL,
-            expires_at TEXT,
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         )
     """)
-    try:
-        conn.execute("ALTER TABLE sessions ADD COLUMN expires_at TEXT")
-    except Exception:
-        pass
     conn.execute("""
         CREATE TABLE IF NOT EXISTS projects (
             id            TEXT PRIMARY KEY,
@@ -417,54 +347,6 @@ def _init_db_conn_sqlite(conn) -> None:
             extracted_text TEXT,
             uploaded_at   TEXT NOT NULL,
             FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS conversation_memory (
-            id         TEXT PRIMARY KEY,
-            project_id TEXT NOT NULL,
-            role       TEXT NOT NULL,
-            content    TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS resource_clicks (
-            id           TEXT PRIMARY KEY,
-            project_id   TEXT NOT NULL,
-            resource_url TEXT NOT NULL,
-            resource_title TEXT NOT NULL,
-            gap_category TEXT,
-            clicked_at   TEXT NOT NULL
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS milestone_outcomes (
-            id           TEXT PRIMARY KEY,
-            project_id   TEXT NOT NULL,
-            milestone_id TEXT NOT NULL,
-            milestone_title TEXT NOT NULL,
-            trigger      TEXT NOT NULL,
-            resource_urls TEXT NOT NULL,
-            resolved     INTEGER NOT NULL DEFAULT 0,
-            completed_at TEXT NOT NULL
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS password_reset_tokens (
-            token      TEXT PRIMARY KEY,
-            user_id    TEXT NOT NULL,
-            expires_at TEXT NOT NULL,
-            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS email_verify_tokens (
-            token      TEXT PRIMARY KEY,
-            user_id    TEXT NOT NULL,
-            expires_at TEXT NOT NULL,
-            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         )
     """)
     columns = {
@@ -557,7 +439,6 @@ def _user_from_row(row: dict | None) -> dict | None:
         "photo": r.get("photo"),
         "birth_date": r.get("birth_date"),
         "location": r.get("location"),
-        "email_verified": bool(r.get("email_verified", False)),
     }
 
 
@@ -586,7 +467,6 @@ def create_user(
         "phone": phone,
         "role": role,
         "company": company,
-        "email_verified": False,
     }
     with _lock:
         if _DB_ENABLED:
@@ -594,11 +474,11 @@ def create_user(
                 try:
                     conn.execute(
                         """INSERT INTO users (id, email, name, password_hash, plan, created_at,
-                           birth_date, location, phone, role, company, email_verified)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                           birth_date, location, phone, role, company)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (uid, email_norm, user["name"],
                          _hash_password(password) if password else None,
-                         "free", now, birth_date, location, phone, role, company, 0),
+                         "free", now, birth_date, location, phone, role, company),
                     )
                 except Exception as exc:
                     raise ValueError("Email already registered") from exc
@@ -611,7 +491,7 @@ def create_user(
     return user
 
 
-def get_or_create_supabase_user(sub: str, email: str, name: str) -> dict:
+def get_or_create_supabase_user(sub: str, email: str, name: str, photo: str | None = None) -> dict:
     now = datetime.now(timezone.utc).isoformat()
     email_norm = _normalise_email(email) if email else ""
     name_clean = (name or email_norm.split("@")[0] if email_norm else "Entrepreneur").strip()
@@ -619,10 +499,10 @@ def get_or_create_supabase_user(sub: str, email: str, name: str) -> dict:
         if _DB_ENABLED:
             with db_session() as conn:
                 conn.execute(
-                    """INSERT INTO users (id, email, name, password_hash, plan, created_at, email_verified)
-                       VALUES (?, ?, ?, NULL, 'free', ?, 1)
-                       ON CONFLICT(id) DO UPDATE SET email = excluded.email, name = excluded.name""",
-                    (sub, email_norm, name_clean, now),
+                    """INSERT INTO users (id, email, name, password_hash, plan, created_at, photo)
+                       VALUES (?, ?, ?, NULL, 'free', ?, ?)
+                       ON CONFLICT(id) DO UPDATE SET email = excluded.email, name = excluded.name, photo = COALESCE(excluded.photo, users.photo)""",
+                    (sub, email_norm, name_clean, now, photo),
                 )
                 row = conn.execute("SELECT * FROM users WHERE id = ?", (sub,)).fetchone()
             return _user_from_row(row)
@@ -630,13 +510,14 @@ def get_or_create_supabase_user(sub: str, email: str, name: str) -> dict:
             if sub in _mem_users:
                 _mem_users[sub]["email"] = email_norm
                 _mem_users[sub]["name"] = name_clean
+                if photo:
+                    _mem_users[sub]["photo"] = photo
             else:
                 _mem_users[sub] = {
                     "id": sub, "email": email_norm, "name": name_clean,
                     "plan": "free", "created_at": now, "password_hash": None,
                     "bio": None, "phone": None, "role": None, "company": None,
-                    "photo": None, "birth_date": None, "location": None,
-                    "email_verified": True,
+                    "photo": photo, "birth_date": None, "location": None,
                 }
             return dict(_mem_users[sub])
 
@@ -660,31 +541,16 @@ def authenticate_user(email: str, password: str) -> dict | None:
 def create_session(user_id: str) -> str:
     token = secrets.token_urlsafe(32)
     now = datetime.now(timezone.utc).isoformat()
-    expires_at = _session_expires_at()
     with _lock:
         if _DB_ENABLED:
             with db_session() as conn:
                 conn.execute(
-                    "INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
-                    (token, user_id, now, expires_at),
+                    "INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)",
+                    (token, user_id, now),
                 )
         else:
-            _mem_sessions[token] = {"token": token, "user_id": user_id, "created_at": now, "expires_at": expires_at}
+            _mem_sessions[token] = {"token": token, "user_id": user_id, "created_at": now}
     return token
-
-
-def find_user_by_email(email: str) -> dict | None:
-    """Look up a user by normalised email. Returns user dict or None."""
-    email_norm = _normalise_email(email)
-    if _DB_ENABLED:
-        with db_session() as conn:
-            row = conn.execute("SELECT * FROM users WHERE email = ?", (email_norm,)).fetchone()
-        return _user_from_row(row)
-    else:
-        for u in _mem_users.values():
-            if u.get("email") == email_norm:
-                return dict(u)
-        return None
 
 
 def get_user_by_id(user_id: str) -> dict | None:
@@ -697,11 +563,39 @@ def get_user_by_id(user_id: str) -> dict | None:
         return dict(u) if u else None
 
 
+def get_user_by_email(email: str) -> dict | None:
+    email_norm = _normalise_email(email)
+    if _DB_ENABLED:
+        with db_session() as conn:
+            row = conn.execute("SELECT * FROM users WHERE email = ?", (email_norm,)).fetchone()
+        return _user_from_row(row)
+    else:
+        for u in _mem_users.values():
+            if u["email"] == email_norm:
+                return dict(u)
+        return None
+
+
+def update_user_password(email: str, password: str) -> None:
+    email_norm = _normalise_email(email)
+    hashed = _hash_password(password)
+    with _lock:
+        if _DB_ENABLED:
+            with db_session() as conn:
+                conn.execute("UPDATE users SET password_hash = ? WHERE email = ?", (hashed, email_norm))
+        else:
+            for u in _mem_users.values():
+                if u["email"] == email_norm:
+                    u["password_hash"] = hashed
+                    break
+
+
+
 def get_user_by_token(token: str) -> dict | None:
     if _DB_ENABLED:
         with db_session() as conn:
             row = conn.execute(
-                """SELECT users.*, sessions.expires_at as session_expires_at
+                """SELECT users.*, sessions.created_at as session_created_at
                    FROM sessions JOIN users ON users.id = sessions.user_id
                    WHERE sessions.token = ?""",
                 (token,),
@@ -709,10 +603,11 @@ def get_user_by_token(token: str) -> dict | None:
         if row is None:
             return None
         try:
-            expires_at = datetime.fromisoformat(row["session_expires_at"])
-            if expires_at.tzinfo is None:
-                expires_at = expires_at.replace(tzinfo=timezone.utc)
-            if datetime.now(timezone.utc) > expires_at:
+            created_at = datetime.fromisoformat(row["session_created_at"])
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+            age = datetime.now(timezone.utc) - created_at
+            if age.days > 30:
                 delete_session(token)
                 return None
         except Exception:
@@ -722,15 +617,6 @@ def get_user_by_token(token: str) -> dict | None:
         sess = _mem_sessions.get(token)
         if sess is None:
             return None
-        try:
-            expires_at = datetime.fromisoformat(sess["expires_at"])
-            if expires_at.tzinfo is None:
-                expires_at = expires_at.replace(tzinfo=timezone.utc)
-            if datetime.now(timezone.utc) > expires_at:
-                delete_session(token)
-                return None
-        except Exception:
-            pass
         u = _mem_users.get(sess["user_id"])
         return dict(u) if u else None
 
@@ -742,183 +628,6 @@ def delete_session(token: str) -> None:
                 conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
         else:
             _mem_sessions.pop(token, None)
-
-
-# ── Password reset tokens ────────────────────────────────────────────────────
-
-
-def create_password_reset_token(user_id: str) -> str:
-    """Generate a reset token valid for 1 hour."""
-    token = secrets.token_urlsafe(32)
-    now = datetime.now(timezone.utc)
-    expires_at = (now + timedelta(hours=1)).isoformat()
-    with _lock:
-        if _DB_ENABLED:
-            with db_session() as conn:
-                conn.execute(
-                    "INSERT INTO password_reset_tokens (token, user_id, expires_at) VALUES (?, ?, ?)",
-                    (token, user_id, expires_at),
-                )
-        else:
-            _mem_reset_tokens[token] = {"token": token, "user_id": user_id, "expires_at": expires_at}
-    return token
-
-
-def verify_reset_token(token: str) -> str | None:
-    """Return user_id if the token is valid and not expired, else None."""
-    with _lock:
-        if _DB_ENABLED:
-            with db_session() as conn:
-                row = conn.execute(
-                    "SELECT * FROM password_reset_tokens WHERE token = ?", (token,),
-                ).fetchone()
-            if row is None:
-                return None
-            try:
-                expires_at = datetime.fromisoformat(row["expires_at"])
-                if expires_at.tzinfo is None:
-                    expires_at = expires_at.replace(tzinfo=timezone.utc)
-                if datetime.now(timezone.utc) > expires_at:
-                    _delete_reset_token(token)
-                    return None
-            except Exception:
-                return None
-            return row["user_id"]
-        else:
-            entry = _mem_reset_tokens.get(token)
-            if entry is None:
-                return None
-            try:
-                expires_at = datetime.fromisoformat(entry["expires_at"])
-                if expires_at.tzinfo is None:
-                    expires_at = expires_at.replace(tzinfo=timezone.utc)
-                if datetime.now(timezone.utc) > expires_at:
-                    _mem_reset_tokens.pop(token, None)
-                    return None
-            except Exception:
-                return None
-            return entry["user_id"]
-
-
-def _delete_reset_token(token: str) -> None:
-    if _DB_ENABLED:
-        with db_session() as conn:
-            conn.execute("DELETE FROM password_reset_tokens WHERE token = ?", (token,))
-    else:
-        _mem_reset_tokens.pop(token, None)
-
-
-def consume_reset_token(token: str) -> None:
-    """Delete a used/expired reset token."""
-    with _lock:
-        if _DB_ENABLED:
-            with db_session() as conn:
-                conn.execute("DELETE FROM password_reset_tokens WHERE token = ?", (token,))
-        else:
-            _mem_reset_tokens.pop(token, None)
-
-
-def reset_user_password(user_id: str, new_password: str) -> None:
-    """Update the user's password hash in-place."""
-    with _lock:
-        if _DB_ENABLED:
-            with db_session() as conn:
-                conn.execute(
-                    "UPDATE users SET password_hash = ? WHERE id = ?",
-                    (_hash_password(new_password), user_id),
-                )
-        else:
-            u = _mem_users.get(user_id)
-            if u:
-                u["password_hash"] = _hash_password(new_password)
-
-
-# ── Email verification tokens (local mode) ───────────────────────────────────
-
-
-def create_email_verification_token(user_id: str) -> str:
-    """Generate a verification token valid for 24 hours."""
-    token = secrets.token_urlsafe(32)
-    now = datetime.now(timezone.utc)
-    expires_at = (now + timedelta(hours=24)).isoformat()
-    with _lock:
-        if _DB_ENABLED:
-            with db_session() as conn:
-                conn.execute(
-                    "INSERT INTO email_verify_tokens (token, user_id, expires_at) VALUES (?, ?, ?)",
-                    (token, user_id, expires_at),
-                )
-        else:
-            _mem_verify_tokens[token] = {"token": token, "user_id": user_id, "expires_at": expires_at}
-    return token
-
-
-def verify_email_token(token: str) -> str | None:
-    """Return user_id if token is valid, else None."""
-    with _lock:
-        if _DB_ENABLED:
-            with db_session() as conn:
-                row = conn.execute(
-                    "SELECT * FROM email_verify_tokens WHERE token = ?", (token,),
-                ).fetchone()
-            if row is None:
-                return None
-            try:
-                expires_at = datetime.fromisoformat(row["expires_at"])
-                if expires_at.tzinfo is None:
-                    expires_at = expires_at.replace(tzinfo=timezone.utc)
-                if datetime.now(timezone.utc) > expires_at:
-                    conn.execute("DELETE FROM email_verify_tokens WHERE token = ?", (token,))
-                    return None
-            except Exception:
-                return None
-            return row["user_id"]
-        else:
-            entry = _mem_verify_tokens.get(token)
-            if entry is None:
-                return None
-            try:
-                expires_at = datetime.fromisoformat(entry["expires_at"])
-                if expires_at.tzinfo is None:
-                    expires_at = expires_at.replace(tzinfo=timezone.utc)
-                if datetime.now(timezone.utc) > expires_at:
-                    _mem_verify_tokens.pop(token, None)
-                    return None
-            except Exception:
-                return None
-            return entry["user_id"]
-
-
-def mark_email_verified(user_id: str) -> None:
-    """Set email_verified = True on the user record."""
-    with _lock:
-        if _DB_ENABLED:
-            with db_session() as conn:
-                conn.execute("UPDATE users SET email_verified = 1 WHERE id = ?", (user_id,))
-        else:
-            u = _mem_users.get(user_id)
-            if u:
-                u["email_verified"] = True
-
-
-def consume_verify_token(token: str) -> None:
-    """Delete a used/expired verification token."""
-    with _lock:
-        if _DB_ENABLED:
-            with db_session() as conn:
-                conn.execute("DELETE FROM email_verify_tokens WHERE token = ?", (token,))
-        else:
-            _mem_verify_tokens.pop(token, None)
-
-
-# ── Session hardening: add expires_at ────────────────────────────────────────
-
-
-def _session_expires_at() -> str:
-    return (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
-
-
-# ── Plan management ────────────────────────────────────────────────────────────
 
 
 def update_user_plan(user_id: str, plan: str) -> dict | None:
@@ -952,8 +661,7 @@ def update_user_profile(
                 if email:
                     email = _normalise_email(email)
                     conn.execute(
-                        """UPDATE users SET name = ?, email = ?, email_verified = 0,
-                           bio = ?, phone = ?, role = ?,
+                        """UPDATE users SET name = ?, email = ?, bio = ?, phone = ?, role = ?,
                            company = ?, photo = ?, birth_date = ?, location = ?
                            WHERE id = ?""",
                         (name, email, bio, phone, role, company, photo, birth_date, location, user_id),
@@ -974,7 +682,6 @@ def update_user_profile(
                          company=company, photo=photo, birth_date=birth_date, location=location)
                 if email:
                     u["email"] = _normalise_email(email)
-                    u["email_verified"] = False
                 return dict(u)
         return None
 
@@ -1348,214 +1055,3 @@ def delete_document(doc_id: str) -> None:
                 conn.execute("DELETE FROM project_documents WHERE id = ?", (doc_id,))
         else:
             _mem_docs.pop(doc_id, None)
-
-
-# ── Persistent conversation memory (Phase 3.4) ──────────────────────────────
-
-_CONVERSATION_TTL_SECONDS = 86400  # 24h
-_MAX_CONVERSATION_TURNS = 6
-
-
-def _delete_expired_conversations(project_id: str) -> None:
-    now = datetime.now(timezone.utc)
-    cutoff = now.isoformat()
-    if _DB_ENABLED:
-        with db_session() as conn:
-            conn.execute(
-                """DELETE FROM conversation_memory
-                   WHERE project_id = ? AND created_at < ?""",
-                (project_id, cutoff),
-            )
-
-
-def save_conversation_turn(project_id: str, role: str, content: str) -> None:
-    now = datetime.now(timezone.utc).isoformat()
-    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=_CONVERSATION_TTL_SECONDS)).isoformat()
-    with _lock:
-        if _DB_ENABLED:
-            with db_session() as conn:
-                conn.execute(
-                    "DELETE FROM conversation_memory WHERE project_id = ? AND created_at < ?",
-                    (project_id, cutoff),
-                )
-                conn.execute(
-                    """INSERT INTO conversation_memory (id, project_id, role, content, created_at)
-                       VALUES (?, ?, ?, ?, ?)""",
-                    (uuid4().hex[:16], project_id, role, content, now),
-                )
-                rows = conn.execute(
-                    """SELECT id FROM conversation_memory WHERE project_id = ?
-                       ORDER BY created_at ASC""",
-                    (project_id,),
-                ).fetchall()
-                ids = [r["id"] for r in rows]
-                if len(ids) > _MAX_CONVERSATION_TURNS:
-                    for old_id in ids[:-_MAX_CONVERSATION_TURNS]:
-                        conn.execute(
-                            "DELETE FROM conversation_memory WHERE id = ?", (old_id,)
-                        )
-        else:
-            if project_id not in _mem_conversations:
-                _mem_conversations[project_id] = []
-            cutoff_dt = datetime.now(timezone.utc) - timedelta(seconds=_CONVERSATION_TTL_SECONDS)
-            _mem_conversations[project_id] = [
-                m for m in _mem_conversations[project_id]
-                if datetime.fromisoformat(m["created_at"]).replace(tzinfo=timezone.utc) > cutoff_dt
-            ]
-            _mem_conversations[project_id].append({
-                "role": role, "content": content, "created_at": now,
-            })
-            if len(_mem_conversations[project_id]) > _MAX_CONVERSATION_TURNS:
-                _mem_conversations[project_id] = _mem_conversations[project_id][-_MAX_CONVERSATION_TURNS:]
-
-
-# ── Resource click tracking (Phase 4.2a) ────────────────────────────────────
-
-def log_resource_click(project_id: str, resource_url: str, resource_title: str,
-                       gap_category: str = "") -> None:
-    now = datetime.now(timezone.utc).isoformat()
-    with _lock:
-        if _DB_ENABLED:
-            with db_session() as conn:
-                conn.execute(
-                    """INSERT INTO resource_clicks (id, project_id, resource_url, resource_title, gap_category, clicked_at)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
-                    (uuid4().hex[:16], project_id, resource_url, resource_title, gap_category or None, now),
-                )
-        else:
-            _mem_clicks.append({
-                "project_id": project_id, "resource_url": resource_url,
-                "resource_title": resource_title, "gap_category": gap_category,
-                "clicked_at": now,
-            })
-
-
-def get_click_stats(gap_category: str = "") -> list[dict]:
-    """Return resources ranked by click count, optionally filtered by gap_category."""
-    with _lock:
-        if _DB_ENABLED:
-            with db_session() as conn:
-                if gap_category:
-                    rows = conn.execute(
-                        """SELECT resource_url, resource_title, gap_category, COUNT(*) as clicks
-                           FROM resource_clicks WHERE gap_category = ?
-                           GROUP BY resource_url, resource_title
-                           ORDER BY clicks DESC""",
-                        (gap_category,),
-                    ).fetchall()
-                else:
-                    rows = conn.execute(
-                        """SELECT resource_url, resource_title, gap_category, COUNT(*) as clicks
-                           FROM resource_clicks GROUP BY resource_url, resource_title
-                           ORDER BY clicks DESC""",
-                    ).fetchall()
-            return [dict(r) for r in rows]
-        else:
-            entries = _mem_clicks
-            if gap_category:
-                entries = [c for c in entries if c.get("gap_category") == gap_category]
-            counts: dict[str, dict] = {}
-            for c in entries:
-                key = c["resource_url"]
-                if key not in counts:
-                    counts[key] = {
-                        "resource_url": key, "resource_title": c["resource_title"],
-                        "gap_category": c.get("gap_category", ""), "clicks": 0,
-                    }
-                counts[key]["clicks"] += 1
-            return sorted(counts.values(), key=lambda x: x["clicks"], reverse=True)
-
-
-# ── Milestone outcome tracking (Phase 4.2b) ─────────────────────────────────
-
-def record_milestone_completion(project_id: str, milestone_id: str,
-                                milestone_title: str, trigger: str,
-                                resource_urls: list[str], resolved: bool = False) -> None:
-    now = datetime.now(timezone.utc).isoformat()
-    with _lock:
-        if _DB_ENABLED:
-            with db_session() as conn:
-                conn.execute(
-                    """INSERT INTO milestone_outcomes
-                       (id, project_id, milestone_id, milestone_title, trigger, resource_urls, resolved, completed_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (uuid4().hex[:16], project_id, milestone_id, milestone_title, trigger,
-                     json.dumps(resource_urls), 1 if resolved else 0, now),
-                )
-        else:
-            _mem_milestone_outcomes.append({
-                "project_id": project_id, "milestone_id": milestone_id,
-                "milestone_title": milestone_title, "trigger": trigger,
-                "resource_urls": resource_urls, "resolved": resolved,
-                "completed_at": now,
-            })
-
-
-def get_resolution_rates(min_completions: int = 3) -> list[dict]:
-    """Return resolution rate per resource URL across all milestone completions.
-
-    A milestone is "resolved" when the follow-up audit shows improvement.
-    Returns resources with at least `min_completions` completions.
-    """
-    with _lock:
-        if _DB_ENABLED:
-            with db_session() as conn:
-                rows = conn.execute(
-                    """SELECT resource_urls, resolved, trigger FROM milestone_outcomes""",
-                ).fetchall()
-        else:
-            rows = _mem_milestone_outcomes
-
-    resource_stats: dict[str, dict] = {}
-    for r in rows:
-        urls = json.loads(r["resource_urls"]) if isinstance(r["resource_urls"], str) else r["resource_urls"]
-        resolved = r["resolved"] if isinstance(r["resolved"], int) else (1 if r["resolved"] else 0)
-        for url in urls:
-            if url not in resource_stats:
-                resource_stats[url] = {"url": url, "total": 0, "resolved": 0}
-            resource_stats[url]["total"] += 1
-            if resolved:
-                resource_stats[url]["resolved"] += 1
-
-    result = []
-    for url, stats in resource_stats.items():
-        if stats["total"] >= min_completions:
-            stats["resolution_rate"] = round(stats["resolved"] / stats["total"], 2)
-            result.append(stats)
-    return sorted(result, key=lambda x: x["resolution_rate"])
-
-
-def get_milestone_outcomes(project_id: str) -> list[dict]:
-    """Return all milestone completions for a project."""
-    with _lock:
-        if _DB_ENABLED:
-            with db_session() as conn:
-                rows = conn.execute(
-                    """SELECT milestone_id, milestone_title, trigger, resource_urls, resolved, completed_at
-                       FROM milestone_outcomes WHERE project_id = ? ORDER BY completed_at DESC""",
-                    (project_id,),
-                ).fetchall()
-            return [dict(r) for r in rows]
-        else:
-            return [m for m in _mem_milestone_outcomes if m["project_id"] == project_id]
-
-
-def get_conversation_history(project_id: str) -> list[dict]:
-    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=_CONVERSATION_TTL_SECONDS)).isoformat()
-    if _DB_ENABLED:
-        with db_session() as conn:
-            rows = conn.execute(
-                """SELECT role, content, created_at FROM conversation_memory
-                   WHERE project_id = ? AND created_at >= ?
-                   ORDER BY created_at ASC LIMIT ?""",
-                (project_id, cutoff, _MAX_CONVERSATION_TURNS),
-            ).fetchall()
-        return [{"role": r["role"], "content": r["content"]} for r in rows]
-    else:
-        raw = _mem_conversations.get(project_id, [])
-        cutoff_dt = datetime.now(timezone.utc) - timedelta(seconds=_CONVERSATION_TTL_SECONDS)
-        return [
-            {"role": m["role"], "content": m["content"]}
-            for m in raw
-            if datetime.fromisoformat(m["created_at"]).replace(tzinfo=timezone.utc) > cutoff_dt
-        ][-_MAX_CONVERSATION_TURNS:]

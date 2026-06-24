@@ -2,6 +2,12 @@
 from __future__ import annotations
 
 import asyncio
+import time
+import random
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+import httpx
 from datetime import datetime, timezone
 import logging
 import os
@@ -33,16 +39,12 @@ install_pii_log_filter()  # redact PII from all log output
 
 app = FastAPI(title="Firasa Orientation Engine", version=__version__)
 
-limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=["60/minute"],
-    enabled=os.environ.get("FIRASA_ENV") != "test",
-)
+limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 _ORIGINS = (
-    os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000")
+    os.getenv("CORS_ORIGINS", "http://localhost:5174,http://localhost:3000")
     .split(",")
 )
 app.add_middleware(
@@ -89,6 +91,34 @@ class AuthBody(BaseModel):
         return v
 
 
+class DeleteUnverifiedBody(BaseModel):
+    email: str
+
+
+class ConfirmEmailBody(BaseModel):
+    email: str
+    token: str
+
+
+class ResendVerificationBody(BaseModel):
+    email: str
+
+
+class ForgotPasswordBody(BaseModel):
+    email: str
+
+
+class VerifyForgotOtpBody(BaseModel):
+    email: str
+    code: str
+
+
+class ResetPasswordCustomBody(BaseModel):
+    email: str
+    code: str
+    password: str
+
+
 class PlanBody(BaseModel):
     plan: str
 
@@ -103,29 +133,6 @@ class ProfileUpdateBody(BaseModel):
     photo: Optional[str] = None
     birth_date: Optional[str] = None
     location: Optional[str] = None
-
-
-class ForgotPasswordBody(BaseModel):
-    email: str
-
-    @field_validator("email")
-    @classmethod
-    def validate_email(cls, v: str) -> str:
-        if not _EMAIL_RE.match(v.strip()):
-            raise ValueError("Invalid email format")
-        return v.strip()
-
-
-class ResetPasswordBody(BaseModel):
-    token: str
-    new_password: str
-
-    @field_validator("new_password")
-    @classmethod
-    def validate_new_password(cls, v: str) -> str:
-        if len(v) < 6:
-            raise ValueError("Password must be at least 6 characters")
-        return v
 
 
 class AnswerBody(BaseModel):
@@ -164,7 +171,6 @@ def _public_user(user: dict) -> dict:
         "photo": user.get("photo"),
         "birth_date": user.get("birth_date"),
         "location": user.get("location"),
-        "email_verified": bool(user.get("email_verified", False)),
     }
 
 
@@ -278,14 +284,80 @@ def auth_config() -> dict:
 # Auth endpoints (local mode only)                                            #
 # --------------------------------------------------------------------------- #
 @app.post("/api/auth/register")
-@limiter.limit("5/minute")
-def register(request: Request, body: AuthBody) -> dict:
+async def register(body: AuthBody) -> dict:
     if settings.auth_mode == "none":
-        # In bypass mode, return the mock dev user immediately
         from .auth import _MOCK_USER
         return {"token": "dev-token", "user": dict(_MOCK_USER)}
+
     if settings.is_supabase_auth:
-        raise HTTPException(404, "Registration is managed by Supabase Auth in production mode.")
+        service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        supabase_url = settings.supabase_url
+        if not service_role_key or not supabase_url:
+            raise HTTPException(500, "SUPABASE_SERVICE_ROLE_KEY is not set on the server.")
+
+        clean_email = body.email.strip().lower()
+        display_name = (body.name or "").strip() or clean_email.split("@")[0]
+
+        # Create user via admin API — Supabase does NOT send any confirmation email this way
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.post(
+                f"{supabase_url.rstrip('/')}/auth/v1/admin/users",
+                headers={
+                    "apikey": service_role_key,
+                    "Authorization": f"Bearer {service_role_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "email": clean_email,
+                    "password": body.password,
+                    "email_confirm": False,
+                    "user_metadata": {"full_name": display_name},
+                },
+            )
+
+        if res.status_code in (400, 422):
+            err = res.json() if res.content else {}
+            msg = err.get("msg") or err.get("message") or ""
+            if "already" in msg.lower() or "exists" in msg.lower() or res.status_code == 422:
+                raise HTTPException(409, "Un compte existe déjà avec cet e-mail. / حساب بهذا البريد موجود بالفعل.")
+            raise HTTPException(400, msg or "Données invalides.")
+        if res.status_code not in (200, 201):
+            detail = res.text
+            try:
+                detail = res.json().get("msg") or res.text
+            except Exception:
+                pass
+            raise HTTPException(500, f"Échec de la création du compte: {detail}")
+
+        user_data = res.json()
+        user_id = user_data.get("id")
+
+        # Generate 24-hour verification token and send our own SMTP email
+        token = uuid4().hex
+        VERIFICATION_STORE[clean_email + "_verify"] = {
+            "token": token,
+            "expires_at": time.time() + 86400,
+            "user_id": user_id,
+        }
+
+        app_url = os.getenv("FIRASA_APP_URL", "http://localhost:5174")
+        verify_link = f"{app_url}/verify?token={token}&email={clean_email}"
+        try:
+            send_verification_email_via_smtp(clean_email, display_name, verify_link)
+        except Exception as exc:
+            _logger.warning("Failed to send verification email to %s: %s", clean_email, exc)
+
+        return {
+            "user": {
+                "id": user_id,
+                "email": clean_email,
+                "name": display_name,
+                "plan": "free",
+                "pendingEmailConfirmation": True,
+            }
+        }
+
+    # Local auth mode
     try:
         user = store.create_user(
             body.email,
@@ -299,14 +371,12 @@ def register(request: Request, body: AuthBody) -> dict:
         )
     except ValueError as exc:
         raise HTTPException(409, str(exc))
-    session_token = store.create_session(user["id"])
-    verify_token = store.create_email_verification_token(user["id"])
-    return {"token": session_token, "verify_token": verify_token, "user": _public_user(user)}
+    token = store.create_session(user["id"])
+    return {"token": token, "user": _public_user(user)}
 
 
 @app.post("/api/auth/login")
-@limiter.limit("10/minute")
-def login(request: Request, body: AuthBody) -> dict:
+def login(body: AuthBody) -> dict:
     if settings.auth_mode == "none":
         from .auth import _MOCK_USER
         return {"token": "dev-token", "user": dict(_MOCK_USER)}
@@ -317,6 +387,278 @@ def login(request: Request, body: AuthBody) -> dict:
         raise HTTPException(401, "Invalid email or password")
     token = store.create_session(user["id"])
     return {"token": token, "user": _public_user(user)}
+
+
+# --------------------------------------------------------------------------- #
+# Token stores & SMTP helpers                                                 #
+# --------------------------------------------------------------------------- #
+OTP_STORE: dict[str, dict] = {}
+VERIFICATION_STORE: dict[str, dict] = {}  # keyed by email+"_verify"
+
+
+def send_verification_email_via_smtp(email: str, name: str, verify_link: str) -> None:
+    smtp_user = os.getenv("SMTP_USER")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port_str = os.getenv("SMTP_PORT", "587")
+    try:
+        smtp_port = int(smtp_port_str)
+    except ValueError:
+        smtp_port = 587
+
+    if not smtp_user or not smtp_password:
+        print(f"\n[DEV MODE] Verification link for {email}:\n{verify_link}\n")
+        return
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = "Vérifiez votre compte Firasa / تأكيد حساب فراسة"
+    msg["From"] = f"Firasa <{smtp_user}>"
+    msg["To"] = email
+
+    html_content = f"""
+    <div style="font-family: sans-serif; max-width: 550px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; color: #2d3748;">
+      <div dir="rtl" style="text-align: right; margin-bottom: 24px; border-bottom: 1px solid #edf2f7; padding-bottom: 24px;">
+        <h2 style="color: #1e3a8a; margin-top: 0; font-size: 22px;">تأكيد حساب فراسة</h2>
+        <p style="color: #4a5568; font-size: 15px; margin: 8px 0 16px 0;">مرحباً {name}، انقر على الزر أدناه لتأكيد بريدك الإلكتروني وتفعيل حسابك.</p>
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="{verify_link}" style="display: inline-block; padding: 14px 36px; background: linear-gradient(135deg, #3B82F6, #2563EB); color: #ffffff; text-decoration: none; border-radius: 10px; font-size: 16px; font-weight: 700;">
+            تأكيد حسابي
+          </a>
+        </div>
+        <p style="color: #718096; font-size: 13px; margin: 12px 0 0 0;">إذا لم تقم بإنشاء هذا الحساب، انقر على الزر واختر "لم أكن أنا" لحذف الحساب.</p>
+        <p style="color: #a0aec0; font-size: 12px; margin: 6px 0 0 0;">ينتهي هذا الرابط خلال 24 ساعة.</p>
+      </div>
+      <div style="text-align: left; padding-top: 8px;">
+        <h2 style="color: #1e3a8a; margin-top: 0; font-size: 20px;">Confirmez votre compte Firasa</h2>
+        <p style="color: #4a5568; font-size: 15px; margin: 8px 0 16px 0;">Bonjour {name}, cliquez sur le bouton ci-dessous pour confirmer votre adresse e-mail et activer votre compte.</p>
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="{verify_link}" style="display: inline-block; padding: 14px 36px; background: linear-gradient(135deg, #3B82F6, #2563EB); color: #ffffff; text-decoration: none; border-radius: 10px; font-size: 16px; font-weight: 700;">
+            Vérifier mon compte
+          </a>
+        </div>
+        <p style="color: #718096; font-size: 13px; margin: 12px 0 0 0;">Si vous n'avez pas créé ce compte, cliquez sur le bouton et choisissez « Ce n'était pas moi » pour supprimer le compte.</p>
+        <p style="color: #a0aec0; font-size: 12px; margin: 6px 0 0 0;">Ce lien expire dans 24 heures.</p>
+      </div>
+    </div>
+    """
+    msg.attach(MIMEText(html_content, "html", "utf-8"))
+
+    with smtplib.SMTP(smtp_host, smtp_port) as server:
+        server.starttls()
+        server.login(smtp_user, smtp_password)
+        server.sendmail(smtp_user, email, msg.as_string())
+
+
+def send_reset_otp_via_smtp(email: str, code: str) -> None:
+    smtp_user = os.getenv("SMTP_USER")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port_str = os.getenv("SMTP_PORT", "587")
+    try:
+        smtp_port = int(smtp_port_str)
+    except ValueError:
+        smtp_port = 587
+
+    # If SMTP credentials are not set, output OTP to console for local testing
+    if not smtp_user or not smtp_password:
+        print(f"\n[DEV MODE] Reset OTP generated for {email}: {code}\n")
+        return
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = "Votre code de réinitialisation Firasa / رمز إعادة تعيين كلمة المرور فراسة"
+    msg["From"] = f"Firasa <{smtp_user}>"
+    msg["To"] = email
+
+    html_content = f"""
+    <div style="font-family: sans-serif; max-width: 550px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; color: #2d3748;">
+      <div dir="rtl" style="text-align: right; margin-bottom: 24px; border-bottom: 1px solid #edf2f7; padding-bottom: 24px;">
+        <h2 style="color: #1e3a8a; margin-top: 0; font-size: 22px;">إعادة تعيين كلمة المرور - فراسة</h2>
+        <p style="color: #4a5568; font-size: 15px; margin: 8px 0 16px 0;">لقد تلقينا طلباً لإعادة تعيين كلمة المرور الخاصة بك. إليك رمز التأكيد الخاص بك:</p>
+        <div style="text-align: center; margin: 16px 0;">
+          <span style="font-size: 34px; font-weight: bold; color: #3B82F6; letter-spacing: 6px; padding: 12px 24px; background-color: #f7fafc; border: 1px dashed #3B82F6; border-radius: 8px; display: inline-block; direction: ltr;">
+            {code}
+          </span>
+        </div>
+        <p style="color: #718096; font-size: 13px; margin: 8px 0 0 0;">تنتهي صلاحية هذا الرمز خلال دقيقتين.</p>
+      </div>
+      <div style="text-align: left; padding-top: 8px;">
+        <h2 style="color: #1e3a8a; margin-top: 0; font-size: 20px;">Réinitialisation de mot de passe - Firasa</h2>
+        <p style="color: #4a5568; font-size: 15px; margin: 8px 0 16px 0;">Nous avons reçu une demande de réinitialisation de votre mot de passe. Voici votre code de confirmation :</p>
+        <div style="text-align: center; margin: 16px 0;">
+          <span style="font-size: 34px; font-weight: bold; color: #3B82F6; letter-spacing: 6px; padding: 12px 24px; background-color: #f7fafc; border: 1px dashed #3B82F6; border-radius: 8px; display: inline-block;">
+            {code}
+          </span>
+        </div>
+        <p style="color: #718096; font-size: 13px; margin: 8px 0 0 0;">Ce code expire dans 2 minutes.</p>
+      </div>
+    </div>
+    """
+    msg.attach(MIMEText(html_content, "html", "utf-8"))
+
+    # Connect and send via SMTP
+    with smtplib.SMTP(smtp_host, smtp_port) as server:
+        server.starttls()
+        server.login(smtp_user, smtp_password)
+        server.sendmail(smtp_user, email, msg.as_string())
+
+
+async def _user_id_from_supabase_by_email(email: str) -> Optional[str]:
+    supabase_url = settings.supabase_url
+    if not supabase_url:
+        return None
+    clean = email.strip().lower()
+    service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    anon_key = settings.supabase_anon_key
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            # Try admin API first — searches auth.users (requires service role key)
+            if service_role_key:
+                res = await client.get(
+                    f"{supabase_url.rstrip('/')}/auth/v1/admin/users",
+                    params={"filter": clean, "per_page": 20},
+                    headers={
+                        "apikey": service_role_key,
+                        "Authorization": f"Bearer {service_role_key}",
+                    },
+                )
+                if res.status_code == 200:
+                    data = res.json()
+                    users = data.get("users", [])
+                    for u in users:
+                        if u.get("email", "").lower() == clean:
+                            return u.get("id")
+            # Fallback: query profiles table (works if email column exists there)
+            auth_key = service_role_key or anon_key
+            if auth_key:
+                res = await client.get(
+                    f"{supabase_url.rstrip('/')}/rest/v1/profiles",
+                    params={"email": f"eq.{clean}", "select": "id"},
+                    headers={
+                        "apikey": auth_key,
+                        "Authorization": f"Bearer {auth_key}",
+                    },
+                )
+                if res.status_code == 200 and res.json():
+                    return res.json()[0].get("id")
+    except Exception as exc:
+        print(f"Error querying Supabase user by email: {exc}")
+    return None
+
+
+@app.post("/api/auth/forgot-password")
+async def forgot_password_endpoint(body: ForgotPasswordBody) -> dict:
+    clean_email = body.email.strip().lower()
+
+    # 1. Check if user exists in SQLite or Supabase
+    user_exists = False
+    sqlite_user = store.get_user_by_email(clean_email)
+    if sqlite_user:
+        user_exists = True
+
+    supabase_url = settings.supabase_url
+    if supabase_url and not user_exists:
+        sb_user_id = await _user_id_from_supabase_by_email(clean_email)
+        if sb_user_id:
+            user_exists = True
+
+    if settings.auth_mode == "none":
+        user_exists = True
+
+    # In Supabase mode, always proceed to avoid user enumeration and because
+    # the admin API lookup may fail transiently; the reset step will catch non-existent users.
+    if settings.is_supabase_auth:
+        user_exists = True
+
+    if not user_exists:
+        raise HTTPException(404, "User not found / Utilisateur introuvable")
+
+    # 2. Generate 6-digit verification code
+    code = f"{random.randint(100000, 999999)}"
+    OTP_STORE[clean_email + "_reset"] = {
+        "code": code,
+        "expires_at": time.time() + 120,
+    }
+
+    # 3. Send email using SMTP
+    try:
+        send_reset_otp_via_smtp(clean_email, code)
+    except Exception as exc:
+        raise HTTPException(500, f"Failed to send reset email: {str(exc)}")
+
+    return {"ok": True}
+
+
+@app.post("/api/auth/verify-forgot-otp")
+def verify_forgot_otp_endpoint(body: VerifyForgotOtpBody) -> dict:
+    clean_email = body.email.strip().lower()
+    record = OTP_STORE.get(clean_email + "_reset")
+    if not record:
+        raise HTTPException(400, "No reset code generated / Pas de code de réinitialisation généré")
+    if time.time() > record["expires_at"]:
+        raise HTTPException(400, "Code expired / Code expiré")
+    if record["code"] != body.code:
+        raise HTTPException(400, "Invalid code / Code invalide")
+
+    return {"ok": True}
+
+
+@app.post("/api/auth/reset-password")
+async def reset_password_endpoint(body: ResetPasswordCustomBody) -> dict:
+    clean_email = body.email.strip().lower()
+    record = OTP_STORE.get(clean_email + "_reset")
+    
+    # 1. Verify code
+    if not record:
+        raise HTTPException(400, "No reset code generated / Pas de code de réinitialisation généré")
+    if time.time() > record["expires_at"]:
+        raise HTTPException(400, "Code expired / Code expiré")
+    if record["code"] != body.code:
+        raise HTTPException(400, "Invalid code / Code invalide")
+
+    # 2. Update password in local SQLite if user exists there
+    sqlite_user = store.get_user_by_email(clean_email)
+    if sqlite_user:
+        store.update_user_password(clean_email, body.password)
+
+    # 3. Update password in Supabase if active
+    supabase_url = settings.supabase_url
+    if supabase_url and settings.is_supabase_auth:
+        service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        if not service_role_key:
+            raise HTTPException(
+                500,
+                "Supabase service role key is missing on the server. "
+                "Please add SUPABASE_SERVICE_ROLE_KEY to your backend .env file."
+            )
+        
+        sb_user_id = await _user_id_from_supabase_by_email(clean_email)
+        if not sb_user_id:
+            raise HTTPException(404, "User profile not found in Supabase")
+
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                res = await client.put(
+                    f"{supabase_url.rstrip('/')}/auth/v1/admin/users/{sb_user_id}",
+                    headers={
+                        "apikey": service_role_key,
+                        "Authorization": f"Bearer {service_role_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={"password": body.password},
+                )
+                if res.status_code != 200:
+                    detail = res.text
+                    try:
+                        detail = res.json().get("msg") or res.text
+                    except Exception:
+                        pass
+                    raise HTTPException(500, f"Failed to update password in Supabase: {detail}")
+        except httpx.HTTPError as exc:
+            raise HTTPException(503, "Supabase service is unavailable") from exc
+
+    # Clean up OTP after reset
+    OTP_STORE.pop(clean_email + "_reset", None)
+    return {"ok": True}
 
 
 @app.post("/api/auth/logout")
@@ -335,79 +677,148 @@ def logout(
     return {"ok": True}
 
 
-@app.get("/api/auth/me")
-def me(user: dict = Depends(get_current_user)) -> dict:
-    return {"user": _public_user(user)}
+@app.delete("/api/auth/delete-unverified")
+async def delete_unverified_account(body: DeleteUnverifiedBody) -> dict:
+    """Delete an unverified account when the user clicks 'That wasn't me'."""
+    if not settings.is_supabase_auth:
+        raise HTTPException(404, "Not available in local auth mode")
+
+    service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    supabase_url = settings.supabase_url
+    if not service_role_key or not supabase_url:
+        raise HTTPException(500, "Supabase service role key not configured")
+
+    clean_email = body.email.strip().lower()
+    if not clean_email:
+        raise HTTPException(400, "Email is required")
+
+    sb_user_id = await _user_id_from_supabase_by_email(clean_email)
+    if not sb_user_id:
+        # User doesn't exist — treat as success (idempotent)
+        return {"ok": True}
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        # Fetch user to confirm they are still unverified
+        res = await client.get(
+            f"{supabase_url.rstrip('/')}/auth/v1/admin/users/{sb_user_id}",
+            headers={
+                "apikey": service_role_key,
+                "Authorization": f"Bearer {service_role_key}",
+            },
+        )
+        if res.status_code != 200:
+            raise HTTPException(500, "Failed to fetch user details from Supabase")
+
+        user_data = res.json()
+        if user_data.get("email_confirmed_at"):
+            raise HTTPException(409, "Cannot delete a verified account")
+
+        # Delete the unverified user
+        del_res = await client.delete(
+            f"{supabase_url.rstrip('/')}/auth/v1/admin/users/{sb_user_id}",
+            headers={
+                "apikey": service_role_key,
+                "Authorization": f"Bearer {service_role_key}",
+            },
+        )
+        if del_res.status_code not in (200, 204):
+            raise HTTPException(500, "Failed to delete user from Supabase")
+
+    VERIFICATION_STORE.pop(clean_email + "_verify", None)
+    return {"ok": True}
 
 
-# --------------------------------------------------------------------------- #
-# Password reset (local mode only)                                            #
-# --------------------------------------------------------------------------- #
-class _ResetResp(BaseModel):
-    ok: bool
-    message: str = ""
+@app.post("/api/auth/confirm-email")
+async def confirm_email(body: ConfirmEmailBody) -> dict:
+    """Confirm a user's email using our custom verification token."""
+    if not settings.is_supabase_auth:
+        raise HTTPException(404, "Not available in local auth mode")
 
+    clean_email = body.email.strip().lower()
+    record = VERIFICATION_STORE.get(clean_email + "_verify")
 
-@app.post("/api/auth/forgot-password")
-@limiter.limit("3/minute")
-def forgot_password(request: Request, body: ForgotPasswordBody) -> _ResetResp:
-    """Generate a password reset token for the given email (if registered).
+    if not record:
+        raise HTTPException(400, "Lien invalide ou expiré. Demandez un nouveau lien. / رابط غير صالح أو منتهي الصلاحية.")
+    if time.time() > record["expires_at"]:
+        VERIFICATION_STORE.pop(clean_email + "_verify", None)
+        raise HTTPException(400, "Lien expiré. Demandez un nouveau lien. / انتهت صلاحية الرابط.")
+    if record["token"] != body.token:
+        raise HTTPException(400, "Lien invalide. / رابط غير صالح.")
 
-    In production this would send an email. In local/dev mode the token
-    is returned directly so the caller can immediately reset.
-    """
-    if settings.is_supabase_auth:
-        raise HTTPException(404, "Password reset is managed by Supabase Auth.")
-    user = store.find_user_by_email(body.email)
-    token = store.create_password_reset_token(user["id"]) if user else None
-    if token:
-        return _ResetResp(ok=True, message=f"Reset token: {token}")
-    # Always return ok to prevent email enumeration
-    return _ResetResp(ok=True, message="If the email is registered, a reset link has been sent.")
+    service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    supabase_url = settings.supabase_url
+    if not service_role_key or not supabase_url:
+        raise HTTPException(500, "Supabase service role key not configured")
 
+    user_id = record.get("user_id") or await _user_id_from_supabase_by_email(clean_email)
+    if not user_id:
+        raise HTTPException(404, "Utilisateur introuvable. / المستخدم غير موجود.")
 
-@app.post("/api/auth/reset-password")
-@limiter.limit("5/minute")
-def reset_password(request: Request, body: ResetPasswordBody) -> _ResetResp:
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.put(
+            f"{supabase_url.rstrip('/')}/auth/v1/admin/users/{user_id}",
+            headers={
+                "apikey": service_role_key,
+                "Authorization": f"Bearer {service_role_key}",
+                "Content-Type": "application/json",
+            },
+            json={"email_confirm": True},
+        )
+        if res.status_code != 200:
+            raise HTTPException(500, "Échec de la confirmation de l'e-mail.")
 
-    if settings.is_supabase_auth:
-        raise HTTPException(404, "Password reset is managed by Supabase Auth.")
-    user_id = store.verify_reset_token(body.token)
-    if user_id is None:
-        raise HTTPException(400, "Invalid or expired reset token.")
-    store.reset_user_password(user_id, body.new_password)
-    store.consume_reset_token(body.token)
-    return _ResetResp(ok=True, message="Password updated.")
-
-
-# --------------------------------------------------------------------------- #
-# Email verification (local mode only)                                        #
-# --------------------------------------------------------------------------- #
-@app.post("/api/auth/verify-email")
-@limiter.limit("5/minute")
-def verify_email(request: Request, token: str) -> _ResetResp:
-    """Verify a user's email address using a verification token."""
-    if settings.is_supabase_auth:
-        raise HTTPException(404, "Email verification is managed by Supabase Auth.")
-    user_id = store.verify_email_token(token)
-    if user_id is None:
-        raise HTTPException(400, "Invalid or expired verification token.")
-    store.mark_email_verified(user_id)
-    store.consume_verify_token(token)
-    user = store.get_user_by_id(user_id)
-    return _ResetResp(ok=True, message="Email verified.")
+    VERIFICATION_STORE.pop(clean_email + "_verify", None)
+    return {"ok": True}
 
 
 @app.post("/api/auth/resend-verification")
-@limiter.limit("2/minute")
-def resend_verification(request: Request, user: dict = Depends(get_current_user)) -> _ResetResp:
-    """Resend the email verification link (local mode)."""
-    if settings.is_supabase_auth:
-        raise HTTPException(404, "Email verification is managed by Supabase Auth.")
-    if user.get("email_verified"):
-        return _ResetResp(ok=True, message="Already verified.")
-    token = store.create_email_verification_token(user["id"])
-    return _ResetResp(ok=True, message=f"Verification token: {token}")
+async def resend_verification(body: ResendVerificationBody) -> dict:
+    """Resend the custom verification email."""
+    if not settings.is_supabase_auth:
+        raise HTTPException(404, "Not available in local auth mode")
+
+    clean_email = body.email.strip().lower()
+    record = VERIFICATION_STORE.get(clean_email + "_verify")
+    if not record:
+        raise HTTPException(400, "No pending verification for this email.")
+
+    user_id = record.get("user_id")
+    display_name = clean_email.split("@")[0]
+
+    service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    supabase_url = settings.supabase_url
+    if service_role_key and supabase_url and user_id:
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                res = await client.get(
+                    f"{supabase_url.rstrip('/')}/auth/v1/admin/users/{user_id}",
+                    headers={"apikey": service_role_key, "Authorization": f"Bearer {service_role_key}"},
+                )
+                if res.status_code == 200:
+                    display_name = res.json().get("user_metadata", {}).get("full_name", display_name)
+        except Exception:
+            pass
+
+    new_token = uuid4().hex
+    VERIFICATION_STORE[clean_email + "_verify"] = {
+        "token": new_token,
+        "expires_at": time.time() + 86400,
+        "user_id": user_id,
+    }
+
+    app_url = os.getenv("FIRASA_APP_URL", "http://localhost:5174")
+    verify_link = f"{app_url}/verify?token={new_token}&email={clean_email}"
+    try:
+        send_verification_email_via_smtp(clean_email, display_name, verify_link)
+    except Exception as exc:
+        raise HTTPException(500, f"Failed to send verification email: {str(exc)}")
+
+    return {"ok": True}
+
+
+@app.get("/api/auth/me")
+def me(user: dict = Depends(get_current_user)) -> dict:
+    return {"user": _public_user(user)}
 
 
 # --------------------------------------------------------------------------- #
@@ -459,6 +870,9 @@ async def create_project(body: CreateProjectBody, user: dict = Depends(get_curre
         answered_questions=["name"] if body.name else [],
     )
     store.save(profile)
+
+    # Establish initial audit baseline
+    await _run_owned_audit(profile.project_id, user)
 
     sm = IntakeStateMachine(profile)
     q = sm.next_question()
@@ -630,7 +1044,6 @@ class ProfilePatchBody(BaseModel):
     name: Optional[str] = None
     sector: Optional[str] = None
     language: Optional[str] = None
-    demo: Optional[bool] = None  # skip LLM roadmap prose (fast path for demo scenarios)
 
     # Self-assessment
     declared_stage: Optional[int] = None
@@ -698,7 +1111,6 @@ async def patch_project(pid: str, body: ProfilePatchBody, user: dict = Depends(g
     """Update project profile fields directly (no state machine)."""
     profile = _require_owned(pid, user)
     updates = body.model_dump(exclude_none=True)
-    fast = bool(updates.pop("demo", False))  # extract before profile field loop
     if not updates:
         raise HTTPException(400, "No fields to update")
 
@@ -725,7 +1137,7 @@ async def patch_project(pid: str, body: ProfilePatchBody, user: dict = Depends(g
     store.save(profile)
 
     # Immediately re-run audit pipeline to persist history and update scores
-    await _run_owned_audit(pid, user, fast=fast)
+    await _run_owned_audit(pid, user)
 
     return store.redact(profile, is_owner=True)
 
@@ -733,9 +1145,9 @@ async def patch_project(pid: str, body: ProfilePatchBody, user: dict = Depends(g
 # --------------------------------------------------------------------------- #
 # Audit (full pipeline) & assistant                                           #
 # --------------------------------------------------------------------------- #
-async def _run_owned_audit(pid: str, user: dict, fast: bool = False) -> dict:
+async def _run_owned_audit(pid: str, user: dict) -> dict:
     profile = _require_owned(pid, user)
-    result  = await run_audit(profile, fast=fast)
+    result  = await run_audit(profile)
     result_dict = result.to_dict()
 
     # ── Bug fix: honour gap.override_applied — automatically reallocate ────
@@ -849,31 +1261,9 @@ async def milestone_complete(
     pid: str, mid: str, body: MilestoneCompleteBody,
     user: dict = Depends(get_current_user),
 ) -> dict:
-    """Mark a milestone done; apply profile mutations, record outcome, and re-score if applicable."""
+    """Mark a milestone done; apply profile mutations and re-score if applicable."""
     profile = _require_owned(pid, user)
     mutations = TRIGGER_MUTATIONS.get(body.trigger, {})
-
-    # ── Record milestone outcome (Phase 4.2b) ──────────────────────────────
-    # Gather associated resource URLs from the current audit's roadmap.
-    resource_urls: list[str] = []
-    try:
-        audit_data = store.get_audit(pid)
-        if audit_data:
-            for m in audit_data.get("roadmap", []):
-                if m.get("id") == mid:
-                    resource_urls = list(dict.fromkeys(
-                        s.get("url", "") for s in m.get("sources", []) if s.get("url")
-                    ))
-                    break
-    except Exception:
-        pass
-    store.record_milestone_completion(
-        project_id=pid, milestone_id=mid,
-        milestone_title=body.trigger,
-        trigger=body.trigger,
-        resource_urls=resource_urls,
-        resolved=bool(mutations),
-    )
 
     if mutations:
         from .schema import LegalForm
@@ -883,6 +1273,7 @@ async def milestone_complete(
             for part in parts[:-1]:
                 obj = getattr(obj, part)
             field_name = parts[-1]
+            # Coerce string values to LegalForm enum when needed
             if isinstance(value, str):
                 try:
                     value = LegalForm(value)
@@ -890,10 +1281,11 @@ async def milestone_complete(
                     pass
             setattr(obj, field_name, value)
         profile.updated_at = datetime.now(timezone.utc)
-
+        
+        # Run synchronization to update answered_questions and clean stale dependencies
         from .intake.state_machine import sync_profile_state
         sync_profile_state(profile)
-
+        
         store.save(profile)
 
         result = await run_audit(profile)
@@ -918,43 +1310,6 @@ async def milestone_complete(
 
     _logger.info("Milestone %s completed for project %s (no mutation for trigger=%s)", mid, pid, body.trigger)
     return {"applied": False, "new_scores": None}
-
-
-# ── Resource click tracking (Phase 4.2a) ────────────────────────────────────
-
-class ClickEventBody(BaseModel):
-    resource_url: str
-    resource_title: str
-    gap_category: str = ""
-
-
-@app.post("/api/project/{pid}/click")
-async def log_resource_click(
-    pid: str, body: ClickEventBody,
-    user: dict = Depends(get_current_user),
-) -> dict:
-    """Log a click on a KB resource link."""
-    _require_owned(pid, user)
-    store.log_resource_click(pid, body.resource_url, body.resource_title, body.gap_category)
-    return {"logged": True}
-
-
-@app.get("/api/click-stats")
-async def get_click_stats(
-    gap_category: str = "",
-    user: dict = Depends(get_current_user),
-) -> list[dict]:
-    """Return resources ranked by click count, optionally filtered by gap_category."""
-    return store.get_click_stats(gap_category)
-
-
-@app.get("/api/resolution-rates")
-async def resolution_rates(
-    min_completions: int = 3,
-    user: dict = Depends(get_current_user),
-) -> list[dict]:
-    """Return resolution rates per resource across all milestone completions."""
-    return store.get_resolution_rates(min_completions)
 
 
 # Convenience: audit an ad-hoc profile without the intake flow (for demos/tests).

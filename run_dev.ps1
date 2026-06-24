@@ -117,7 +117,7 @@ Start-Process powershell -ArgumentList "-NoExit", "-Command", $frontendCmd
 Write-Host ""
 Write-Host "  Firasa dev servers launching..." -ForegroundColor Yellow
 Write-Host "  Backend  ->  http://localhost:8000" -ForegroundColor Green
-Write-Host "  Frontend ->  http://localhost:5173" -ForegroundColor Green
+Write-Host "  Frontend ->  http://localhost:5174" -ForegroundColor Green
 Write-Host "  LLM provider: $Provider" -ForegroundColor Cyan
 
 switch ($Provider) {

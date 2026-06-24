@@ -1,39 +1,73 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { auth } from "../auth.js";
 
 const T = {
   fr: {
-    title: "Confirmez votre adresse e-mail",
+    title: "Vérifiez votre boîte e-mail",
     subtitle: (email) =>
-      `Un lien de confirmation a été envoyé à ${email}. Cliquez sur le lien dans cet e-mail pour activer votre compte.`,
+      `Un e-mail a été envoyé à ${email}. Ouvrez-le et cliquez sur le bouton « Vérifier mon compte » pour activer votre compte.`,
     resend: "Renvoyer l'e-mail",
     resending: "Envoi en cours…",
     resent: "E-mail renvoyé !",
+    alreadyVerified: "J'ai vérifié mon compte → Me connecter",
     logout: "Se connecter avec un autre compte",
     badge: "En attente",
     waiting: "En attente de confirmation",
-    hint: "Vérifiez vos spams si vous ne le trouvez pas dans votre boîte de réception.",
+    hint: "Vérifiez vos spams si vous ne le trouvez pas. Le bouton de vérification se trouve directement dans l'e-mail.",
     error: "Erreur lors de l'envoi. Réessayez dans quelques instants.",
+    autoDetecting: "Détection automatique de la vérification…",
   },
   ar: {
-    title: "تأكيد عنوان بريدك الإلكتروني",
+    title: "تحقق من بريدك الإلكتروني",
     subtitle: (email) =>
-      `تم إرسال رابط التأكيد إلى ${email}. انقر على الرابط في هذا البريد لتفعيل حسابك.`,
+      `تم إرسال بريد إلكتروني إلى ${email}. افتحه وانقر على زر «تأكيد حسابي» لتفعيل حسابك.`,
     resend: "إعادة إرسال البريد الإلكتروني",
     resending: "جاري الإرسال…",
     resent: "تم إعادة الإرسال!",
+    alreadyVerified: "لقد أكدت حسابي ← تسجيل الدخول",
     logout: "تسجيل الدخول بحساب آخر",
     badge: "قيد المراجعة",
     waiting: "في انتظار التأكيد",
-    hint: "تحقق من مجلد البريد العشوائي إن لم تجده في صندوق الوارد.",
+    hint: "تحقق من مجلد البريد العشوائي إن لم تجده. زر التأكيد موجود مباشرة داخل البريد الإلكتروني.",
     error: "حدث خطأ أثناء الإرسال. حاول مجدداً بعد لحظات.",
+    autoDetecting: "جاري الكشف التلقائي عن التحقق…",
   },
 };
 
-export default function EmailConfirmationGate({ lang = "fr", user, onLogout }) {
+const VERIFIED_KEY = "firasa_email_verified";
+
+export default function EmailConfirmationGate({ lang = "fr", user, onLogout, onVerified }) {
   const t = T[lang] || T.fr;
   const ar = lang === "ar";
   const [resendState, setResendState] = useState("idle"); // idle | sending | done | error
+
+  // Auto-detect verification across tabs via localStorage + storage event
+  useEffect(() => {
+    const userEmail = (user?.email || "").toLowerCase();
+    if (!userEmail || !onVerified) return;
+
+    function check() {
+      const val = localStorage.getItem(VERIFIED_KEY);
+      if (val === userEmail) {
+        localStorage.removeItem(VERIFIED_KEY);
+        onVerified();
+      }
+    }
+
+    // storage event fires in OTHER tabs when localStorage changes
+    function onStorage(e) {
+      if (e.key === VERIFIED_KEY) check();
+    }
+
+    window.addEventListener("storage", onStorage);
+    // Interval poll as fallback (same tab, or missed event)
+    const interval = setInterval(check, 1500);
+
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      clearInterval(interval);
+    };
+  }, [user?.email, onVerified]);
 
   async function handleResend() {
     if (resendState === "sending") return;
@@ -91,11 +125,10 @@ export default function EmailConfirmationGate({ lang = "fr", user, onLogout }) {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: "1.8rem",
             flexShrink: 0,
           }}
         >
-          ✉️
+          <i className="fa-solid fa-envelope" style={{ fontSize: "1.6rem", color: "#fbbf24" }} />
         </div>
 
         {/* Badge */}
@@ -171,6 +204,21 @@ export default function EmailConfirmationGate({ lang = "fr", user, onLogout }) {
           {t.hint}
         </p>
 
+        {/* Auto-detect indicator */}
+        <p
+          style={{
+            margin: 0,
+            fontSize: "0.73rem",
+            color: "var(--text-sub, rgba(255,255,255,0.28))",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <i className="fa-solid fa-spinner fa-spin" style={{ fontSize: "0.65rem" }} />
+          {t.autoDetecting}
+        </p>
+
         {/* Resend button */}
         <button
           onClick={handleResend}
@@ -200,6 +248,10 @@ export default function EmailConfirmationGate({ lang = "fr", user, onLogout }) {
             opacity: resendState === "sending" ? 0.7 : 1,
           }}
         >
+          {resendState === "done" && <i className="fa-solid fa-circle-check" style={{ marginRight: 6 }} />}
+          {resendState === "error" && <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: 6 }} />}
+          {resendState === "sending" && <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 6 }} />}
+          {resendState === "idle" && <i className="fa-solid fa-paper-plane" style={{ marginRight: 6 }} />}
           {resendState === "sending"
             ? t.resending
             : resendState === "done"
@@ -208,6 +260,32 @@ export default function EmailConfirmationGate({ lang = "fr", user, onLogout }) {
             ? t.error
             : t.resend}
         </button>
+
+        {/* Already verified — manual fallback */}
+        {onVerified && (
+          <button
+            onClick={onVerified}
+            style={{
+              width: "100%",
+              padding: "11px 20px",
+              borderRadius: 10,
+              border: "1.5px solid rgba(34,197,94,0.4)",
+              background: "rgba(34,197,94,0.08)",
+              color: "#22c55e",
+              fontSize: "0.9rem",
+              fontWeight: 600,
+              cursor: "pointer",
+              transition: "all 0.2s",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+            }}
+          >
+            <i className="fa-solid fa-circle-check" />
+            {t.alreadyVerified}
+          </button>
+        )}
 
         {/* Logout */}
         <button
@@ -221,8 +299,12 @@ export default function EmailConfirmationGate({ lang = "fr", user, onLogout }) {
             padding: "4px 0",
             textDecoration: "underline",
             textUnderlineOffset: 3,
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
           }}
         >
+          <i className="fa-solid fa-arrow-right-from-bracket" style={{ fontSize: "0.7rem" }} />
           {t.logout}
         </button>
       </div>

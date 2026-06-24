@@ -102,6 +102,7 @@ export default function App() {
   const [pendingEmailConfirmation, setPendingEmailConfirmation] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [authModalInitMode, setAuthModalInitMode] = useState("login");
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [toast, setToast] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState(null); // { title, message, confirmLabel, cancelLabel, variant, onConfirm }
@@ -176,28 +177,94 @@ export default function App() {
   }, [lang]);
 
   useEffect(() => {
+    let unsubAuth = () => {};
+
     async function bootstrap() {
+      console.log("[AUTH DEBUG] bootstrap start");
+      console.log("[AUTH DEBUG] href=", window.location.href);
+      console.log("[AUTH DEBUG] search=", window.location.search);
+      console.log("[AUTH DEBUG] hash=", window.location.hash);
+
       // Initialise the auth module first (discovers mode from backend)
       await auth.init();
+      console.log("[AUTH DEBUG] auth.init() done, mode=", auth.getMode());
+
+      // Set up Supabase auth listener NOW — after init, so _mode is correct.
+      let sessionHandled = false;
+      const apiBase = import.meta.env.VITE_API_BASE || "";
+
+      unsubAuth = auth.onAuthStateChange(async (event, session) => {
+        console.log("[AUTH DEBUG] onAuthStateChange event=", event, "session_user=", session?.user?.email ?? null, "handled=", sessionHandled);
+        if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session?.user && !sessionHandled) {
+          sessionHandled = true;
+          const meta = session.user.user_metadata || {};
+          const fallback = {
+            id: session.user.id,
+            email: session.user.email,
+            name: meta.full_name || meta.name || session.user.email?.split("@")[0],
+            photo: meta.avatar_url || meta.picture || session.user.picture || null,
+            plan: "free",
+          };
+          console.log("[AUTH DEBUG] session found, calling /api/auth/me with token prefix=", session.access_token?.slice(0, 20));
+          try {
+            const res = await fetch(`${apiBase}/api/auth/me`, {
+              headers: { Authorization: `Bearer ${session.access_token}` },
+            });
+            console.log("[AUTH DEBUG] /api/auth/me status=", res.status);
+            if (res.ok) {
+              const data = await res.json();
+              console.log("[AUTH DEBUG] backend user=", data.user);
+              handleAuthUser(data.user || fallback);
+              refreshHistory().catch(() => {});
+            } else {
+              const text = await res.text();
+              console.warn("[AUTH DEBUG] /api/auth/me rejected:", res.status, text, "— using fallback session user");
+              handleAuthUser(fallback);
+            }
+          } catch (err) {
+            console.error("[AUTH DEBUG] fetch error:", err);
+            handleAuthUser(fallback);
+          }
+        }
+      });
 
       // Check health
       api.health().then(setHealth).catch(() => setHealth({ status: "down" }));
 
-      // Restore session from token or Supabase
+      // supabase.js now explicitly awaits exchangeCodeForSession() when a ?code=
+      // is in the URL, so by the time auth.init() returns the session is ready.
+      // Just call auth.me() — works for both normal restore and post-OAuth redirect.
+      console.log("[AUTH DEBUG] checking session after init");
       try {
         const me = await auth.me();
+        console.log("[AUTH DEBUG] auth.me() result=", me?.email ?? null);
         if (me) {
+          sessionHandled = true;
           setUser(me);
           setPlan(me.plan || "free");
           await refreshHistory();
           return;
         }
       } catch {
-        // No valid session — continue to autoLogin fallback
+        // No valid session
       }
 
       // DEV ONLY: auto-create mock user for local development
       await autoLogin();
+
+      // If redirected back from /verify after email confirmation, open login modal
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get("verified") === "true") {
+        setToast({
+          message: lang === "ar"
+            ? "تم التحقق من بريدك الإلكتروني! يرجى تسجيل الدخول."
+            : "E-mail vérifié ! Connectez-vous pour accéder à votre compte.",
+          type: "success",
+        });
+        setAuthModalInitMode("login");
+        setShowProfileModal(true);
+        window.history.replaceState({}, "", "/");
+      }
 
       // Restore view from URL path after auth resolves (deep-link support)
       const { phase: urlPhase, pid: urlPid } = pathToState(window.location.pathname);
@@ -212,6 +279,8 @@ export default function App() {
         ? "فشل تهيئة التطبيق. يرجى تحديث الصفحة."
         : "Échec de l'initialisation. Veuillez rafraîchir la page.");
     });
+
+    return () => unsubAuth();
   }, []);
 
   useEffect(() => {
@@ -477,10 +546,16 @@ export default function App() {
 
   function openProfilePage() {
     if (!user) {
+      setAuthModalInitMode("login");
       setShowProfileModal(true);
       return;
     }
     setPhase("profile");
+  }
+
+  function openAuth(mode = "login") {
+    setAuthModalInitMode(mode);
+    setShowProfileModal(true);
   }
 
   function closeProfilePage() {
@@ -509,6 +584,32 @@ export default function App() {
           lang={lang}
           user={user}
           onLogout={handleLogout}
+          onVerified={async () => {
+            setPendingEmailConfirmation(false);
+            const credsRaw = sessionStorage.getItem("firasa_pending_creds");
+            if (credsRaw) {
+              try {
+                const creds = JSON.parse(credsRaw);
+                sessionStorage.removeItem("firasa_pending_creds");
+                const loggedInUser = await auth.login(creds);
+                if (loggedInUser) {
+                  handleAuthUser(loggedInUser);
+                  setToast({
+                    message: lang === "ar"
+                      ? "مرحباً! تم التحقق من حسابك وتسجيل دخولك."
+                      : "Bienvenue ! Votre compte est vérifié et vous êtes connecté.",
+                    type: "success",
+                  });
+                  return;
+                }
+              } catch {
+                // Fall through to login modal
+              }
+            }
+            setUser(null);
+            setAuthModalInitMode("login");
+            setShowProfileModal(true);
+          }}
         />
       )}
 
@@ -521,7 +622,7 @@ export default function App() {
           user={user}
           plan={plan}
           openProfile={openProfilePage}
-          openAuth={() => setShowProfileModal(true)}
+          openAuth={openAuth}
           onLogout={handleLogout}
           openHistory={openHistory}
           health={health}
@@ -550,6 +651,7 @@ export default function App() {
           user={user}
           plan={plan}
           openProfile={openProfilePage}
+          openAuth={openAuth}
           health={health}
           history={history}
           busy={busy}
@@ -680,6 +782,7 @@ export default function App() {
         api={api}
         theme={theme}
         setTheme={setTheme}
+        initialAuthMode={authModalInitMode}
       />}
 
       {!pendingEmailConfirmation && showLimitModal && (
