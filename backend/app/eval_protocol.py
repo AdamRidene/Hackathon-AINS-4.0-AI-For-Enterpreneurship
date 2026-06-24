@@ -543,11 +543,67 @@ def eval_assistant_tool_trace() -> dict:
     return {"n": len(cases), "accuracy": round(hits / len(cases), 3), "passes": hits == len(cases), "rows": rows}
 
 
+def eval_roadmap_coherence() -> dict:
+    """Evaluate roadmap coherence on the 4 seed scenarios.
+
+    Checks:
+    - Every milestone has at least one source with a valid URL
+    - Milestone order is strictly increasing
+    - No duplicate milestone titles within the same project
+    - Horizon tags match estimated timeline duration
+    """
+    import asyncio
+    from .orchestrator import run_audit
+    from .seed_scenarios import SCENARIOS
+
+    passes = 0
+    total = len(SCENARIOS)
+    rows = []
+
+    def _run(name: str, builder):
+        r = asyncio.run(run_audit(builder(), fast=True))
+        checks = {"sources_valid": True, "ordered": True, "no_dup_titles": True,
+                  "horizon_consistent": True}
+        titles = set()
+        for m in r.roadmap:
+            if not m.sources or not any(s.get("url", "").startswith("http") for s in m.sources):
+                checks["sources_valid"] = False
+            if m.title in titles:
+                checks["no_dup_titles"] = False
+            titles.add(m.title)
+        orders = [m.order for m in r.roadmap]
+        if orders != sorted(orders):
+            checks["ordered"] = False
+        for m in r.roadmap:
+            w = m.timeline_weeks or 0
+            # Relaxed bounds: timeline is personalised by profile factors
+            # (runway, team size, etc.), so the resource horizon is a guide,
+            # not a hard constraint.
+            if m.horizon == "immediate" and w > 4:
+                checks["horizon_consistent"] = False
+            elif m.horizon == "short_term" and not (1 <= w <= 12):
+                checks["horizon_consistent"] = False
+            elif m.horizon == "medium_term" and w < 4:
+                checks["horizon_consistent"] = False
+        all_ok = all(checks.values())
+        return {"scenario": name, "milestones": len(r.roadmap), **checks, "passes": all_ok}
+
+    for name, builder in SCENARIOS.items():
+        row = _run(name, builder)
+        if row["passes"]:
+            passes += 1
+        rows.append(row)
+
+    return {"n": total, "passes": passes == total, "pass_rate": round(passes / total, 3),
+            "checks": rows}
+
+
 def main() -> None:
     diag = eval_diagnostic()
     rag = eval_rag()
     scoring = eval_scoring_consistency()
     assistant = eval_assistant_tool_trace()
+    roadmap = eval_roadmap_coherence()
 
     print("=" * 70)
     print(" FIRASA SYSTEM EVALUATION REPORT")
@@ -572,7 +628,15 @@ def main() -> None:
     print("\n4. SCORING CONSISTENCY & COHEN'S KAPPA (Adversarial Check)")
     print(f"   * Weighted Kappa : {scoring['cohens_weighted_kappa']:.3f}  (Target: >= 0.70)")
     print(f"   * Status         : {'PASS' if scoring['passes'] else 'FAIL'}")
-    print("\n5. ASSISTANT TOOL-CALL TRACE")
+
+    print(f"\n5. ROADMAP COHERENCE (Seed Scenarios, N={roadmap['n']})")
+    for row in roadmap["checks"]:
+        status = "PASS" if row["passes"] else "FAIL"
+        print(f"   * {row['scenario']}: {row['milestones']} milestones -> {status}")
+    print(f"   * Pass Rate      : {roadmap['pass_rate'] * 100:.0f}%")
+    print(f"   * Status         : {'PASS' if roadmap['passes'] else 'FAIL'}")
+
+    print("\n6. ASSISTANT TOOL-CALL TRACE")
     print(f"   * Tool Accuracy  : {assistant['accuracy'] * 100:.1f}%")
     print(f"   * Status         : {'PASS' if assistant['passes'] else 'FAIL'}")
     print("=" * 70)

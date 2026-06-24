@@ -292,10 +292,19 @@ async def build_roadmap(
     # priority (stage 1/2) naturally bubble above routine blockers.
     triggers.sort(key=lambda t: t[5])
 
-    # Phase 1: Collect all retrievals (no LLM calls yet).
+    # Phase 1: Collect all retrievals (no LLM prose calls yet).
     trigger_plans: list[dict] = []
     for gap_cat, label_fr, label_ar, rat_fr, rat_ar, _stage in triggers:
-        query = f"{label_fr} {rat_fr} secteur {profile.sector.value if profile.sector else ''}"
+        raw_query = f"{label_fr} {rat_fr} secteur {profile.sector.value if profile.sector else ''}"
+        if not fast:
+            try:
+                query = await llm.reformulate_search_query(
+                    label_fr, rat_fr, lang=profile.language,
+                )
+            except Exception:
+                query = raw_query
+        else:
+            query = raw_query
         routed = retriever.retrieve(gap_cat, query, k=k_per_gap)
         if not routed.chunks:
             continue
