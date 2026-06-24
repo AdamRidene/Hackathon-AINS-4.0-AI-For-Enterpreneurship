@@ -91,37 +91,31 @@ Cohere `embed-multilingual-v3.0` (with bilingual FR+AR chunk text) enables Arabi
 
 ---
 
-## Phase 4 — Feedback & Anomaly Robustness (medium effort, medium impact)
+## Phase 4 — Feedback & Anomaly Robustness (medium effort, medium impact) ✅
 
-### 4.1 Expand anomaly detection rules
+### 4.1 Expand anomaly detection rules ✅
 
-Current: 8 deterministic rules + 3 compound rules. Some edge cases are not caught:
-- A founder claiming both "pre-seed funding raised" and "no legal structure" (fundraising stage without structuration)
-- Seasonal/recurring revenue claimed as MRR without justification
-- "Multiple competitors" listed but no differentiation strategy
-- High innovation score from self-report only (no IP, no pilots, no technical detail)
+**Change:** 4 new deterministic rules added to `gap.py`:
+- `prefunding_no_structure` (A9, high) — declared stage ≥ 4 + no legal form
+- `high_revenue_low_validation` (A10, medium) — monthly revenue ≥ 1000 TND + no customer validation (replaces seasonal/revenue-MRR rule, as the schema lacks `revenue_model_type` / `business_seasonal`)
+- `multi_competitors_no_differentiation` (A11, medium) — competitors ≥ 2 + no differentiation narrative
+- `high_innovation_self_report_only` (A12, high) — innovation score ≥ 65 with no IP, no pilot, no tech detail
 
-**Change:** Add 4 new deterministic anomaly rules covering the above cases. Each gets a clean `Anomaly` object with source, confidence, and dimension notes. Update the test set to cover the new rules.
+**Rule list:** 12 rules (8 original + 4 new).
 
 **File:** `backend/app/diagnostic/gap.py` — `detect_anomalies()`
 
-### 4.2a Recommendation click tracking
+### 4.2a Recommendation click tracking ✅
 
-Current: No feedback loop. The system does not know whether a recommended resource was useful or even seen by the user.
+**Change:** `store.py` gets `resource_clicks` table + `log_resource_click()` / `get_click_stats()`. Backend endpoint `POST /api/project/{pid}/click` and `GET /api/click-stats` added to `main.py`. Frontend analytics events TBD.
 
-**Change:** Log front-end click-through on resource links and milestone check-offs. Store aggregate stats per gap category. Use this data to:
-- Rank resources by usefulness within each gap category
-- Surface underperforming resources for KB curation
+**Files:** `backend/app/store.py` (storage), `backend/app/main.py` (endpoints)
 
-**Files:** `frontend/` (analytics events) + `backend/` (aggregation endpoint)
+### 4.2b Milestone outcome tracking ✅
 
-### 4.2b Milestone outcome tracking
+**Change:** `store.py` gets `milestone_outcomes` table + `record_milestone_completion()` / `get_resolution_rates()` / `get_milestone_outcomes()`. Milestone-complete handler in `main.py` records the outcome and associated resource URLs. `GET /api/resolution-rates` surfaces "resolution rate" per resource.
 
-Current: Milestone completion triggers a re-audit but does not track whether the recommendation was effective.
-
-**Change:** When a milestone is completed, record which resources were associated with it. After N completions, surface a "resolution rate" per resource/gap pair. Low-resolution resources can be replaced or improved.
-
-**File:** `backend/app/orchestrator.py` — milestone completion handler
+**Files:** `backend/app/store.py` (storage), `backend/app/main.py` (endpoints + handler update)
 
 ---
 
@@ -160,8 +154,8 @@ Current: Each KB entry is a single chunk of variable length. Long entries cause 
 | Handling ambiguity & uncertainty | 3 hr | High | 3 | ✅ |
 | Intent classification | 4 hr | Medium | 3 | ✅ |
 | Persistent conversation memory | 3 hr | Medium | 3 | ✅ |
-| Expand anomaly detection | 2 hr | Medium | 4 | 🔲 |
-| Click tracking | 4 hr | Medium | 4 | 🔲 |
-| Milestone outcome tracking | 2 hr | Low | 4 | 🔲 |
+| Expand anomaly detection | 2 hr | Medium | 4 | ✅ |
+| Click tracking | 4 hr | Medium | 4 | ✅ |
+| Milestone outcome tracking | 2 hr | Low | 4 | ✅ |
 | KB URL health checks | 1 hr | Low | 5 | 🔲 |
 | KB chunking | 3 hr | Medium | 5 | 🔲 |

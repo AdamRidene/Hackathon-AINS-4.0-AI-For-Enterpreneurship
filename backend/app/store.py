@@ -45,6 +45,8 @@ _mem_projects: dict[str, dict] = {}
 _mem_audits: dict[str, dict] = {}
 _mem_docs: dict[str, dict] = {}
 _mem_conversations: dict[str, list[dict]] = {}
+_mem_clicks: list[dict] = []
+_mem_milestone_outcomes: list[dict] = []
 
 
 class _MemCursor:
@@ -281,6 +283,28 @@ def _init_db_conn_pg(conn: _PgConn) -> None:
             created_at TEXT NOT NULL
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS resource_clicks (
+            id           TEXT PRIMARY KEY,
+            project_id   TEXT NOT NULL,
+            resource_url TEXT NOT NULL,
+            resource_title TEXT NOT NULL,
+            gap_category TEXT,
+            clicked_at   TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS milestone_outcomes (
+            id           TEXT PRIMARY KEY,
+            project_id   TEXT NOT NULL,
+            milestone_id TEXT NOT NULL,
+            milestone_title TEXT NOT NULL,
+            trigger      TEXT NOT NULL,
+            resource_urls TEXT NOT NULL,
+            resolved     INTEGER NOT NULL DEFAULT 0,
+            completed_at TEXT NOT NULL
+        )
+    """)
     # Idempotent column additions — PostgreSQL 9.6+ supports IF NOT EXISTS
     conn.execute("ALTER TABLE audits ADD COLUMN IF NOT EXISTS owner_user_id TEXT")
     for col in ("bio", "phone", "role", "company", "photo", "birth_date", "location"):
@@ -367,6 +391,28 @@ def _init_db_conn_sqlite(conn) -> None:
             content    TEXT NOT NULL,
             created_at TEXT NOT NULL,
             FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS resource_clicks (
+            id           TEXT PRIMARY KEY,
+            project_id   TEXT NOT NULL,
+            resource_url TEXT NOT NULL,
+            resource_title TEXT NOT NULL,
+            gap_category TEXT,
+            clicked_at   TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS milestone_outcomes (
+            id           TEXT PRIMARY KEY,
+            project_id   TEXT NOT NULL,
+            milestone_id TEXT NOT NULL,
+            milestone_title TEXT NOT NULL,
+            trigger      TEXT NOT NULL,
+            resource_urls TEXT NOT NULL,
+            resolved     INTEGER NOT NULL DEFAULT 0,
+            completed_at TEXT NOT NULL
         )
     """)
     columns = {
@@ -1104,6 +1150,137 @@ def save_conversation_turn(project_id: str, role: str, content: str) -> None:
             })
             if len(_mem_conversations[project_id]) > _MAX_CONVERSATION_TURNS:
                 _mem_conversations[project_id] = _mem_conversations[project_id][-_MAX_CONVERSATION_TURNS:]
+
+
+# ── Resource click tracking (Phase 4.2a) ────────────────────────────────────
+
+def log_resource_click(project_id: str, resource_url: str, resource_title: str,
+                       gap_category: str = "") -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    with _lock:
+        if _DB_ENABLED:
+            with db_session() as conn:
+                conn.execute(
+                    """INSERT INTO resource_clicks (id, project_id, resource_url, resource_title, gap_category, clicked_at)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (uuid4().hex[:16], project_id, resource_url, resource_title, gap_category or None, now),
+                )
+        else:
+            _mem_clicks.append({
+                "project_id": project_id, "resource_url": resource_url,
+                "resource_title": resource_title, "gap_category": gap_category,
+                "clicked_at": now,
+            })
+
+
+def get_click_stats(gap_category: str = "") -> list[dict]:
+    """Return resources ranked by click count, optionally filtered by gap_category."""
+    with _lock:
+        if _DB_ENABLED:
+            with db_session() as conn:
+                if gap_category:
+                    rows = conn.execute(
+                        """SELECT resource_url, resource_title, gap_category, COUNT(*) as clicks
+                           FROM resource_clicks WHERE gap_category = ?
+                           GROUP BY resource_url, resource_title
+                           ORDER BY clicks DESC""",
+                        (gap_category,),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        """SELECT resource_url, resource_title, gap_category, COUNT(*) as clicks
+                           FROM resource_clicks GROUP BY resource_url, resource_title
+                           ORDER BY clicks DESC""",
+                    ).fetchall()
+            return [dict(r) for r in rows]
+        else:
+            entries = _mem_clicks
+            if gap_category:
+                entries = [c for c in entries if c.get("gap_category") == gap_category]
+            counts: dict[str, dict] = {}
+            for c in entries:
+                key = c["resource_url"]
+                if key not in counts:
+                    counts[key] = {
+                        "resource_url": key, "resource_title": c["resource_title"],
+                        "gap_category": c.get("gap_category", ""), "clicks": 0,
+                    }
+                counts[key]["clicks"] += 1
+            return sorted(counts.values(), key=lambda x: x["clicks"], reverse=True)
+
+
+# ── Milestone outcome tracking (Phase 4.2b) ─────────────────────────────────
+
+def record_milestone_completion(project_id: str, milestone_id: str,
+                                milestone_title: str, trigger: str,
+                                resource_urls: list[str], resolved: bool = False) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    with _lock:
+        if _DB_ENABLED:
+            with db_session() as conn:
+                conn.execute(
+                    """INSERT INTO milestone_outcomes
+                       (id, project_id, milestone_id, milestone_title, trigger, resource_urls, resolved, completed_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (uuid4().hex[:16], project_id, milestone_id, milestone_title, trigger,
+                     json.dumps(resource_urls), 1 if resolved else 0, now),
+                )
+        else:
+            _mem_milestone_outcomes.append({
+                "project_id": project_id, "milestone_id": milestone_id,
+                "milestone_title": milestone_title, "trigger": trigger,
+                "resource_urls": resource_urls, "resolved": resolved,
+                "completed_at": now,
+            })
+
+
+def get_resolution_rates(min_completions: int = 3) -> list[dict]:
+    """Return resolution rate per resource URL across all milestone completions.
+
+    A milestone is "resolved" when the follow-up audit shows improvement.
+    Returns resources with at least `min_completions` completions.
+    """
+    with _lock:
+        if _DB_ENABLED:
+            with db_session() as conn:
+                rows = conn.execute(
+                    """SELECT resource_urls, resolved, trigger FROM milestone_outcomes""",
+                ).fetchall()
+        else:
+            rows = _mem_milestone_outcomes
+
+    resource_stats: dict[str, dict] = {}
+    for r in rows:
+        urls = json.loads(r["resource_urls"]) if isinstance(r["resource_urls"], str) else r["resource_urls"]
+        resolved = r["resolved"] if isinstance(r["resolved"], int) else (1 if r["resolved"] else 0)
+        for url in urls:
+            if url not in resource_stats:
+                resource_stats[url] = {"url": url, "total": 0, "resolved": 0}
+            resource_stats[url]["total"] += 1
+            if resolved:
+                resource_stats[url]["resolved"] += 1
+
+    result = []
+    for url, stats in resource_stats.items():
+        if stats["total"] >= min_completions:
+            stats["resolution_rate"] = round(stats["resolved"] / stats["total"], 2)
+            result.append(stats)
+    return sorted(result, key=lambda x: x["resolution_rate"])
+
+
+def get_milestone_outcomes(project_id: str) -> list[dict]:
+    """Return all milestone completions for a project."""
+    with _lock:
+        if _DB_ENABLED:
+            with db_session() as conn:
+                rows = conn.execute(
+                    """SELECT milestone_id, milestone_title, trigger, resource_urls, resolved, completed_at
+                       FROM milestone_outcomes WHERE project_id = ? ORDER BY completed_at DESC""",
+                    (project_id,),
+                ).fetchall()
+            return [dict(r) for r in rows]
+        else:
+            return [m for m in _mem_milestone_outcomes if m["project_id"] == project_id]
 
 
 def get_conversation_history(project_id: str) -> list[dict]:
