@@ -61,12 +61,10 @@ class Retriever:
         # Hard metadata filter FIRST (routing matrix), then similarity rank.
         candidates = [c for c in self.kb.chunks if allowed & set(c.gap_categories)]
         if not candidates:
-            # Return empty result — do NOT fall back to all chunks.
-            # The anti-hallucination routing constraint must be preserved.
-            return RoutedResult(
-                gap_category=gap_category, query=query,
-                chunks=[], scores=[],
-            )
+            # Graceful degradation: fall back to general-only chunks when no
+            # gap-specific chunks exist. This preserves the routing constraint
+            # (never retrieves from a different gap category).
+            candidates = [c for c in self.kb.chunks if "general" in c.gap_categories]
 
         # Use semantic embeddings if available, otherwise TF-IDF.
         # Fall back to TF-IDF if query embedding returns None (Cohere rate-limit).
