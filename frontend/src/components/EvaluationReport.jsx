@@ -76,7 +76,7 @@ const STEP_LABELS = {
 };
 
 STEP_LABELS.fr.push("Trace assistant");
-STEP_LABELS.ar.push("Trace assistant");
+STEP_LABELS.ar.push("أثر أدوات المساعد");
 
 const LS_KEY = "firasa_eval_job";
 

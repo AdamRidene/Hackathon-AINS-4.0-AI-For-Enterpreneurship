@@ -88,14 +88,19 @@ const ScoreExplanationOverlay = ({ score, onClose, lang }) => {
       <div className="score-explanation-content">
         <div className="score-explanation-header">
           <h2>
-            {lang === 'ar' 
+            {lang === 'ar'
               ? score.dimension === 'Market' ? 'مؤشر السوق'
                 : score.dimension === 'Commercial Offer' ? 'مؤشر العرض التجاري'
                 : score.dimension === 'Innovation' ? 'مؤشر الابتكار'
                 : score.dimension === 'Scalability' ? 'مؤشر قابلية التوسع'
                 : score.dimension === 'Green' ? 'المؤشر الأخضر'
                 : score.dimension
-              : score.dimension
+              : score.dimension === 'Market' ? 'Score Marché'
+                : score.dimension === 'Commercial Offer' ? 'Score Commercial'
+                : score.dimension === 'Innovation' ? 'Score Innovation'
+                : score.dimension === 'Scalability' ? 'Score Scalabilité'
+                : score.dimension === 'Green' ? 'Score Green'
+                : score.dimension
             }
           </h2>
           <button 
