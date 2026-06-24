@@ -1523,3 +1523,211 @@ def delete_document(
 
     store.delete_document(doc_id)
     return {"deleted": doc_id}
+
+
+# --------------------------------------------------------------------------- #
+# News Cards Endpoint (NewsAPI with 1-hour memory cache & robust fallback)   #
+# --------------------------------------------------------------------------- #
+_NEWS_CACHE: dict[str, dict[str, Any]] = {
+    "fr": {"data": None, "expiry": 0.0},
+    "ar": {"data": None, "expiry": 0.0},
+}
+
+_FALLBACK_NEWS = {
+    "fr": [
+        {
+            "id": 1,
+            "title": "Startup Act Tunisie : Guide complet et éligibilité",
+            "desc": "Tout savoir sur les démarches d'octroi du label Startup, les avantages fiscaux et l'accompagnement Smart Capital.",
+            "category": "Écosystème",
+            "image": "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=600&q=80",
+            "url": "https://startup.smartcapital.tn/"
+        },
+        {
+            "id": 2,
+            "title": "L'Agence de Promotion de l'Industrie et de l'Innovation (APII)",
+            "desc": "Explorez les services d'assistance, d'enregistrement et de soutien aux projets industriels et d'innovation en Tunisie.",
+            "category": "Innovation",
+            "image": "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=600&q=80",
+            "url": "https://www.apii.gov.tn/"
+        },
+        {
+            "id": 3,
+            "title": "ANETI : Programmes d'incitation à l'emploi et entrepreneuriat",
+            "desc": "Découvrez les mécanismes de soutien à l'auto-emploi, le SIVP et les fonds d'aide aux jeunes promoteurs tunisiens.",
+            "category": "Outils",
+            "image": "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=600&q=80",
+            "url": "https://www.aneti.tn/"
+        },
+        {
+            "id": 4,
+            "title": "FIPA Tunisia : Attirer les investissements technologiques",
+            "desc": "Le portail officiel pour s'informer sur les opportunités de partenariat international et l'implantation en Tunisie.",
+            "category": "Conseils",
+            "image": "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=600&q=80",
+            "url": "https://www.investintunisia.tn/"
+        },
+        {
+            "id": 5,
+            "title": "CEPEX : Booster les exportations des jeunes entreprises",
+            "desc": "Comment positionner votre produit tunisien à l'échelle internationale grâce au centre de promotion des exportations.",
+            "category": "Financement",
+            "image": "https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?auto=format&fit=crop&w=600&q=80",
+            "url": "https://www.cepex.nat.tn/"
+        },
+        {
+            "id": 6,
+            "title": "Flat6Labs Tunis : Accélération et financement d'amorçage",
+            "desc": "Postulez au programme d'accélération leader en Tunisie pour obtenir un ticket d'investissement et du mentorat.",
+            "category": "Opportunités",
+            "image": "https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?auto=format&fit=crop&w=600&q=80",
+            "url": "https://flat6labs.com/program/tunis-seed-program/"
+        }
+    ],
+    "ar": [
+        {
+            "id": 1,
+            "title": "بوابة المؤسسات الناشئة بتونس (Smart Capital)",
+            "desc": "كل ما تحتاجه لمعرفة شروط الحصول على علامة 'مؤسسة ناشئة' والامتيازات الجبائية والمالية المرافقة.",
+            "category": "المنظومة",
+            "image": "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=600&q=80",
+            "url": "https://startup.smartcapital.tn/"
+        },
+        {
+            "id": 2,
+            "title": "وكالة النهوض بالصناعة والتجديد (APII)",
+            "desc": "الخدمات الإدارية، إيداع التصاريح، ومرافقة المشاريع المبتكرة في مختلف القطاعات الصناعية بتونس.",
+            "category": "ابتكار",
+            "image": "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=600&q=80",
+            "url": "https://www.apii.gov.tn/"
+        },
+        {
+            "id": 3,
+            "title": "الوكالة الوطنية للتشغيل والعمل المستقل (ANETI)",
+            "desc": "آليات التشغيل الذكي، برامج دعم الباعثين الشبان، وخطوات تمويل المشاريع الصغرى.",
+            "category": "أدوات",
+            "image": "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=600&q=80",
+            "url": "https://www.aneti.tn/"
+        },
+        {
+            "id": 4,
+            "title": "وكالة النهوض بالاستثمار الخارجي (FIPA Tunisia)",
+            "desc": "دليلك الكامل لاستكشاف فرص الشراكة العالمية والتعريف بتونس كوجهة استثمارية تكنولوجية واعدة.",
+            "category": "نصائح",
+            "image": "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=600&q=80",
+            "url": "https://www.investintunisia.tn/"
+        },
+        {
+            "id": 5,
+            "title": "مركز النهوض بالصادرات (CEPEX)",
+            "desc": "برامج الدعم الفني والمالي لمساعدة المؤسسات التونسية الحديثة على ولوج الأسواق العالمية وتصدير خدماتها.",
+            "category": "تمويل",
+            "image": "https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?auto=format&fit=crop&w=600&q=80",
+            "url": "https://www.cepex.nat.tn/"
+        },
+        {
+            "id": 6,
+            "title": "برنامج تسريع نمو الشركات الناشئة Flat6Labs بتونس",
+            "desc": "التقديم لبرنامج التمويل الأولي والتدريب والإحاطة الشاملة للشركات الواعدة بتونس.",
+            "category": "فرص",
+            "image": "https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?auto=format&fit=crop&w=600&q=80",
+            "url": "https://flat6labs.com/program/tunis-seed-program/"
+        }
+    ]
+}
+
+
+@app.get("/api/news")
+async def get_news(lang: str = "fr") -> list[dict]:
+    """Get active startup and innovation news, caching the results to respect API quotas."""
+    lang = "ar" if lang == "ar" else "fr"
+    now = time.time()
+
+    # 1. Return from cache if fresh
+    cache = _NEWS_CACHE[lang]
+    if cache["data"] is not None and now < cache["expiry"]:
+        return cache["data"]
+
+    # 2. Try fetching from NewsAPI
+    newsapi_key = settings.newsapi_key
+    fallback_list = _FALLBACK_NEWS[lang]
+
+    if not newsapi_key:
+        # Cache the fallback too to avoid unnecessary checks
+        _NEWS_CACHE[lang] = {"data": fallback_list, "expiry": now + 600}
+        return fallback_list
+
+    # Setup queries
+    q_query = (
+        "ريادة الأعمال OR \"شركة ناشئة\" OR ابتكار"
+        if lang == "ar"
+        else "entrepreneurship OR startup OR \"innovation technologique\""
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get(
+                "https://newsapi.org/v2/everything",
+                params={
+                    "q": q_query,
+                    "language": lang,
+                    "sortBy": "publishedAt",
+                    "pageSize": 12,
+                    "apiKey": newsapi_key,
+                }
+            )
+            if res.status_code == 200:
+                data = res.json()
+                articles = data.get("articles", [])
+                formatted = []
+                idx = 1
+                for art in articles:
+                    title = art.get("title")
+                    desc = art.get("description")
+                    url = art.get("url")
+                    image = art.get("urlToImage")
+
+                    # Skip empty items or articles with missing crucial fields
+                    if not title or not url or "[Removed]" in title:
+                        continue
+
+                    # Assign category based on simple keyword analysis
+                    title_lower = title.lower()
+                    if "ia" in title_lower or "artificial" in title_lower or "intelligence" in title_lower or "ذكاء" in title_lower:
+                        cat = "IA / Innovation" if lang == "fr" else "ذكاء اصطناعي"
+                    elif "outil" in title_lower or "tool" in title_lower or "techno" in title_lower or "أداة" in title_lower:
+                        cat = "Outils" if lang == "fr" else "أدوات"
+                    elif "levée" in title_lower or "invest" in title_lower or "financement" in title_lower or "تمويل" in title_lower:
+                        cat = "Financement" if lang == "fr" else "تمويل"
+                    else:
+                        cat = "Écosystème" if lang == "fr" else "منظومة"
+
+                    fallback_imgs = [
+                        "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=600&q=80",
+                        "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=600&q=80",
+                        "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=600&q=80",
+                    ]
+                    if not image:
+                        image = fallback_imgs[idx % len(fallback_imgs)]
+
+                    formatted.append({
+                        "id": idx,
+                        "title": title,
+                        "desc": desc or (title[:80] + "..."),
+                        "category": cat,
+                        "image": image,
+                        "url": url
+                    })
+                    idx += 1
+
+                if formatted:
+                    _NEWS_CACHE[lang] = {"data": formatted, "expiry": now + 3600}
+                    return formatted
+
+    except Exception as exc:
+        _logger.warning("Error fetching live news from NewsAPI: %s", exc)
+
+    # Cache the fallback if API failed
+    _NEWS_CACHE[lang] = {"data": fallback_list, "expiry": now + 600}
+    return fallback_list
+
