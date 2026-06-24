@@ -15,6 +15,7 @@ import EvaluationReport from "./components/EvaluationReport.jsx";
 import Toast from "./components/Toast.jsx";
 import ConfirmDialog from "./components/ConfirmDialog.jsx";
 import Assistant from "./components/Assistant.jsx";
+import EmailConfirmationGate from "./components/EmailConfirmationGate.jsx";
 
 
 function phaseToPath(phase, pid) {
@@ -97,6 +98,7 @@ export default function App() {
 
   const [user, setUser] = useState(null);
   const [plan, setPlan] = useState("free");
+  const [pendingEmailConfirmation, setPendingEmailConfirmation] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showLimitModal, setShowLimitModal] = useState(false);
@@ -418,6 +420,12 @@ export default function App() {
   }
 
   function handleAuthUser(nextUser) {
+    if (nextUser?.pendingEmailConfirmation) {
+      setUser(nextUser);
+      setPendingEmailConfirmation(true);
+      return;
+    }
+    setPendingEmailConfirmation(false);
     setUser(nextUser);
     setPlan(nextUser?.plan || "free");
     refreshHistory().catch(() => {});
@@ -427,6 +435,7 @@ export default function App() {
     await api.logout();
     setUser(null);
     setPlan("free");
+    setPendingEmailConfirmation(false);
     setHistory([]);
     restart();
   }
@@ -464,7 +473,16 @@ export default function App() {
   return (
     <ErrorBoundary>
     <>
-      {phase !== "processing" && (
+      {/* Email confirmation gate — blocks the entire app until confirmed */}
+      {pendingEmailConfirmation && user && (
+        <EmailConfirmationGate
+          lang={lang}
+          user={user}
+          onLogout={handleLogout}
+        />
+      )}
+
+      {!pendingEmailConfirmation && phase !== "processing" && (
         <Topbar
           lang={lang}
           setLang={setLang}
@@ -480,7 +498,7 @@ export default function App() {
         />
       )}
 
-      {error && (
+      {!pendingEmailConfirmation && error && (
         <div className="error-banner" role="alert" style={{ maxWidth:900, margin:"16px auto", borderRadius:10 }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
@@ -490,7 +508,7 @@ export default function App() {
         </div>
       )}
 
-      {phase === "start" && (
+      {!pendingEmailConfirmation && phase === "start" && (
         <Landing
           lang={lang}
           setLang={setLang}
@@ -508,7 +526,7 @@ export default function App() {
         />
       )}
 
-      {phase === "dashboard" && pid && (
+      {!pendingEmailConfirmation && phase === "dashboard" && pid && (
         <ProjectDashboard
           pid={pid}
           lang={lang}
@@ -523,7 +541,7 @@ export default function App() {
         />
       )}
 
-      {phase === "parcours" && pid && (
+      {!pendingEmailConfirmation && phase === "parcours" && pid && (
         <MonParcours
           pid={pid}
           lang={lang}
@@ -537,7 +555,7 @@ export default function App() {
         />
       )}
 
-      {phase === "history" && (
+      {!pendingEmailConfirmation && phase === "history" && (
         <History
           lang={lang}
           user={user}
@@ -550,7 +568,7 @@ export default function App() {
         />
       )}
 
-      {phase === "intake" && question && (
+      {!pendingEmailConfirmation && phase === "intake" && question && (
         <Interview
           lang={lang}
           user={user}
@@ -567,11 +585,11 @@ export default function App() {
         />
       )}
 
-      {phase === "processing" && (
+      {!pendingEmailConfirmation && phase === "processing" && (
         <Processing lang={lang} />
       )}
 
-      {phase === "audit" && audit && (
+      {!pendingEmailConfirmation && phase === "audit" && audit && (
         <Results
           audit={audit}
           pid={pid}
@@ -588,7 +606,7 @@ export default function App() {
         />
       )}
 
-      {phase === "profile" && user && (
+      {!pendingEmailConfirmation && phase === "profile" && user && (
         <ProfilePage
           user={user}
           plan={plan}
@@ -606,7 +624,7 @@ export default function App() {
         />
       )}
 
-      {phase === "eval" && (
+      {!pendingEmailConfirmation && phase === "eval" && (
         <EvaluationReport
           lang={lang}
           api={api}
@@ -614,7 +632,7 @@ export default function App() {
         />
       )}
 
-      <ProfileModal
+      {!pendingEmailConfirmation && <ProfileModal
         isOpen={showProfileModal}
         onClose={() => setShowProfileModal(false)}
         user={user}
@@ -626,9 +644,9 @@ export default function App() {
         lang={lang}
         onResume={handleResume}
         api={api}
-      />
+      />}
 
-      {showLimitModal && (
+      {!pendingEmailConfirmation && showLimitModal && (
         <div className="modal-overlay" onClick={() => setShowLimitModal(false)}>
           <div className="modal-container" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440, padding: 24, textAlign: "center", display: "flex", flexDirection: "column", gap: 16 }}>
             <div style={{ fontSize: "2.8rem", lineHeight: 1 }}>🔒</div>
@@ -664,7 +682,7 @@ export default function App() {
       )}
     </>
       {/* Floating assistant — visible whenever a project is loaded */}
-      {pid && phase !== "processing" && phase !== "intake" && (
+      {!pendingEmailConfirmation && pid && phase !== "processing" && phase !== "intake" && (
         <>
           <button
             className="float-assistant-btn"

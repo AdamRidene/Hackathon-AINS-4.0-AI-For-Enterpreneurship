@@ -1,8 +1,9 @@
 """Contextual project memory (persistence).
 
-Two backends:
-  • Local SQLite database — when database is enabled (default)
-  • In-memory dicts       — when database is disabled (local testing, no DB needed)
+Three backends:
+  • PostgreSQL (Supabase)  — when DATABASE_URL starts with postgresql:// or postgres://
+  • Local SQLite database  — when DATABASE_URL is sqlite:/// (default)
+  • In-memory dicts        — when FIRASA_SKIP_DB=true (local testing, no DB needed)
 """
 from __future__ import annotations
 
@@ -25,11 +26,15 @@ _STORE_DIR.mkdir(exist_ok=True)
 _lock = threading.RLock()
 _cache: dict[str, ProjectProfile] = {}
 
-# ── Database Driver configuration ─────────────────────────────────────────────
-import sqlite3
-
 PLAN_LIMITS = {"free": 1, "plus": 3, "pro": 5}
 _DB_ENABLED = settings.database_enabled
+
+
+# ── Backend detection ─────────────────────────────────────────────────────────
+
+def _is_postgres() -> bool:
+    url = settings.database_url or ""
+    return url.startswith("postgresql://") or url.startswith("postgres://")
 
 
 # ── In-memory storage (used when DB is disabled) ──────────────────────────────
@@ -41,14 +46,10 @@ _mem_audits: dict[str, dict] = {}
 _mem_docs: dict[str, dict] = {}
 
 
-# ── Unified session wrapper ───────────────────────────────────────────────────
-
 class _MemCursor:
-    """Fake cursor for in-memory mode — stores the last query + params."""
     def __init__(self):
         self.last_query = ""
         self.last_params = ()
-        self._rows = []
 
     def execute(self, query: str, params: tuple = ()):
         self.last_query = query
@@ -63,7 +64,6 @@ class _MemCursor:
 
 
 class _MemSession:
-    """Mock DB session that does nothing — real logic is in the store functions."""
     def __init__(self):
         self.cursor = _MemCursor()
 
@@ -71,6 +71,74 @@ class _MemSession:
         self.cursor.last_query = query
         self.cursor.last_params = params
         return self.cursor
+
+
+# ── PostgreSQL connection pool ────────────────────────────────────────────────
+
+try:
+    import psycopg2
+    import psycopg2.pool
+    from psycopg2.extras import RealDictCursor
+    _PSYCOPG2_AVAILABLE = True
+except ImportError:
+    _PSYCOPG2_AVAILABLE = False
+
+_pg_pool: "psycopg2.pool.ThreadedConnectionPool | None" = None
+_pg_pool_lock = threading.Lock()
+
+
+def _get_pg_pool():
+    global _pg_pool
+    if _pg_pool is not None:
+        return _pg_pool
+    with _pg_pool_lock:
+        if _pg_pool is not None:
+            return _pg_pool
+        if not _PSYCOPG2_AVAILABLE:
+            raise RuntimeError(
+                "psycopg2-binary is not installed. Run: pip install psycopg2-binary"
+            )
+        _pg_pool = psycopg2.pool.ThreadedConnectionPool(
+            minconn=1,
+            maxconn=10,
+            dsn=settings.database_url,
+        )
+        return _pg_pool
+
+
+class _PgConn:
+    """Thin wrapper around a psycopg2 connection that mimics sqlite3's .execute() interface.
+
+    sqlite3 allows conn.execute(sql, params) directly and uses ? placeholders.
+    psycopg2 requires an explicit cursor and uses %s placeholders.
+    This wrapper bridges the gap so all call-sites in the store stay unchanged.
+    """
+
+    def __init__(self, conn):
+        self._conn = conn
+        self._cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    def execute(self, query: str, params: tuple = ()) -> "_PgConn":
+        pg_query = query.replace("?", "%s")
+        self._cur.execute(pg_query, params)
+        return self
+
+    def fetchone(self):
+        try:
+            return self._cur.fetchone()
+        except Exception:
+            return None
+
+    def fetchall(self):
+        try:
+            return self._cur.fetchall()
+        except Exception:
+            return []
+
+
+# ── SQLite driver (legacy / local dev) ───────────────────────────────────────
+
+import sqlite3
 
 
 def _get_sqlite_path() -> str:
@@ -82,43 +150,134 @@ def _get_sqlite_path() -> str:
         elif db_path.startswith("backend/_data/"):
             db_path = str(_STORE_DIR / db_path.replace("backend/_data/", ""))
     elif "://" in db_path:
-        # Non-sqlite DSN (e.g. leftover postgres/neon URL) — never feed to
-        # sqlite3.connect(); fall back to the default local file.
         db_path = ""
     if not db_path:
         db_path = str(_STORE_DIR / "firasa.db")
     return db_path
 
 
-def _connect_db() -> sqlite3.Connection:
+def _connect_sqlite() -> sqlite3.Connection:
     conn = sqlite3.connect(_get_sqlite_path(), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
 
+# ── Unified session context manager ──────────────────────────────────────────
+
 @contextmanager
 def db_session():
-    if _DB_ENABLED:
-        _ensure_db()
+    if not _DB_ENABLED:
+        yield _MemSession()
+        return
+
+    _ensure_db()
+
+    if _is_postgres():
+        pool = _get_pg_pool()
+        conn = pool.getconn()
+        try:
+            conn.autocommit = False
+            wrapper = _PgConn(conn)
+            yield wrapper
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            pool.putconn(conn)
+    else:
         conn = None
         try:
-            conn = _connect_db()
+            conn = _connect_sqlite()
             yield conn
             conn.commit()
-        except Exception as e:
+        except Exception:
             if conn:
                 conn.rollback()
-            raise e
+            raise
         finally:
             if conn:
                 conn.close()
-    else:
-        yield _MemSession()
 
 
-# ── Schema init (SQLite) ──────────────────────────────────────────────────────
+# ── Schema init ───────────────────────────────────────────────────────────────
 
-def _init_db_conn(conn) -> None:
+def _init_db_conn_pg(conn: _PgConn) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id            TEXT PRIMARY KEY,
+            email         TEXT NOT NULL UNIQUE,
+            name          TEXT NOT NULL,
+            password_hash TEXT,
+            plan          TEXT NOT NULL DEFAULT 'free',
+            created_at    TEXT NOT NULL,
+            bio           TEXT,
+            phone         TEXT,
+            role          TEXT,
+            company       TEXT,
+            photo         TEXT,
+            birth_date    TEXT,
+            location      TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS sessions (
+            token      TEXT PRIMARY KEY,
+            user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            created_at TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS projects (
+            id            TEXT PRIMARY KEY,
+            owner_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name          TEXT NOT NULL,
+            language      TEXT NOT NULL DEFAULT 'fr',
+            profile_json  TEXT NOT NULL,
+            created_at    TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS audits (
+            pid           TEXT PRIMARY KEY,
+            owner_user_id TEXT,
+            name          TEXT,
+            sector        TEXT,
+            stage         INTEGER,
+            vector        TEXT,
+            audit_json    TEXT NOT NULL,
+            audited_at    TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS audit_history (
+            id            TEXT PRIMARY KEY,
+            pid           TEXT NOT NULL,
+            owner_user_id TEXT,
+            stage         INTEGER,
+            vector        TEXT,
+            audit_json    TEXT NOT NULL,
+            audited_at    TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS project_documents (
+            id             TEXT PRIMARY KEY,
+            project_id     TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            owner_user_id  TEXT NOT NULL,
+            filename       TEXT NOT NULL,
+            storage_path   TEXT NOT NULL,
+            extracted_text TEXT,
+            uploaded_at    TEXT NOT NULL
+        )
+    """)
+    # Idempotent column additions — PostgreSQL 9.6+ supports IF NOT EXISTS
+    conn.execute("ALTER TABLE audits ADD COLUMN IF NOT EXISTS owner_user_id TEXT")
+    for col in ("bio", "phone", "role", "company", "photo", "birth_date", "location"):
+        conn.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} TEXT")
+
+
+def _init_db_conn_sqlite(conn) -> None:
     conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id            TEXT PRIMARY KEY,
@@ -178,6 +337,18 @@ def _init_db_conn(conn) -> None:
             audited_at    TEXT NOT NULL
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS project_documents (
+            id            TEXT PRIMARY KEY,
+            project_id    TEXT NOT NULL,
+            owner_user_id TEXT NOT NULL,
+            filename      TEXT NOT NULL,
+            storage_path  TEXT NOT NULL,
+            extracted_text TEXT,
+            uploaded_at   TEXT NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+        )
+    """)
     columns = {
         row["name"] for row in conn.execute("PRAGMA table_info(audits)").fetchall()
     }
@@ -191,39 +362,11 @@ def _init_db_conn(conn) -> None:
             conn.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT")
 
 
-def _init_docs_table_conn(conn) -> None:
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS project_documents (
-            id            TEXT PRIMARY KEY,
-            project_id    TEXT NOT NULL,
-            owner_user_id TEXT NOT NULL,
-            filename      TEXT NOT NULL,
-            storage_path  TEXT NOT NULL,
-            extracted_text TEXT,
-            uploaded_at   TEXT NOT NULL,
-            FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
-        )
-    """)
-
-
-def _init_db() -> None:
-    # Direct schema init for external entrypoint call
-    conn = _connect_db()
-    try:
-        _init_db_conn(conn)
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def _init_docs_table() -> None:
-    # Direct schema init for external entrypoint call
-    conn = _connect_db()
-    try:
-        _init_docs_table_conn(conn)
-        conn.commit()
-    finally:
-        conn.close()
+def _init_db_conn(conn) -> None:
+    if _is_postgres():
+        _init_db_conn_pg(conn)
+    else:
+        _init_db_conn_sqlite(conn)
 
 
 _db_ready = False
@@ -236,14 +379,24 @@ def _ensure_db() -> None:
     with _lock:
         if _db_ready:
             return
-        conn = _connect_db()
-        try:
-            _init_db_conn(conn)
-            _init_docs_table_conn(conn)
-            conn.commit()
-            _db_ready = True
-        finally:
-            conn.close()
+        if _is_postgres():
+            pool = _get_pg_pool()
+            conn = pool.getconn()
+            try:
+                wrapper = _PgConn(conn)
+                _init_db_conn_pg(wrapper)
+                conn.commit()
+                _db_ready = True
+            finally:
+                pool.putconn(conn)
+        else:
+            conn = _connect_sqlite()
+            try:
+                _init_db_conn_sqlite(conn)
+                conn.commit()
+                _db_ready = True
+            finally:
+                conn.close()
 
 
 # ── Auth / session store ──────────────────────────────────────────────────────
@@ -330,7 +483,6 @@ def create_user(
                 except Exception as exc:
                     raise ValueError("Email already registered") from exc
         else:
-            # In-memory: check for duplicate email
             for u in _mem_users.values():
                 if u["email"] == email_norm:
                     raise ValueError("Email already registered")
@@ -624,7 +776,6 @@ def append_audit_history(
     pid: str, owner_user_id: str | None,
     stage: int | None, vector: list[float] | None, audit_dict: dict,
 ) -> None:
-    """Append one audit snapshot to the audit history (never overwrites)."""
     now = datetime.now(timezone.utc).isoformat()
     hid = uuid4().hex[:16]
     with _lock:
@@ -647,7 +798,6 @@ def append_audit_history(
 
 
 def get_audit_history(pid: str, limit: int = 10) -> list[dict]:
-    """Return the N most-recent audit snapshots for a project (newest first)."""
     if _DB_ENABLED:
         with db_session() as conn:
             rows = conn.execute(
@@ -672,9 +822,7 @@ def get_audit_history(pid: str, limit: int = 10) -> list[dict]:
         ]
     else:
         history = _mem_audits.get("__history__", {})
-        project_history = [
-            v for v in history.values() if v["pid"] == pid
-        ]
+        project_history = [v for v in history.values() if v["pid"] == pid]
         project_history.sort(key=lambda x: x["audited_at"], reverse=True)
         return [
             {
@@ -688,7 +836,6 @@ def get_audit_history(pid: str, limit: int = 10) -> list[dict]:
             }
             for h in project_history[:limit]
         ]
-
 
 
 def list_audits(owner_user_id: str | None = None) -> list[dict]:
@@ -730,7 +877,6 @@ def list_audits(owner_user_id: str | None = None) -> list[dict]:
                 "audited_at": profile.created_at.isoformat(),
             })
     else:
-        # In-memory: audits first, then unaudited projects
         for pid, a in sorted(_mem_audits.items(), key=lambda x: x[1].get("audited_at", ""), reverse=True):
             if owner_user_id and a.get("owner_user_id") != owner_user_id:
                 continue
@@ -771,7 +917,6 @@ def delete_project(pid: str) -> bool:
                 del _mem_projects[pid]
                 found = True
             _mem_audits.pop(pid, None)
-            # Clean up docs
             to_delete = [k for k, d in _mem_docs.items() if d.get("project_id") == pid]
             for k in to_delete:
                 del _mem_docs[k]
@@ -793,12 +938,27 @@ def save_document(
     with _lock:
         if _DB_ENABLED:
             with db_session() as conn:
-                conn.execute(
-                    """INSERT OR REPLACE INTO project_documents (id, project_id, owner_user_id,
-                       filename, storage_path, extracted_text, uploaded_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (doc_id, project_id, owner_user_id, filename, storage_path, extracted_text, now),
-                )
+                if _is_postgres():
+                    conn.execute(
+                        """INSERT INTO project_documents
+                               (id, project_id, owner_user_id, filename, storage_path, extracted_text, uploaded_at)
+                               VALUES (?, ?, ?, ?, ?, ?, ?)
+                               ON CONFLICT (id) DO UPDATE SET
+                                   project_id = excluded.project_id,
+                                   owner_user_id = excluded.owner_user_id,
+                                   filename = excluded.filename,
+                                   storage_path = excluded.storage_path,
+                                   extracted_text = excluded.extracted_text,
+                                   uploaded_at = excluded.uploaded_at""",
+                        (doc_id, project_id, owner_user_id, filename, storage_path, extracted_text, now),
+                    )
+                else:
+                    conn.execute(
+                        """INSERT OR REPLACE INTO project_documents
+                               (id, project_id, owner_user_id, filename, storage_path, extracted_text, uploaded_at)
+                               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        (doc_id, project_id, owner_user_id, filename, storage_path, extracted_text, now),
+                    )
         else:
             _mem_docs[doc_id] = doc
     return dict(doc)
@@ -834,8 +994,6 @@ def list_documents(project_id: str) -> list[dict]:
 
 
 def get_documents_text(project_id: str) -> list[dict]:
-    """Return full extracted text per document for a project (auto-fill source).
-    Unlike list_documents (preview only), this returns the complete text."""
     if _DB_ENABLED:
         with db_session() as conn:
             rows = conn.execute(
