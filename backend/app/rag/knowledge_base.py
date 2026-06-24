@@ -44,6 +44,71 @@ _STOP = _FR_STOP | _AR_STOP
 # Arabic stems are dense, so 2-char Arabic tokens are retained.
 _AR_RE = re.compile(r"[\u0600-\u06ff]")
 
+# ── Chunking (Phase 5.2) ─────────────────────────────────────────────────────
+
+_SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?\n])\s+")
+
+
+def _chunk_text(text: str, max_chars: int = 500, min_chars: int = 250) -> list[str]:
+    """Split *text* into chunks targeting `max_chars` per chunk, breaking at
+    sentence boundaries. Returns a list of non-empty strings."""
+    if len(text) <= max_chars:
+        return [text]
+    sentences = _SENTENCE_BOUNDARY.split(text.replace("\n", ". "))
+    chunks: list[str] = []
+    buf: list[str] = []
+    buf_len = 0
+    for s in sentences:
+        s = s.strip()
+        if not s:
+            continue
+        if buf_len + len(s) > max_chars and buf_len >= min_chars:
+            chunks.append(" ".join(buf))
+            buf, buf_len = [], 0
+        buf.append(s)
+        buf_len += len(s)
+    if buf:
+        chunks.append(" ".join(buf))
+    return chunks or [text]
+
+
+def chunk_kb_entries(path: Path | None = None) -> int:
+    """Rewrite *kb.json* with long entries split into multiple chunks.
+    Each chunk gets an id of the form ``{base}-chunk-{n}``.
+    Returns the number of new chunks created."""
+    if path is None:
+        path = _KB_PATH
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    new_resources: list[dict] = []
+    split_count = 0
+    for r in raw["resources"]:
+        fr_chunks = _chunk_text(r["content"])
+        ar_chunks = _chunk_text(r.get("content_ar", ""))
+        # align chunk count to the longer side
+        n = max(len(fr_chunks), len(ar_chunks))
+        if n == 1:
+            new_resources.append(r)
+        else:
+            # pad shorter side with empty strings
+            fr_chunks += [""] * (n - len(fr_chunks))
+            ar_chunks += [""] * (n - len(ar_chunks))
+            for i in range(n):
+                chunk = dict(r)
+                chunk["id"] = f"{r['id']}-chunk-{i + 1}"
+                chunk["content"] = fr_chunks[i]
+                chunk["content_ar"] = ar_chunks[i]
+                new_resources.append(chunk)
+            split_count += n - 1  # (n chunks - 1 original)
+    raw["resources"] = new_resources
+    raw["_meta"]["count"] = len(new_resources)
+    raw["_meta"]["chunked"] = True
+    path.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
+    get_kb.cache_clear()
+    return split_count
+
+
+# ── Tokeniser ────────────────────────────────────────────────────────────────
+
 
 def _tokenise(text: str) -> list[str]:
     out = []
