@@ -7,11 +7,11 @@ import GraphMap from "./GraphMap.jsx";
 // labelled sections and a numbered roadmap (pretty render of res.grounding).
 // ---------------------------------------------------------------------------
 const SCORE_META = [
-  { key: "M", label: "Marché",      color: "#06b6d4" }, // cyan
-  { key: "C", label: "Commercial",  color: "#3b82f6" }, // blue
-  { key: "I", label: "Innovation",  color: "#a855f7" }, // purple
-  { key: "S", label: "Scalability", color: "#f97316" }, // orange
-  { key: "G", label: "Green",       color: "#22c55e" }, // green
+  { key: "M", labelFr: "Marché",      labelAr: "السوق",     color: "#06b6d4" },
+  { key: "C", labelFr: "Commercial",  labelAr: "تجاري",     color: "#3b82f6" },
+  { key: "I", labelFr: "Innovation",  labelAr: "ابتكار",    color: "#a855f7" },
+  { key: "S", labelFr: "Scalability", labelAr: "توسع",      color: "#f97316" },
+  { key: "G", labelFr: "Green",       labelAr: "بيئة",      color: "#22c55e" },
 ];
 
 function ScoreChip({ label, value, color }) {
@@ -254,8 +254,23 @@ function BotMessage({ text, grounding, sourcesUsed, trace, lang }) {
   );
 }
 
+const LS_PREFIX = "firasa_assistant_log_";
+
+function loadLog(pid) {
+  try {
+    const raw = localStorage.getItem(LS_PREFIX + pid);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveLog(pid, log) {
+  try {
+    localStorage.setItem(LS_PREFIX + pid, JSON.stringify(log));
+  } catch {}
+}
+
 export default function Assistant({ pid, lang = "fr" }) {
-  const [log, setLog] = useState([]);
+  const [log, setLog] = useState(() => loadLog(pid));
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [docs, setDocs] = useState([]);
@@ -263,6 +278,10 @@ export default function Assistant({ pid, lang = "fr" }) {
 
   const t = TEXTS[lang] || TEXTS.fr;
   const ar = lang === "ar";
+
+  useEffect(() => {
+    setLog(loadLog(pid));
+  }, [pid]);
 
   useEffect(() => {
     api.listDocuments(pid)
@@ -276,8 +295,13 @@ export default function Assistant({ pid, lang = "fr" }) {
     }
   }, [log, busy]);
 
+  useEffect(() => {
+    saveLog(pid, log);
+  }, [log, pid]);
+
   const handleClear = () => {
     setLog([]);
+    try { localStorage.removeItem(LS_PREFIX + pid); } catch {}
   };
 
   async function send(e) {

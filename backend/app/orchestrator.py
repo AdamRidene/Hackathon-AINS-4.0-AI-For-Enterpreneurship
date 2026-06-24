@@ -23,6 +23,10 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from .schema import ProjectProfile
+
+# In-memory conversation history per project (max 6 turns = last 3 Q&A)
+_conversation_memory: dict[str, list[dict]] = {}
+_MAX_HISTORY_TURNS = 6
 from .intake import IntakeStateMachine
 from .diagnostic import classify, detect_gap
 from .diagnostic.classifier import DiagnosticResult
@@ -469,6 +473,24 @@ async def _run_assistant_tool(
     return "", []
 
 
+def _load_conversation(pid: str) -> list[dict]:
+    return _conversation_memory.get(pid, [])
+
+def _save_conversation(pid: str, history: list[dict]):
+    _conversation_memory[pid] = history[-_MAX_HISTORY_TURNS:]
+
+def _format_history(history: list[dict], lang: str) -> str:
+    if not history:
+        return ""
+    lines = []
+    for msg in history:
+        role = "Utilisateur" if lang == "fr" else "المستخدم"
+        if msg["role"] == "assistant":
+            role = "Assistant" if lang == "fr" else "المساعد"
+        lines.append(f"{role}: {msg['content']}")
+    return "\n".join(lines)
+
+
 async def grounded_assistant_reply(profile: ProjectProfile, question: str, lang: Optional[str] = None) -> dict:
     """Secondary conversational layer — grounded ONLY in structured outputs and uploaded documents.
 
@@ -487,7 +509,13 @@ async def grounded_assistant_reply(profile: ProjectProfile, question: str, lang:
     tools = _plan_assistant_tools(question)
     if not tools:
         trace.append("assistant:no_tool")
-        reply = await get_llm().chat(question, "", lang=effective_lang)
+        history = _load_conversation(profile.project_id)
+        history_str = _format_history(history, effective_lang)
+        ctx = f"Conversation précédente:\n{history_str}" if history_str else ""
+        reply = await get_llm().chat(question, ctx, lang=effective_lang)
+        history.append({"role": "user", "content": question})
+        history.append({"role": "assistant", "content": reply})
+        _save_conversation(profile.project_id, history)
         return {"reply": reply, "grounding": None, "sources_used": [], "trace": trace}
 
     def _build_agent_anomalies_context(anomaly_list: list[dict], lang: str = "fr") -> str:
@@ -516,8 +544,21 @@ async def grounded_assistant_reply(profile: ProjectProfile, question: str, lang:
         context_parts.append(_build_agent_anomalies_context(audit_data.get("anomalies", []), effective_lang))
 
     ctx = "\n".join(p for p in context_parts if p)
+
+    # Inject conversation history for multi-turn awareness
+    history = _load_conversation(profile.project_id)
+    history_str = _format_history(history, effective_lang)
+    if history_str:
+        ctx = f"{ctx}\n\n---\nConversation précédente:\n{history_str}" if ctx else f"Conversation précédente:\n{history_str}"
+
     reply = await get_llm().chat(question, ctx, lang=effective_lang)
     trace.append("assistant:chat")
+
+    # Save this Q&A pair to conversation memory
+    history.append({"role": "user", "content": question})
+    history.append({"role": "assistant", "content": reply})
+    _save_conversation(profile.project_id, history)
+
     _logger.info("assistant tool trace project=%s trace=%s", profile.project_id, trace)
     return {
         "reply": reply,
