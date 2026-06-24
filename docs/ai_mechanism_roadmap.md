@@ -119,9 +119,9 @@ Cohere `embed-multilingual-v3.0` (with bilingual FR+AR chunk text) enables Arabi
 
 ---
 
-## Phase 5 — Maintenance & Quality (ongoing)
+## Phase 5 — Maintenance & Quality (ongoing) ✅
 
-### 5.1 KB URL health checks
+### 5.1 KB URL health checks ✅
 
 Current: No automated check. Resource URLs can go stale (404, redirect, domain expiry) without notice.
 
@@ -129,13 +129,13 @@ Current: No automated check. Resource URLs can go stale (404, redirect, domain e
 
 **File:** `backend/scripts/kb_health.py` (new)
 
-### 5.2 KB chunking strategy
+### 5.2 KB chunking strategy ✅
 
 Current: Each KB entry is a single chunk of variable length. Long entries cause noisy retrieval (irrelevant passages match).
 
-**Change:** Split long KB entries into smaller, semantically coherent chunks (500-800 chars). Index each chunk independently with its own `id`, `content`, and `content_ar`.
+**Change:** `_chunk_text()` added to `knowledge_base.py` — splits content at sentence boundaries targeting 500-800 chars per chunk. `chunk_kb_entries()` migration function rewrites `kb.json` with split entries (id format `{base}-chunk-{n}`). On current data all entries are under 500 chars, so no splitting occurs yet — ready for when longer entries are added.
 
-**File:** `backend/app/rag/knowledge_base.py` + `kb.json`
+**File:** `backend/app/rag/knowledge_base.py` (functions + migration)
 
 ---
 
@@ -157,5 +157,5 @@ Current: Each KB entry is a single chunk of variable length. Long entries cause 
 | Expand anomaly detection | 2 hr | Medium | 4 | ✅ |
 | Click tracking | 4 hr | Medium | 4 | ✅ |
 | Milestone outcome tracking | 2 hr | Low | 4 | ✅ |
-| KB URL health checks | 1 hr | Low | 5 | 🔲 |
-| KB chunking | 3 hr | Medium | 5 | 🔲 |
+| KB URL health checks | 1 hr | Low | 5 | ✅ |
+| KB chunking | 3 hr | Medium | 5 | ✅ |
