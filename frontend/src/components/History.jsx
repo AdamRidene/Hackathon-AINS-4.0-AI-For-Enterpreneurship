@@ -82,7 +82,7 @@ export default function History({ lang, api, onBack, onViewProject, user, plan, 
   const [viewing, setViewing] = useState(null);        // project ID currently navigating to
 
   const ar = lang === "ar";
-  const t  = TEXTS[lang];
+  const t  = TEXTS[lang] || TEXTS.fr;
 
   useEffect(() => {
     const controller = new AbortController();

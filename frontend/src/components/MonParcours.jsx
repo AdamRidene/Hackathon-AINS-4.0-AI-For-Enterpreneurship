@@ -67,7 +67,7 @@ export default function MonParcours({ pid, lang, api, onBack, checkedMilestones,
   const [rescoreResult, setRescoreResult] = useState(null);
 
   const ar = lang === "ar";
-  const t = TEXTS[lang];
+  const t = TEXTS[lang] || TEXTS.fr;
 
   async function loadAudits() {
     try {
