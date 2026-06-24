@@ -3795,6 +3795,38 @@ label {
   background: rgba(255, 255, 255, 0.04);
 }
 
+.password-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-input-wrap input {
+  padding-right: 44px;
+}
+
+.password-eye-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: var(--text-sub);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease;
+  min-height: unset;
+  width: auto;
+}
+
+.password-eye-btn:hover {
+  color: var(--text);
+}
+
 .auth-toggle-msg {
   font-size: 0.82rem;
   color: var(--text-sub);

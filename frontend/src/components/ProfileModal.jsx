@@ -255,6 +255,8 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   async function handleForgotPassword(e) {
     if (e) e.preventDefault();
@@ -745,13 +747,22 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                           </div>
                           <div className="form-group">
                             <label>{t.password}</label>
-                            <input 
-                              type="password" 
-                              placeholder="••••••••" 
-                              value={password} 
-                              onChange={e => setPassword(e.target.value)} 
-                              required 
-                            />
+                            <div className="password-input-wrap">
+                              <input
+                                type={showPassword ? "text" : "password"}
+                                placeholder="••••••••"
+                                value={password}
+                                onChange={e => setPassword(e.target.value)}
+                                required
+                              />
+                              <button type="button" className="password-eye-btn" onClick={() => setShowPassword(v => !v)} tabIndex={-1}>
+                                {showPassword ? (
+                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                                ) : (
+                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                )}
+                              </button>
+                            </div>
                             {authMode === "register" && password.length > 0 && (
                               <div className="password-criteria-wrap">
                                 <div className="password-strength-container">
@@ -829,7 +840,22 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                             <span>{ar ? "أو" : "ou"}</span>
                           </div>
 
-                          <button className="google-btn" type="button" style={{ width: "100%" }}>
+                          <button
+                            className="google-btn"
+                            type="button"
+                            style={{ width: "100%" }}
+                            disabled={authBusy}
+                            onClick={async () => {
+                              setAuthBusy(true);
+                              setAuthError(null);
+                              try {
+                                await api.loginWithGoogle();
+                              } catch (err) {
+                                setAuthError(err.message || String(err));
+                                setAuthBusy(false);
+                              }
+                            }}
+                          >
                             <svg width="18" height="18" viewBox="0 0 24 24">
                               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
                               <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
@@ -975,25 +1001,43 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                               {authError && <div className="error-banner">{authError}</div>}
                               <div className="form-group">
                                 <label>{t.newPasswordLabel}</label>
-                                <input
-                                  type="password"
-                                  value={password}
-                                  onChange={(e) => setPassword(e.target.value)}
-                                  placeholder=""
-                                  required
-                                  disabled={authBusy}
-                                />
+                                <div className="password-input-wrap">
+                                  <input
+                                    type={showPassword ? "text" : "password"}
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    placeholder=""
+                                    required
+                                    disabled={authBusy}
+                                  />
+                                  <button type="button" className="password-eye-btn" onClick={() => setShowPassword(v => !v)} tabIndex={-1}>
+                                    {showPassword ? (
+                                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                                    ) : (
+                                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                    )}
+                                  </button>
+                                </div>
                               </div>
                               <div className="form-group" style={{ marginBottom: "12px" }}>
                                 <label>{t.confirmPasswordLabel}</label>
-                                <input
-                                  type="password"
-                                  value={confirmPassword}
-                                  onChange={(e) => setConfirmPassword(e.target.value)}
-                                  placeholder=""
-                                  required
-                                  disabled={authBusy}
-                                />
+                                <div className="password-input-wrap">
+                                  <input
+                                    type={showConfirmPassword ? "text" : "password"}
+                                    value={confirmPassword}
+                                    onChange={(e) => setConfirmPassword(e.target.value)}
+                                    placeholder=""
+                                    required
+                                    disabled={authBusy}
+                                  />
+                                  <button type="button" className="password-eye-btn" onClick={() => setShowConfirmPassword(v => !v)} tabIndex={-1}>
+                                    {showConfirmPassword ? (
+                                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                                    ) : (
+                                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                    )}
+                                  </button>
+                                </div>
                               </div>
                               <button className="primary" type="submit" disabled={authBusy}>
                                 {authBusy ? t.loadingPay : t.submitReset}

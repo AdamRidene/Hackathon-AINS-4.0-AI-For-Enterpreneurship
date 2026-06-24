@@ -176,24 +176,74 @@ export default function App() {
   }, [lang]);
 
   useEffect(() => {
+    let unsubAuth = () => {};
+
     async function bootstrap() {
+      console.log("[AUTH DEBUG] bootstrap start");
+      console.log("[AUTH DEBUG] href=", window.location.href);
+      console.log("[AUTH DEBUG] search=", window.location.search);
+      console.log("[AUTH DEBUG] hash=", window.location.hash);
+
       // Initialise the auth module first (discovers mode from backend)
       await auth.init();
+      console.log("[AUTH DEBUG] auth.init() done, mode=", auth.getMode());
+
+      // Set up Supabase auth listener NOW — after init, so _mode is correct.
+      let sessionHandled = false;
+      const apiBase = import.meta.env.VITE_API_BASE || "";
+
+      unsubAuth = auth.onAuthStateChange(async (event, session) => {
+        console.log("[AUTH DEBUG] onAuthStateChange event=", event, "session_user=", session?.user?.email ?? null, "handled=", sessionHandled);
+        if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session?.user && !sessionHandled) {
+          sessionHandled = true;
+          const fallback = {
+            id: session.user.id,
+            email: session.user.email,
+            name: session.user.user_metadata?.full_name || session.user.email?.split("@")[0],
+            plan: "free",
+          };
+          console.log("[AUTH DEBUG] session found, calling /api/auth/me with token prefix=", session.access_token?.slice(0, 20));
+          try {
+            const res = await fetch(`${apiBase}/api/auth/me`, {
+              headers: { Authorization: `Bearer ${session.access_token}` },
+            });
+            console.log("[AUTH DEBUG] /api/auth/me status=", res.status);
+            if (res.ok) {
+              const data = await res.json();
+              console.log("[AUTH DEBUG] backend user=", data.user);
+              handleAuthUser(data.user || fallback);
+              refreshHistory().catch(() => {});
+            } else {
+              const text = await res.text();
+              console.warn("[AUTH DEBUG] /api/auth/me rejected:", res.status, text, "— using fallback session user");
+              handleAuthUser(fallback);
+            }
+          } catch (err) {
+            console.error("[AUTH DEBUG] fetch error:", err);
+            handleAuthUser(fallback);
+          }
+        }
+      });
 
       // Check health
       api.health().then(setHealth).catch(() => setHealth({ status: "down" }));
 
-      // Restore session from token or Supabase
+      // supabase.js now explicitly awaits exchangeCodeForSession() when a ?code=
+      // is in the URL, so by the time auth.init() returns the session is ready.
+      // Just call auth.me() — works for both normal restore and post-OAuth redirect.
+      console.log("[AUTH DEBUG] checking session after init");
       try {
         const me = await auth.me();
+        console.log("[AUTH DEBUG] auth.me() result=", me?.email ?? null);
         if (me) {
+          sessionHandled = true;
           setUser(me);
           setPlan(me.plan || "free");
           await refreshHistory();
           return;
         }
       } catch {
-        // No valid session — continue to autoLogin fallback
+        // No valid session
       }
 
       // DEV ONLY: auto-create mock user for local development
@@ -226,6 +276,8 @@ export default function App() {
         ? "فشل تهيئة التطبيق. يرجى تحديث الصفحة."
         : "Échec de l'initialisation. Veuillez rafraîchir la page.");
     });
+
+    return () => unsubAuth();
   }, []);
 
   useEffect(() => {

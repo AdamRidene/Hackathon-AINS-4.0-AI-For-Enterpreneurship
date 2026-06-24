@@ -60,6 +60,10 @@ export const api = {
     return auth.login({ email, password });
   },
 
+  loginWithGoogle: async () => {
+    return auth.loginWithGoogle();
+  },
+
   register: async ({ email, password, name, birth_date, location, phone, role, company }) => {
     return auth.register({ email, password, name, birth_date, location, phone, role, company });
   },
