@@ -108,6 +108,13 @@ class ProfileUpdateBody(BaseModel):
 class ForgotPasswordBody(BaseModel):
     email: str
 
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        if not _EMAIL_RE.match(v.strip()):
+            raise ValueError("Invalid email format")
+        return v.strip()
+
 
 class ResetPasswordBody(BaseModel):
     token: str
@@ -360,8 +367,9 @@ def forgot_password(request: Request, body: ForgotPasswordBody) -> _ResetResp:
 
 
 @app.post("/api/auth/reset-password")
-def reset_password(body: ResetPasswordBody) -> _ResetResp:
-    """Reset password using a reset token."""
+@limiter.limit("5/minute")
+def reset_password(request: Request, body: ResetPasswordBody) -> _ResetResp:
+
     if settings.is_supabase_auth:
         raise HTTPException(404, "Password reset is managed by Supabase Auth.")
     user_id = store.verify_reset_token(body.token)
@@ -376,7 +384,8 @@ def reset_password(body: ResetPasswordBody) -> _ResetResp:
 # Email verification (local mode only)                                        #
 # --------------------------------------------------------------------------- #
 @app.post("/api/auth/verify-email")
-def verify_email(token: str) -> _ResetResp:
+@limiter.limit("5/minute")
+def verify_email(request: Request, token: str) -> _ResetResp:
     """Verify a user's email address using a verification token."""
     if settings.is_supabase_auth:
         raise HTTPException(404, "Email verification is managed by Supabase Auth.")

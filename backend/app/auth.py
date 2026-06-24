@@ -45,7 +45,7 @@ def _validate_supabase_jwt(token: str) -> dict:
         payload = jwt.decode(
             token,
             jwt_secret,
-            algorithms=["HS256", "RS256"],  # Allow RS256 as well just in case
+            algorithms=["HS256"],
             options={"verify_aud": False},  # Supabase JWTs don't always encode audience
         )
         return payload

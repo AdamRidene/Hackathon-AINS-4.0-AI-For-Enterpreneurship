@@ -779,6 +779,7 @@ def verify_reset_token(token: str) -> str | None:
                 if expires_at.tzinfo is None:
                     expires_at = expires_at.replace(tzinfo=timezone.utc)
                 if datetime.now(timezone.utc) > expires_at:
+                    _delete_reset_token(token)
                     return None
             except Exception:
                 return None
@@ -797,6 +798,14 @@ def verify_reset_token(token: str) -> str | None:
             except Exception:
                 return None
             return entry["user_id"]
+
+
+def _delete_reset_token(token: str) -> None:
+    if _DB_ENABLED:
+        with db_session() as conn:
+            conn.execute("DELETE FROM password_reset_tokens WHERE token = ?", (token,))
+    else:
+        _mem_reset_tokens.pop(token, None)
 
 
 def consume_reset_token(token: str) -> None:
@@ -859,6 +868,7 @@ def verify_email_token(token: str) -> str | None:
                 if expires_at.tzinfo is None:
                     expires_at = expires_at.replace(tzinfo=timezone.utc)
                 if datetime.now(timezone.utc) > expires_at:
+                    conn.execute("DELETE FROM email_verify_tokens WHERE token = ?", (token,))
                     return None
             except Exception:
                 return None
@@ -942,7 +952,8 @@ def update_user_profile(
                 if email:
                     email = _normalise_email(email)
                     conn.execute(
-                        """UPDATE users SET name = ?, email = ?, bio = ?, phone = ?, role = ?,
+                        """UPDATE users SET name = ?, email = ?, email_verified = 0,
+                           bio = ?, phone = ?, role = ?,
                            company = ?, photo = ?, birth_date = ?, location = ?
                            WHERE id = ?""",
                         (name, email, bio, phone, role, company, photo, birth_date, location, user_id),
@@ -963,6 +974,7 @@ def update_user_profile(
                          company=company, photo=photo, birth_date=birth_date, location=location)
                 if email:
                     u["email"] = _normalise_email(email)
+                    u["email_verified"] = False
                 return dict(u)
         return None
 
