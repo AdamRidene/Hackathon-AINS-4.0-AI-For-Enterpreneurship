@@ -257,7 +257,7 @@ export default function MonParcours({ pid, lang, api, onBack, checkedMilestones,
                     </span>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, fontSize: "0.88rem", textDecoration: done ? "line-through" : "none" }}>
-                        {m.title}
+                        {ar ? m.title_ar || m.title : m.title}
                       </div>
                       {timeline && <div style={{ fontSize: "0.74rem", color: "var(--orange)", marginTop: 2 }}>{timeline}</div>}
                       {rat && <div style={{ fontSize: "0.78rem", color: "var(--text-sub)", marginTop: 2 }}>{rat}</div>}
@@ -320,7 +320,7 @@ export default function MonParcours({ pid, lang, api, onBack, checkedMilestones,
                       <div style={{ display: "flex", flexDirection: "column", gap: 4, borderTop: "1px solid rgba(255,255,255,0.03)", paddingTop: 6 }}>
                         {audit.roadmap.slice(0, 3).map((item, i) => (
                           <div key={i} style={{ fontSize: "0.8rem", color: "var(--text-sub)" }}>
-                            • {item.title}
+                            • {ar ? item.title_ar || item.title : item.title}
                           </div>
                         ))}
                       </div>

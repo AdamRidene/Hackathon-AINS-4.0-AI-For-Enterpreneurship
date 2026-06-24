@@ -273,12 +273,20 @@ def _format_grounding(stage, gap, vector, roadmap_prose, docs_context,
     Anomalies are included when present so the assistant can reference detected
     structural inconsistencies in its answers.
     """
-    ctx = (
-        f"Stade objectif: {stage}. "
-        f"Écart perception-réalité: {gap}. "
-        f"Scores (M,C,I,S,G): {vector}. "
-        "Feuille de route: " + " | ".join(roadmap_prose)
-    )
+    if lang == "ar":
+        ctx = (
+            f"المرحلة الموضوعية: {stage}. "
+            f"فجوة الإدراك والواقع: {gap}. "
+            f"المؤشرات (M,C,I,S,G): {vector}. "
+            "خارطة الطريق: " + " | ".join(roadmap_prose)
+        )
+    else:
+        ctx = (
+            f"Stade objectif: {stage}. "
+            f"Écart perception-réalité: {gap}. "
+            f"Scores (M,C,I,S,G): {vector}. "
+            "Feuille de route: " + " | ".join(roadmap_prose)
+        )
     if anomalies_context:
         ctx += anomalies_context
     if docs_context:
@@ -390,12 +398,16 @@ async def _run_assistant_tool(
         state["audit"] = audit_data
         diag = audit_data.get("diagnostic", {})
         rationale = diag.get("rationale_ar" if lang == "ar" else "rationale_fr", "")
+        if lang == "ar":
+            return f"المرحلة الموضوعية: {diag.get('classified_stage_name', 'غير معروف')}. التشخيص: {rationale}", []
         return f"Stade objectif: {diag.get('classified_stage_name', 'Inconnu')}. Diagnostic: {rationale}", []
 
     if tool == "get_scores":
         audit_data = state.get("audit") or await _audit_dict(profile)
         state["audit"] = audit_data
         scores = audit_data.get("scores", {})
+        if lang == "ar":
+            return f"المؤشرات (M,C,I,S,G): {scores.get('vector', [0, 0, 0, 0, 0])}.", []
         return f"Scores (M,C,I,S,G): {scores.get('vector', [0, 0, 0, 0, 0])}.", []
 
     if tool == "detect_gap":
@@ -403,6 +415,8 @@ async def _run_assistant_tool(
         state["audit"] = audit_data
         gap = audit_data.get("perception_reality_gap", {})
         msg = gap.get("message_ar" if lang == "ar" else "message_fr", "")
+        if lang == "ar":
+            return f"فجوة الإدراك والواقع: {msg}", []
         return f"Écart perception-réalité: {msg}", []
 
     if tool == "retrieve_kb":
@@ -418,6 +432,8 @@ async def _run_assistant_tool(
             if result.chunks:
                 sources.extend(_sources_from_chunks(result.chunks))
                 lines.extend(f"{c.institution}: {c.title}" for c in result.chunks)
+        if lang == "ar":
+            return "مصادر قاعدة المعرفة: " + " | ".join(lines), sources
         return "Sources KB: " + " | ".join(lines), sources
 
     if tool == "build_roadmap":
@@ -434,6 +450,8 @@ async def _run_assistant_tool(
             ))
             lines.append(f"{m.get('order')}. {m.get('title')} ({horizon}) [{timeline or ''}] — {srcs}")
             sources.extend(m.get("sources", []))
+        if lang == "ar":
+            return "خارطة الطريق: " + " | ".join(lines), sources
         return "Feuille de route: " + " | ".join(lines), sources
 
     if tool == "retrieve_documents":
@@ -444,6 +462,8 @@ async def _run_assistant_tool(
             preview = d.get("extracted_preview") or "[Contenu vide]"
             lines.append(f"- {d['filename']}: {preview[:700]}")
             sources.append({"institution": "Document joint", "title": d["filename"], "citation": d["filename"]})
+        if lang == "ar":
+            return "المستندات المرفقة من قبل صاحب المشروع:\n" + "\n".join(lines), sources
         return "Documents joints par l'entrepreneur:\n" + "\n".join(lines), sources
 
     return "", []

@@ -394,7 +394,7 @@ function ScoresTab({ audit, lang, T, plan, openProfile, explanations, onJumpToRo
   return (
     <>
       <div style={{ position: "relative", minHeight: "350px" }}>
-        <ScoreDeltas scoreDeltas={audit.score_deltas} />
+        <ScoreDeltas scoreDeltas={audit.score_deltas} lang={lang} />
         <div className="score-rows" style={{ marginTop: 24 }}>
           {DIMS.map(([key, labelFr, labelAr]) => {
             const res = scores[key];
@@ -568,7 +568,7 @@ function RoadmapTab({ audit, pid, lang, T, checked, onToggle, plan, openProfile,
               </div>
               <div className="ms-body">
                 <div className="ms-head">
-                  <span className="ms-title">{m.title}</span>
+                  <span className="ms-title">{ar ? m.title_ar || m.title : m.title}</span>
                   {horizon && <span className="ms-horizon">{horizon}</span>}
                 </div>
                 {timeline && <div className="ms-timeline">{timeline}</div>}
