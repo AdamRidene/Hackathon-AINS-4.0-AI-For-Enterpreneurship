@@ -10,10 +10,34 @@ const FALLBACK_FORMULAS = {
   Green: String.raw`S_G = w_{G1}\cdot F_p + w_{G2}\cdot R_c + w_{G3}\cdot \min\left(\frac{|SDG|}{17},1\right)\cdot 100`,
 };
 
+const CRITERION_LABELS_OV = {
+  fr: {
+    tam: 'TAM', competition: 'Concurrence', revenue_viability: 'Viabilité revenus',
+    vp_coherence: 'Cohérence VP', mvp_readiness: 'Préparation MVP', pricing: 'Prix',
+    geo_novelty: 'Nouveauté géographique', tech_stack: 'Stack tech', ip_status: 'PI',
+    cost_decoupling: 'Découplage coûts', geo_reach: 'Portée géographique', deployment: 'Déploiement',
+    footprint: 'Empreinte', circularity: 'Circularité', sdg: 'ODD',
+  },
+  ar: {
+    tam: 'حجم السوق', competition: 'المنافسة', revenue_viability: 'إمكانية تحقيق الإيرادات',
+    vp_coherence: 'اتساق عرض القيمة', mvp_readiness: 'جاهزية MVP', pricing: 'التسعير',
+    geo_novelty: 'التجديد الجغرافي', tech_stack: 'المنصة التكنولوجية', ip_status: 'حالة الملكية الفكرية',
+    cost_decoupling: 'فصل التكاليف', geo_reach: 'الوصول الجغرافي', deployment: 'النشر',
+    footprint: 'البصمة البيئية', circularity: 'التدوير', sdg: 'أهداف التنمية المستدامة',
+  },
+};
+
+const TEXTS_OV = {
+  fr: { returnTo: '← Retour au tableau', finalScore: 'Score final', formula: 'Formule mathématique', anchor: 'Cadre de référence :', contributions: 'Contributions', missing: 'Données manquantes :', gate: 'Alerte porte :', improvement: 'Recommandation :' },
+  ar: { returnTo: '← العودة إلى اللوحة', finalScore: 'النتيجة النهائية', formula: 'الصيغة الرياضية', anchor: 'الإطار المرجعي:', contributions: 'المساهمات', missing: 'البيانات المفقودة:', gate: 'تنبيه بوابة:', improvement: 'إرشادات التحسين:' },
+};
+
 const ScoreExplanationOverlay = ({ score, onClose, lang }) => {
   const overlayRef = useRef(null);
   const returnButtonRef = useRef(null);
   const ar = lang === 'ar';
+  const t = TEXTS_OV[lang] || TEXTS_OV.fr;
+  const critLabels = CRITERION_LABELS_OV[lang] || CRITERION_LABELS_OV.fr;
   const formulaMath = useMemo(() => {
     const backendFormula = score?.formula_latex?.trim();
     if (backendFormula) {
@@ -78,14 +102,14 @@ const ScoreExplanationOverlay = ({ score, onClose, lang }) => {
             ref={returnButtonRef}
             className="return-button"
             onClick={onClose}
-            title={ar ? 'العودة' : 'Return to Main Page'}
+            title={ar ? 'العودة' : 'Retour'}
           >
-            {ar ? '← العودة إلى الصفحة الرئيسية' : '← Return to Main Page'}
+            {t.returnTo}
           </button>
         </div>
         
         <div className="score-display">
-          <span className="score-label">{ar ? 'النتيجة النهائية' : 'Final Score'}</span>
+          <span className="score-label">{t.finalScore}</span>
           <span className="score-value" style={{ color: score.final_score >= 66 ? 'var(--green)' : score.final_score >= 40 ? 'var(--amber)' : 'var(--red)' }}>
             {score.final_score}
           </span>
@@ -96,7 +120,7 @@ const ScoreExplanationOverlay = ({ score, onClose, lang }) => {
         
         {formulaMath && (
           <div className="score-formula">
-            <h3>{ar ? 'الصيغة الرياضية' : 'Mathematical Formula'}</h3>
+            <h3>{t.formula}</h3>
             <div className="formula-display">
               <BlockMath math={formulaMath} />
             </div>
@@ -105,17 +129,17 @@ const ScoreExplanationOverlay = ({ score, onClose, lang }) => {
 
         {score.anchor_fr && (
           <div className="score-anchor">
-            <strong>{ar ? 'الإطار المرجعي:' : 'Anchor:'}</strong> {ar ? score.anchor_ar : score.anchor_fr}
+            <strong>{t.anchor}</strong> {ar ? score.anchor_ar : score.anchor_fr}
           </div>
         )}
 
         <div className="score-contributions">
-          <h3>{ar ? 'المساهمات' : 'Contributions'}</h3>
+          <h3>{t.contributions}</h3>
           <div className="contributions-list">
             {score.contributions?.map((contrib, idx) => (
               <div key={idx} className="contribution-item">
                 <div className="contribution-header">
-                  <span className="contrib-name">{ar ? (contrib.criterion === 'tam' ? 'حجم السوق' : contrib.criterion === 'competition' ? 'المنافسة' : contrib.criterion === 'revenue_viability' ? 'إمكانية تحقيق الإيرادات' : contrib.criterion === 'vp_coherence' ? 'اتساق عرض القيمة' : contrib.criterion === 'mvp_readiness' ? 'جاهزية MVP' : contrib.criterion === 'pricing' ? 'التسعير' : contrib.criterion === 'geo_novelty' ? 'التجديد الجغرافي' : contrib.criterion === 'tech_stack' ? 'المنصة التكنولوجية' : contrib.criterion === 'ip_status' ? 'حالة الملكية الفكرية' : contrib.criterion === 'cost_decoupling' ? 'فصل التكاليف' : contrib.criterion === 'geo_reach' ? 'الوصول الجغرافي' : contrib.criterion === 'deployment' ? 'النشر' : contrib.criterion === 'footprint' ? 'البصمة البيئية' : contrib.criterion === 'circularity' ? 'التدوير' : contrib.criterion === 'sdg' ? 'أهداف التنمية المستدامة' : contrib.criterion) : contrib.criterion}</span>
+                  <span className="contrib-name">{critLabels[contrib.criterion] || contrib.criterion}</span>
                   <span className="contrib-weight">× {contrib.weight}</span>
                   <span className="contrib-score" style={{ color: contrib.raw >= 66 ? 'var(--green)' : contrib.raw >= 40 ? 'var(--amber)' : 'var(--red)' }}>
                     {contrib.weighted}
@@ -132,19 +156,19 @@ const ScoreExplanationOverlay = ({ score, onClose, lang }) => {
 
         {score.missing_inputs && score.missing_inputs.length > 0 && (
           <div className="score-missing">
-            <strong>{ar ? 'البيانات المفقودة:' : 'Missing Inputs:'}</strong> {score.missing_inputs.join(', ')}
+            <strong>{t.missing}</strong> {score.missing_inputs.join(', ')}
           </div>
         )}
 
         {score.gate_triggered && (
           <div className="score-gate-notice">
-            <strong>{ar ? 'تنبيه بوابة:' : 'Gate Notice:'}</strong> {ar ? score.gate_reason_ar : score.gate_reason_fr}
+            <strong>{t.gate}</strong> {ar ? score.gate_reason_ar : score.gate_reason_fr}
           </div>
         )}
 
         {(score.improvement_guidance_fr || score.improvement_guidance_ar) && (
           <div className="score-improvement">
-            <strong>{ar ? 'إرشادات التحسين:' : 'Improvement Guidance:'}</strong>
+            <strong>{t.improvement}</strong>
             <p>{ar ? score.improvement_guidance_ar : score.improvement_guidance_fr}</p>
           </div>
         )}

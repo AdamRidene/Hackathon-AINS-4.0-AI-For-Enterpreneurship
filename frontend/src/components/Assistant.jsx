@@ -36,17 +36,18 @@ function ScoreChip({ label, value, color }) {
   );
 }
 
-function formatGrounding(text) {
+function formatGrounding(text, lang) {
+  const ar = lang === "ar";
   try {
     if (!text || typeof text !== "string") throw new Error("empty");
 
-    const stadeMatch = text.match(/Stade objectif\s*:\s*([^.]+)\./);
+    const stadeMatch = text.match(/(?:Stade objectif|المرحلة الموضوعية)\s*:\s*([^.]+)\./);
     const stade = stadeMatch ? stadeMatch[1].trim() : null;
 
-    const ecartMatch = text.match(/[Éé]cart perception[- ]r[ée]alit[ée]\s*:\s*([^.]+\.)/);
+    const ecartMatch = text.match(/(?:[Éé]cart perception[- ]r[ée]alit[ée]|فجوة الإدراك والواقع)\s*:\s*([^.]+\.)/);
     const ecart = ecartMatch ? ecartMatch[1].replace(/\.\s*$/, "").trim() : null;
 
-    const scoresMatch = text.match(/Scores\s*\(M,C,I,S,G\)\s*:\s*\[([^\]]+)\]/);
+    const scoresMatch = text.match(/(?:Scores|المؤشرات)\s*\(M,C,I,S,G\)\s*:\s*\[([^\]]+)\]/);
     let scoreChips = null;
     if (scoresMatch) {
       const vals = scoresMatch[1].split(",").map((s) => parseFloat(s.trim()));
@@ -57,8 +58,12 @@ function formatGrounding(text) {
       }
     }
 
-    const feuilleMatch = text.match(/Feuille de route\s*:\s*(.*)/s);
+    const roadmapLabels = ar
+      ? ["خارطة الطريق", "خطة العمل", "الأولويات"]
+      : ["Feuille de route", "Plan d'action", "Priorités"];
     let roadmapItems = null;
+    const roadmapPattern = new RegExp(`(?:${roadmapLabels.join("|")})\\s*:\\s*(.*)`, "s");
+    const feuilleMatch = text.match(roadmapPattern);
     if (feuilleMatch) {
       const raw = feuilleMatch[1].trim();
       const items = raw.split(/\s*\|\s*/).filter(Boolean);
@@ -83,23 +88,30 @@ function formatGrounding(text) {
 
     if (!stade && !ecart && !scoreChips && !roadmapItems) throw new Error("no fields");
 
+    const labels = {
+      stade: ar ? "المرحلة الموضوعية" : "Stade objectif",
+      ecart: ar ? "فجوة الإدراك والواقع" : "Écart perception / réalité",
+      scores: ar ? "المؤشرات (M / C / I / S / G)" : "Scores (M / C / I / S / G)",
+      roadmap: ar ? "خارطة الطريق" : "Feuille de route",
+    };
+
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         {stade && (
           <div className="grounding-section">
-            <div className="grounding-title-sub">Stade objectif</div>
+            <div className="grounding-title-sub">{labels.stade}</div>
             <div className="grounding-value">{stade}</div>
           </div>
         )}
         {ecart && (
           <div className="grounding-section">
-            <div className="grounding-title-sub">Écart perception / réalité</div>
+            <div className="grounding-title-sub">{labels.ecart}</div>
             <div className="grounding-value">{ecart}</div>
           </div>
         )}
         {scoreChips && (
           <div className="grounding-section">
-            <div className="grounding-title-sub">Scores (M / C / I / S / G)</div>
+            <div className="grounding-title-sub">{labels.scores}</div>
             <div style={{ display: "flex", flexWrap: "wrap", marginTop: 2 }}>
               {scoreChips}
             </div>
@@ -107,7 +119,7 @@ function formatGrounding(text) {
         )}
         {roadmapItems && (
           <div className="grounding-section">
-            <div className="grounding-title-sub">Feuille de route</div>
+            <div className="grounding-title-sub">{labels.roadmap}</div>
             <ol className="grounding-roadmap">
               {roadmapItems}
             </ol>
@@ -233,7 +245,7 @@ function BotMessage({ text, grounding, sourcesUsed, trace, lang }) {
                 <i className="fa-solid fa-circle-nodes" style={{ marginRight: ar ? 0 : 6, marginLeft: ar ? 6 : 0, color: "var(--primary-light)" }} />
                 <span>{ar ? "المعلومات المسترجعة:" : "Données de grounding :"}</span>
               </div>
-              <div>{formatGrounding(grounding)}</div>
+              <div>{formatGrounding(grounding, lang)}</div>
             </div>
           )}
         </>

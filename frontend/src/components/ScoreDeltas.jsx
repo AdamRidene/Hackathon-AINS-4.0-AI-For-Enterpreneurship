@@ -1,22 +1,28 @@
-// Score-evolution strip. Shown only when this project has a previous audit to
-// compare against (backend score_deltas). Each dimension shows its signed
-// change since the last audit, so a founder sees whether work moved the needle.
-const LABELS = {
+const LABELS_FR = {
   market: "Marché",
   commercial: "Offre",
   innovation: "Innovation",
   scalability: "Scalabilité",
   green: "Vert",
 };
+const LABELS_AR = {
+  market: "السوق",
+  commercial: "العرض",
+  innovation: "الابتكار",
+  scalability: "التوسع",
+  green: "البيئة",
+};
 
-export default function ScoreDeltas({ scoreDeltas }) {
+export default function ScoreDeltas({ scoreDeltas, lang }) {
   if (!scoreDeltas || !scoreDeltas.deltas) return null;
+  const ar = lang === "ar";
+  const LABELS = ar ? LABELS_AR : LABELS_FR;
   const entries = Object.entries(scoreDeltas.deltas);
   return (
     <div className="panel">
-      <h2>Évolution depuis le dernier audit</h2>
+      <h2>{ar ? "التطور منذ آخر تدقيق" : "Évolution depuis le dernier audit"}</h2>
       <div className="sub">
-        Variation de chaque dimension par rapport à votre audit précédent.
+        {ar ? "تغير كل بعد مقارنة بتدقيقك السابق." : "Variation de chaque dimension par rapport à votre audit précédent."}
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 8 }}>
         {entries.map(([dim, d]) => {
