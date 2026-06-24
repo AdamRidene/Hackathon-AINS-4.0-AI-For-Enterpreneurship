@@ -78,6 +78,13 @@ async function supabaseRegister(email, password, name) {
   return data;
 }
 
+async function supabaseResendConfirmation(email) {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Supabase client not initialised");
+  const { error } = await sb.auth.resend({ type: "signup", email });
+  if (error) throw new Error(error.message);
+}
+
 async function supabaseLogout() {
   const sb = getSupabase();
   if (!sb) return;
@@ -168,22 +175,27 @@ export const auth = {
     }
     if (_mode === "supabase") {
       const data = await supabaseRegister(email, password, name);
-      // Supabase may require email confirmation — the user may not be
-      // immediately signed in.
-      if (data.session) {
-        try {
-          const me = await apiReq("/api/auth/me");
-          return me.user;
-        } catch {
-          /* fall through to fallback */
-        }
+      // No session means Supabase sent a confirmation email — gate the app.
+      if (!data.session) {
+        return {
+          id: data.user?.id,
+          email: data.user?.email || email,
+          name: name || email.split("@")[0],
+          plan: "free",
+          pendingEmailConfirmation: true,
+        };
       }
-      return {
-        id: data.user?.id,
-        email: data.user?.email,
-        name: name || email.split("@")[0],
-        plan: "free",
-      };
+      try {
+        const me = await apiReq("/api/auth/me");
+        return me.user;
+      } catch {
+        return {
+          id: data.user?.id,
+          email: data.user?.email,
+          name: name || email.split("@")[0],
+          plan: "free",
+        };
+      }
     }
     const res = await apiReq("/api/auth/register", {
       method: "POST",
@@ -219,6 +231,12 @@ export const auth = {
       return res.user;
     } catch {
       return null;
+    }
+  },
+
+  async resendConfirmation(email) {
+    if (_mode === "supabase") {
+      await supabaseResendConfirmation(email);
     }
   },
 

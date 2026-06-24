@@ -25,9 +25,18 @@ class Settings(BaseSettings):
 
     # Auth
     auth_mode: Literal["local", "supabase", "none"] = "local"
-    supabase_url: str = ""
-    supabase_jwt_secret: str = ""
-    supabase_anon_key: str = ""
+    supabase_url: str = Field(
+        "", validation_alias=AliasChoices("FIRASA_SUPABASE_URL", "SUPABASE_URL")
+    )
+    supabase_jwt_secret: str = Field(
+        "", validation_alias=AliasChoices("FIRASA_SUPABASE_JWT_SECRET", "SUPABASE_JWT_SECRET")
+    )
+    supabase_anon_key: str = Field(
+        "",
+        validation_alias=AliasChoices(
+            "FIRASA_SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY", "SUPABASE_KEY"
+        ),
+    )
 
     # Database
     database_url: str = Field("", validation_alias=AliasChoices("FIRASA_DATABASE_URL", "DATABASE_URL"))
