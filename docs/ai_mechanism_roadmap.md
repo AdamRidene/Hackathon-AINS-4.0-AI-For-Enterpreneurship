@@ -31,6 +31,11 @@ Prioritised improvements for the RAG pipeline, assistant, diagnostic, and scorin
 | Assistant grounded | Should | Implemented | — |
 | Evaluation protocol (RAG/roadmap metric) | Should | Implemented (Precision@5) | 1.3, 2.5 |
 | KB is updatable | Could | Implemented | — |
+| Evaluation: standalone test set | Should | Implemented (test_set.json) | 5.5 |
+| Evaluation: persistent reports | Should | Implemented (_data/eval_report.json) | 5.6 |
+| Evaluation: intake branching | Should | Implemented (42 combos tested) | 5.7 |
+| Assistant: dead code removal | Should | Implemented | 5.3 |
+| Assistant: inline source citations | Should | Implemented | 5.4 |
 
 ## Phase 1 — Quick Wins (high impact, low effort)
 
@@ -137,6 +142,74 @@ Current: Each KB entry is a single chunk of variable length. Long entries cause 
 
 **File:** `backend/app/rag/knowledge_base.py` (functions + migration)
 
+### 5.3 Assistant dead code removal ✅
+
+Removed ~90 lines of unreachable legacy code in `grounded_assistant_reply()` (lines 725–815) — a duplicate fallback path that was never reached after the tools-based path was introduced.
+
+**File:** `backend/app/orchestrator.py`
+
+### 5.4 Inline source citations in assistant replies ✅
+
+Numbered source index (`[N] Institution: url`) appended to LLM grounding context with instruction to cite `[N]` in replies. Makes assistant output traceable to specific KB resources.
+
+**File:** `backend/app/orchestrator.py` — `grounded_assistant_reply()`
+
+### 5.5 Standalone labelled test set ✅
+
+12 held-out validation profiles + human consensus ratings extracted from inline Python code to `backend/app/rag/data/test_set.json`. Independently verifiable, version-controllable. `eval_protocol.py` loads from JSON at import time via `_load_test_set()`.
+
+**File:** `backend/app/rag/data/test_set.json` (new), `backend/app/eval_protocol.py`
+
+### 5.6 Persistent evaluation reports ✅
+
+`main()` now saves full results dict to `backend/_data/eval_report.json` (gitignored). Enables tracking metrics across runs.
+
+**File:** `backend/app/eval_protocol.py` — `_save_report()`
+
+### 5.7 Intake branching evaluation ✅
+
+`eval_intake_branching()` tests all 42 sector × stage combinations — verifies every combination produces a valid sequence, sector probes are injected for agri-food/digital-saas, and evidence probes appear for advanced-stage claims. Confirms 12 distinct sequences (target: ≥ 3).
+
+**File:** `backend/app/eval_protocol.py`
+
+---
+
+---
+
+## Phase 6 — Polish & Robustness (next)
+
+### 6.1 Hallucination evaluation for assistant replies
+
+Current: Assistant tool-selection accuracy is tested (5 cases) but *response quality* is never evaluated. No metric for hallucination rate, grounding correctness, or user satisfaction.
+
+**Change:** Build an eval set of 20+ Q/A pairs with expected source citations. Run the assistant, measure what fraction of claims are actually grounded in the provided context.
+
+**File:** `backend/app/eval_protocol.py` — new `eval_assistant_response_quality()`
+
+### 6.2 Streaming assistant replies
+
+Current: `grounded_assistant_reply()` waits for the full LLM response before returning. Adds 2-5s latency.
+
+**Change:** Return a streaming response (SSE or async generator) so the user sees tokens as they arrive.
+
+**File:** `backend/app/orchestrator.py`, `backend/app/main.py`
+
+### 6.3 Blocker impact ranking
+
+Current: Blockers are ranked purely by gate stage order (earliest unmet gate first). No severity or business-impact heuristic.
+
+**Change:** Add a secondary sort key to `_rank_blockers()` — e.g. a missing legal form blocks all funding applications (high impact), while an incomplete competitor analysis is lower impact.
+
+**File:** `backend/app/diagnostic/classifier.py` — `_rank_blockers()`
+
+### 6.4 Cross-module traceability tests
+
+Current: No test explicitly proves that *a specific profile attribute* causes *a specific resource* to be retrieved. Coherence is verified implicitly by pipeline tests.
+
+**Change:** Add 5+ targeted assertions: "if profile has gap X, KB resource Y appears in milestones".
+
+**File:** `backend/tests/test_pipeline.py` — new test functions
+
 ---
 
 ## Effort Summary
@@ -159,3 +232,12 @@ Current: Each KB entry is a single chunk of variable length. Long entries cause 
 | Milestone outcome tracking | 2 hr | Low | 4 | ✅ |
 | KB URL health checks | 1 hr | Low | 5 | ✅ |
 | KB chunking | 3 hr | Medium | 5 | ✅ |
+| Dead code removal | 30 min | Low | 5 | ✅ |
+| Inline citations | 1 hr | Medium | 5 | ✅ |
+| Standalone test set | 1 hr | Medium | 5 | ✅ |
+| Eval report persistence | 30 min | Low | 5 | ✅ |
+| Intake branching eval | 1 hr | Medium | 5 | ✅ |
+| Hallucination eval | 3 hr | Medium | 6 | 🔲 |
+| Streaming assistant | 4 hr | High | 6 | 🔲 |
+| Blocker impact ranking | 1 hr | Medium | 6 | 🔲 |
+| Cross-module trace tests | 2 hr | Medium | 6 | 🔲 |

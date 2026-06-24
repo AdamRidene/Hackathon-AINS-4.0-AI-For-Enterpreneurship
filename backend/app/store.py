@@ -47,6 +47,8 @@ _mem_docs: dict[str, dict] = {}
 _mem_conversations: dict[str, list[dict]] = {}
 _mem_clicks: list[dict] = []
 _mem_milestone_outcomes: list[dict] = []
+_mem_reset_tokens: dict[str, dict] = {}
+_mem_verify_tokens: dict[str, dict] = {}
 
 
 class _MemCursor:
@@ -220,16 +222,26 @@ def _init_db_conn_pg(conn: _PgConn) -> None:
             company       TEXT,
             photo         TEXT,
             birth_date    TEXT,
-            location      TEXT
+            location      TEXT,
+            email_verified INTEGER NOT NULL DEFAULT 0
         )
     """)
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0")
+    except Exception:
+        pass  # column already exists
     conn.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
             token      TEXT PRIMARY KEY,
             user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            expires_at TEXT
         )
     """)
+    try:
+        conn.execute("ALTER TABLE sessions ADD COLUMN expires_at TEXT")
+    except Exception:
+        pass
     conn.execute("""
         CREATE TABLE IF NOT EXISTS projects (
             id            TEXT PRIMARY KEY,
@@ -305,6 +317,20 @@ def _init_db_conn_pg(conn: _PgConn) -> None:
             completed_at TEXT NOT NULL
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            token      TEXT PRIMARY KEY,
+            user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            expires_at TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS email_verify_tokens (
+            token      TEXT PRIMARY KEY,
+            user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            expires_at TEXT NOT NULL
+        )
+    """)
     # Idempotent column additions — PostgreSQL 9.6+ supports IF NOT EXISTS
     conn.execute("ALTER TABLE audits ADD COLUMN IF NOT EXISTS owner_user_id TEXT")
     for col in ("bio", "phone", "role", "company", "photo", "birth_date", "location"):
@@ -326,17 +352,27 @@ def _init_db_conn_sqlite(conn) -> None:
             company       TEXT,
             photo         TEXT,
             birth_date    TEXT,
-            location      TEXT
+            location      TEXT,
+            email_verified INTEGER NOT NULL DEFAULT 0
         )
     """)
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0")
+    except Exception:
+        pass
     conn.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
             token      TEXT PRIMARY KEY,
             user_id    TEXT NOT NULL,
             created_at TEXT NOT NULL,
+            expires_at TEXT,
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         )
     """)
+    try:
+        conn.execute("ALTER TABLE sessions ADD COLUMN expires_at TEXT")
+    except Exception:
+        pass
     conn.execute("""
         CREATE TABLE IF NOT EXISTS projects (
             id            TEXT PRIMARY KEY,
@@ -413,6 +449,22 @@ def _init_db_conn_sqlite(conn) -> None:
             resource_urls TEXT NOT NULL,
             resolved     INTEGER NOT NULL DEFAULT 0,
             completed_at TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            token      TEXT PRIMARY KEY,
+            user_id    TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS email_verify_tokens (
+            token      TEXT PRIMARY KEY,
+            user_id    TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         )
     """)
     columns = {
@@ -505,6 +557,7 @@ def _user_from_row(row: dict | None) -> dict | None:
         "photo": r.get("photo"),
         "birth_date": r.get("birth_date"),
         "location": r.get("location"),
+        "email_verified": bool(r.get("email_verified", False)),
     }
 
 
@@ -533,6 +586,7 @@ def create_user(
         "phone": phone,
         "role": role,
         "company": company,
+        "email_verified": False,
     }
     with _lock:
         if _DB_ENABLED:
@@ -540,11 +594,11 @@ def create_user(
                 try:
                     conn.execute(
                         """INSERT INTO users (id, email, name, password_hash, plan, created_at,
-                           birth_date, location, phone, role, company)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                           birth_date, location, phone, role, company, email_verified)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (uid, email_norm, user["name"],
                          _hash_password(password) if password else None,
-                         "free", now, birth_date, location, phone, role, company),
+                         "free", now, birth_date, location, phone, role, company, 0),
                     )
                 except Exception as exc:
                     raise ValueError("Email already registered") from exc
@@ -565,8 +619,8 @@ def get_or_create_supabase_user(sub: str, email: str, name: str) -> dict:
         if _DB_ENABLED:
             with db_session() as conn:
                 conn.execute(
-                    """INSERT INTO users (id, email, name, password_hash, plan, created_at)
-                       VALUES (?, ?, ?, NULL, 'free', ?)
+                    """INSERT INTO users (id, email, name, password_hash, plan, created_at, email_verified)
+                       VALUES (?, ?, ?, NULL, 'free', ?, 1)
                        ON CONFLICT(id) DO UPDATE SET email = excluded.email, name = excluded.name""",
                     (sub, email_norm, name_clean, now),
                 )
@@ -582,6 +636,7 @@ def get_or_create_supabase_user(sub: str, email: str, name: str) -> dict:
                     "plan": "free", "created_at": now, "password_hash": None,
                     "bio": None, "phone": None, "role": None, "company": None,
                     "photo": None, "birth_date": None, "location": None,
+                    "email_verified": True,
                 }
             return dict(_mem_users[sub])
 
@@ -605,16 +660,31 @@ def authenticate_user(email: str, password: str) -> dict | None:
 def create_session(user_id: str) -> str:
     token = secrets.token_urlsafe(32)
     now = datetime.now(timezone.utc).isoformat()
+    expires_at = _session_expires_at()
     with _lock:
         if _DB_ENABLED:
             with db_session() as conn:
                 conn.execute(
-                    "INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)",
-                    (token, user_id, now),
+                    "INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+                    (token, user_id, now, expires_at),
                 )
         else:
-            _mem_sessions[token] = {"token": token, "user_id": user_id, "created_at": now}
+            _mem_sessions[token] = {"token": token, "user_id": user_id, "created_at": now, "expires_at": expires_at}
     return token
+
+
+def find_user_by_email(email: str) -> dict | None:
+    """Look up a user by normalised email. Returns user dict or None."""
+    email_norm = _normalise_email(email)
+    if _DB_ENABLED:
+        with db_session() as conn:
+            row = conn.execute("SELECT * FROM users WHERE email = ?", (email_norm,)).fetchone()
+        return _user_from_row(row)
+    else:
+        for u in _mem_users.values():
+            if u.get("email") == email_norm:
+                return dict(u)
+        return None
 
 
 def get_user_by_id(user_id: str) -> dict | None:
@@ -631,7 +701,7 @@ def get_user_by_token(token: str) -> dict | None:
     if _DB_ENABLED:
         with db_session() as conn:
             row = conn.execute(
-                """SELECT users.*, sessions.created_at as session_created_at
+                """SELECT users.*, sessions.expires_at as session_expires_at
                    FROM sessions JOIN users ON users.id = sessions.user_id
                    WHERE sessions.token = ?""",
                 (token,),
@@ -639,11 +709,10 @@ def get_user_by_token(token: str) -> dict | None:
         if row is None:
             return None
         try:
-            created_at = datetime.fromisoformat(row["session_created_at"])
-            if created_at.tzinfo is None:
-                created_at = created_at.replace(tzinfo=timezone.utc)
-            age = datetime.now(timezone.utc) - created_at
-            if age.days > 30:
+            expires_at = datetime.fromisoformat(row["session_expires_at"])
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) > expires_at:
                 delete_session(token)
                 return None
         except Exception:
@@ -653,6 +722,15 @@ def get_user_by_token(token: str) -> dict | None:
         sess = _mem_sessions.get(token)
         if sess is None:
             return None
+        try:
+            expires_at = datetime.fromisoformat(sess["expires_at"])
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) > expires_at:
+                delete_session(token)
+                return None
+        except Exception:
+            pass
         u = _mem_users.get(sess["user_id"])
         return dict(u) if u else None
 
@@ -664,6 +742,173 @@ def delete_session(token: str) -> None:
                 conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
         else:
             _mem_sessions.pop(token, None)
+
+
+# ── Password reset tokens ────────────────────────────────────────────────────
+
+
+def create_password_reset_token(user_id: str) -> str:
+    """Generate a reset token valid for 1 hour."""
+    token = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    expires_at = (now + timedelta(hours=1)).isoformat()
+    with _lock:
+        if _DB_ENABLED:
+            with db_session() as conn:
+                conn.execute(
+                    "INSERT INTO password_reset_tokens (token, user_id, expires_at) VALUES (?, ?, ?)",
+                    (token, user_id, expires_at),
+                )
+        else:
+            _mem_reset_tokens[token] = {"token": token, "user_id": user_id, "expires_at": expires_at}
+    return token
+
+
+def verify_reset_token(token: str) -> str | None:
+    """Return user_id if the token is valid and not expired, else None."""
+    with _lock:
+        if _DB_ENABLED:
+            with db_session() as conn:
+                row = conn.execute(
+                    "SELECT * FROM password_reset_tokens WHERE token = ?", (token,),
+                ).fetchone()
+            if row is None:
+                return None
+            try:
+                expires_at = datetime.fromisoformat(row["expires_at"])
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) > expires_at:
+                    return None
+            except Exception:
+                return None
+            return row["user_id"]
+        else:
+            entry = _mem_reset_tokens.get(token)
+            if entry is None:
+                return None
+            try:
+                expires_at = datetime.fromisoformat(entry["expires_at"])
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) > expires_at:
+                    _mem_reset_tokens.pop(token, None)
+                    return None
+            except Exception:
+                return None
+            return entry["user_id"]
+
+
+def consume_reset_token(token: str) -> None:
+    """Delete a used/expired reset token."""
+    with _lock:
+        if _DB_ENABLED:
+            with db_session() as conn:
+                conn.execute("DELETE FROM password_reset_tokens WHERE token = ?", (token,))
+        else:
+            _mem_reset_tokens.pop(token, None)
+
+
+def reset_user_password(user_id: str, new_password: str) -> None:
+    """Update the user's password hash in-place."""
+    with _lock:
+        if _DB_ENABLED:
+            with db_session() as conn:
+                conn.execute(
+                    "UPDATE users SET password_hash = ? WHERE id = ?",
+                    (_hash_password(new_password), user_id),
+                )
+        else:
+            u = _mem_users.get(user_id)
+            if u:
+                u["password_hash"] = _hash_password(new_password)
+
+
+# ── Email verification tokens (local mode) ───────────────────────────────────
+
+
+def create_email_verification_token(user_id: str) -> str:
+    """Generate a verification token valid for 24 hours."""
+    token = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    expires_at = (now + timedelta(hours=24)).isoformat()
+    with _lock:
+        if _DB_ENABLED:
+            with db_session() as conn:
+                conn.execute(
+                    "INSERT INTO email_verify_tokens (token, user_id, expires_at) VALUES (?, ?, ?)",
+                    (token, user_id, expires_at),
+                )
+        else:
+            _mem_verify_tokens[token] = {"token": token, "user_id": user_id, "expires_at": expires_at}
+    return token
+
+
+def verify_email_token(token: str) -> str | None:
+    """Return user_id if token is valid, else None."""
+    with _lock:
+        if _DB_ENABLED:
+            with db_session() as conn:
+                row = conn.execute(
+                    "SELECT * FROM email_verify_tokens WHERE token = ?", (token,),
+                ).fetchone()
+            if row is None:
+                return None
+            try:
+                expires_at = datetime.fromisoformat(row["expires_at"])
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) > expires_at:
+                    return None
+            except Exception:
+                return None
+            return row["user_id"]
+        else:
+            entry = _mem_verify_tokens.get(token)
+            if entry is None:
+                return None
+            try:
+                expires_at = datetime.fromisoformat(entry["expires_at"])
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) > expires_at:
+                    _mem_verify_tokens.pop(token, None)
+                    return None
+            except Exception:
+                return None
+            return entry["user_id"]
+
+
+def mark_email_verified(user_id: str) -> None:
+    """Set email_verified = True on the user record."""
+    with _lock:
+        if _DB_ENABLED:
+            with db_session() as conn:
+                conn.execute("UPDATE users SET email_verified = 1 WHERE id = ?", (user_id,))
+        else:
+            u = _mem_users.get(user_id)
+            if u:
+                u["email_verified"] = True
+
+
+def consume_verify_token(token: str) -> None:
+    """Delete a used/expired verification token."""
+    with _lock:
+        if _DB_ENABLED:
+            with db_session() as conn:
+                conn.execute("DELETE FROM email_verify_tokens WHERE token = ?", (token,))
+        else:
+            _mem_verify_tokens.pop(token, None)
+
+
+# ── Session hardening: add expires_at ────────────────────────────────────────
+
+
+def _session_expires_at() -> str:
+    return (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+
+
+# ── Plan management ────────────────────────────────────────────────────────────
 
 
 def update_user_plan(user_id: str, plan: str) -> dict | None:

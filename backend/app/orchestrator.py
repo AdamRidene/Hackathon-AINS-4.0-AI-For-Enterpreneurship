@@ -707,6 +707,29 @@ async def grounded_assistant_reply(profile: ProjectProfile, question: str, lang:
     if history_str:
         ctx = f"{ctx}\n\n---\nConversation précédente:\n{history_str}" if ctx else f"Conversation précédente:\n{history_str}"
 
+    # Attach numbered source index to context so the LLM can cite inline
+    numbered_sources = ""
+    if sources_used:
+        seen = {}
+        numbered = []
+        for s in sources_used:
+            key = (s.get("institution", ""), s.get("title", ""), s.get("url", ""))
+            if key not in seen:
+                seen[key] = len(seen) + 1
+                label = s.get("institution", "") or s.get("title", "Source")
+                numbered.append(f"[{seen[key]}] {label}: {s.get('url', '')}")
+        numbered_sources = "\n".join(numbered)
+        ctx += "\n\n" + numbered_sources if ctx else numbered_sources
+
+    # Add cite instruction
+    cite_instruction = (
+        "\n\nLorsque tu mentionnes un programme, une institution ou une ressource, "
+        "indique sa référence entre crochets [N] d'après la liste ci-dessus."
+        if effective_lang[:2] != "ar"
+        else "\n\nعند ذكر برنامج أو مؤسسة أو مورد، أشر إلى مرجعه بين قوسين [N] حسب القائمة أعلاه."
+    )
+    ctx += cite_instruction
+
     reply = await get_llm().chat(question, ctx, lang=effective_lang)
     trace.append("assistant:chat")
 
@@ -721,95 +744,3 @@ async def grounded_assistant_reply(profile: ProjectProfile, question: str, lang:
         "sources_used": sources_used,
         "trace": trace,
     }
-
-    if not _needs_grounding(question):
-        reply = await get_llm().chat(question, "", lang=effective_lang)
-        return {"reply": reply, "grounding": None, "sources_used": []}
-
-    # Fetch uploaded documents
-    docs = store.list_documents(profile.project_id)
-    full_docs = []
-    for d in docs:
-        full_doc = store.get_document(d["id"])
-        if full_doc:
-            full_docs.append(full_doc)
-
-    docs_context = ""
-    if full_docs:
-        docs_context = "\nDocuments joints par l'entrepreneur:\n" + "\n".join(
-            f"- {d['filename']}: {d['extracted_text'][:2000] if d.get('extracted_text') else '[Contenu vide]'}"
-            for d in full_docs
-        )
-
-    def _build_anomalies_context(anomaly_list: list[dict], lang: str = "fr") -> str:
-        """Build a compact anomalies section for the LLM grounding context."""
-        if not anomaly_list:
-            return ""
-        ctx = "\n\nIncohérences structurelles détectées:\n"
-        for a in anomaly_list:
-            sev = a.get("severity", "medium").upper()
-            title = a.get("title_fr", "") if lang != "ar" else a.get("title_ar", "")
-            detail = a.get("detail_fr", "") if lang != "ar" else a.get("detail_ar", "")
-            ctx += f"- [{sev}] {title}: {detail[:200]}\n"
-        return ctx
-
-    # Try to load the cached audit result snapshot from the database store
-    audit_data = store.get_audit(profile.project_id)
-
-    if audit_data:
-        # Reconstruct the context from the cached audit dict
-        diag_stage = audit_data.get("diagnostic", {}).get("classified_stage_name", "Inconnu")
-        gap_msg = audit_data.get("perception_reality_gap", {}).get("message_fr", "")
-        if effective_lang == "ar":
-            gap_msg = audit_data.get("perception_reality_gap", {}).get("message_ar", gap_msg)
-
-        vector = audit_data.get("scores", {}).get("vector", [0, 0, 0, 0, 0])
-
-        roadmap_items = audit_data.get("roadmap", [])
-        roadmap_prose = []
-        for m in roadmap_items[:5]:
-            order = m.get("order")
-            title = m.get("title")
-            horizon = m.get("horizon_fr")
-            if effective_lang == "ar":
-                horizon = m.get("horizon_ar") or horizon
-            timeline = m.get("timeline_ar") if effective_lang == "ar" else m.get("timeline_fr")
-            timeline = timeline or m.get("timeline_fr") or m.get("timeline_ar") or ""
-            srcs = ", ".join(dict.fromkeys(
-                s.get("institution", "") for s in m.get("sources", []) if s.get("institution")
-            ))
-            roadmap_prose.append(f"{order}. {title} ({horizon}) [{timeline}] — {srcs}")
-
-        # Include cached anomalies in grounding context
-        cached_anomalies = audit_data.get("anomalies", [])
-        anomalies_ctx = _build_anomalies_context(cached_anomalies, effective_lang)
-
-        ctx = _format_grounding(diag_stage, gap_msg, vector, roadmap_prose,
-                                docs_context, anomalies_context=anomalies_ctx,
-                                lang=effective_lang)
-        sources_used = [s for m in roadmap_items[:5] for s in m.get("sources", [])]
-    else:
-        # Fallback to running run_audit
-        audit = await run_audit(profile)
-        gap_msg = audit.gap.message_ar if effective_lang == "ar" else audit.gap.message_fr
-        roadmap_prose = []
-        for m in audit.roadmap[:5]:
-            horizon = getattr(m, "horizon_ar", "") or m.horizon_fr if effective_lang == "ar" else m.horizon_fr
-            timeline = getattr(m, "timeline_ar", "") if effective_lang == "ar" else getattr(m, "timeline_fr", "")
-            timeline = timeline or getattr(m, "timeline_fr", "") or getattr(m, "timeline_ar", "")
-            srcs = ", ".join(dict.fromkeys(
-                s["institution"] for s in m.sources if s.get("institution")
-            ))
-            roadmap_prose.append(f"{m.order}. {m.title} ({horizon}) [{timeline}] — {srcs}")
-
-        # Include live anomalies in grounding context
-        anomalies_ctx = _build_anomalies_context(audit.anomalies, effective_lang)
-
-        ctx = _format_grounding(audit.diagnostic.classified_stage_name, gap_msg,
-                                audit.scores.vector(), roadmap_prose,
-                                docs_context, anomalies_context=anomalies_ctx,
-                                lang=effective_lang)
-        sources_used = [s for m in audit.roadmap[:5] for s in m.sources]
-
-    reply = await get_llm().chat(question, ctx, lang=effective_lang)
-    return {"reply": reply, "grounding": ctx, "sources_used": sources_used}

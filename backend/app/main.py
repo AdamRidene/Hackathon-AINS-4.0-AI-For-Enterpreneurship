@@ -33,7 +33,11 @@ install_pii_log_filter()  # redact PII from all log output
 
 app = FastAPI(title="Firasa Orientation Engine", version=__version__)
 
-limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["60/minute"],
+    enabled=os.environ.get("FIRASA_ENV") != "test",
+)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -101,6 +105,22 @@ class ProfileUpdateBody(BaseModel):
     location: Optional[str] = None
 
 
+class ForgotPasswordBody(BaseModel):
+    email: str
+
+
+class ResetPasswordBody(BaseModel):
+    token: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, v: str) -> str:
+        if len(v) < 6:
+            raise ValueError("Password must be at least 6 characters")
+        return v
+
+
 class AnswerBody(BaseModel):
     question_id: str
     value: Any
@@ -137,6 +157,7 @@ def _public_user(user: dict) -> dict:
         "photo": user.get("photo"),
         "birth_date": user.get("birth_date"),
         "location": user.get("location"),
+        "email_verified": bool(user.get("email_verified", False)),
     }
 
 
@@ -250,7 +271,8 @@ def auth_config() -> dict:
 # Auth endpoints (local mode only)                                            #
 # --------------------------------------------------------------------------- #
 @app.post("/api/auth/register")
-def register(body: AuthBody) -> dict:
+@limiter.limit("5/minute")
+def register(request: Request, body: AuthBody) -> dict:
     if settings.auth_mode == "none":
         # In bypass mode, return the mock dev user immediately
         from .auth import _MOCK_USER
@@ -270,12 +292,14 @@ def register(body: AuthBody) -> dict:
         )
     except ValueError as exc:
         raise HTTPException(409, str(exc))
-    token = store.create_session(user["id"])
-    return {"token": token, "user": _public_user(user)}
+    session_token = store.create_session(user["id"])
+    verify_token = store.create_email_verification_token(user["id"])
+    return {"token": session_token, "verify_token": verify_token, "user": _public_user(user)}
 
 
 @app.post("/api/auth/login")
-def login(body: AuthBody) -> dict:
+@limiter.limit("10/minute")
+def login(request: Request, body: AuthBody) -> dict:
     if settings.auth_mode == "none":
         from .auth import _MOCK_USER
         return {"token": "dev-token", "user": dict(_MOCK_USER)}
@@ -307,6 +331,74 @@ def logout(
 @app.get("/api/auth/me")
 def me(user: dict = Depends(get_current_user)) -> dict:
     return {"user": _public_user(user)}
+
+
+# --------------------------------------------------------------------------- #
+# Password reset (local mode only)                                            #
+# --------------------------------------------------------------------------- #
+class _ResetResp(BaseModel):
+    ok: bool
+    message: str = ""
+
+
+@app.post("/api/auth/forgot-password")
+@limiter.limit("3/minute")
+def forgot_password(request: Request, body: ForgotPasswordBody) -> _ResetResp:
+    """Generate a password reset token for the given email (if registered).
+
+    In production this would send an email. In local/dev mode the token
+    is returned directly so the caller can immediately reset.
+    """
+    if settings.is_supabase_auth:
+        raise HTTPException(404, "Password reset is managed by Supabase Auth.")
+    user = store.find_user_by_email(body.email)
+    token = store.create_password_reset_token(user["id"]) if user else None
+    if token:
+        return _ResetResp(ok=True, message=f"Reset token: {token}")
+    # Always return ok to prevent email enumeration
+    return _ResetResp(ok=True, message="If the email is registered, a reset link has been sent.")
+
+
+@app.post("/api/auth/reset-password")
+def reset_password(body: ResetPasswordBody) -> _ResetResp:
+    """Reset password using a reset token."""
+    if settings.is_supabase_auth:
+        raise HTTPException(404, "Password reset is managed by Supabase Auth.")
+    user_id = store.verify_reset_token(body.token)
+    if user_id is None:
+        raise HTTPException(400, "Invalid or expired reset token.")
+    store.reset_user_password(user_id, body.new_password)
+    store.consume_reset_token(body.token)
+    return _ResetResp(ok=True, message="Password updated.")
+
+
+# --------------------------------------------------------------------------- #
+# Email verification (local mode only)                                        #
+# --------------------------------------------------------------------------- #
+@app.post("/api/auth/verify-email")
+def verify_email(token: str) -> _ResetResp:
+    """Verify a user's email address using a verification token."""
+    if settings.is_supabase_auth:
+        raise HTTPException(404, "Email verification is managed by Supabase Auth.")
+    user_id = store.verify_email_token(token)
+    if user_id is None:
+        raise HTTPException(400, "Invalid or expired verification token.")
+    store.mark_email_verified(user_id)
+    store.consume_verify_token(token)
+    user = store.get_user_by_id(user_id)
+    return _ResetResp(ok=True, message="Email verified.")
+
+
+@app.post("/api/auth/resend-verification")
+@limiter.limit("2/minute")
+def resend_verification(request: Request, user: dict = Depends(get_current_user)) -> _ResetResp:
+    """Resend the email verification link (local mode)."""
+    if settings.is_supabase_auth:
+        raise HTTPException(404, "Email verification is managed by Supabase Auth.")
+    if user.get("email_verified"):
+        return _ResetResp(ok=True, message="Already verified.")
+    token = store.create_email_verification_token(user["id"])
+    return _ResetResp(ok=True, message=f"Verification token: {token}")
 
 
 # --------------------------------------------------------------------------- #
