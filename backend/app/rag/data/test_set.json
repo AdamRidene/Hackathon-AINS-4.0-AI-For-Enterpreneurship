@@ -1,0 +1,215 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "description": "Firasa labelled evaluation test set — held-out validation profiles and human consensus ratings",
+    "created": "2026-06-24"
+  },
+  "diagnostic_held_out": [
+    {
+      "id": "agritech_olive_press",
+      "name": "AgriTech Olive Press",
+      "sector": "agri-food",
+      "expected_stage": 1,
+      "params": {
+        "has_problem_statement": true,
+        "user_segment_identified": true,
+        "market": {"customer_validation_evidence": false},
+        "commercial": {"mvp_stage": "Concept"},
+        "intake_complete": true,
+        "answered_questions": ["name", "sector", "declared_stage", "problem_statement", "user_segment"]
+      }
+    },
+    {
+      "id": "tunisia_ecommerce_box",
+      "name": "Tunisian E-Commerce Box",
+      "sector": "services",
+      "expected_stage": 2,
+      "params": {
+        "has_problem_statement": true,
+        "user_segment_identified": true,
+        "market": {"customer_validation_evidence": true},
+        "commercial": {"mvp_stage": "Mockup"},
+        "intake_complete": true,
+        "answered_questions": ["name", "sector", "declared_stage", "problem_statement", "user_segment", "validation"]
+      }
+    },
+    {
+      "id": "sahel_coworking_suarl",
+      "name": "Sahel Coworking Space",
+      "sector": "services",
+      "expected_stage": 3,
+      "params": {
+        "has_problem_statement": true,
+        "user_segment_identified": true,
+        "market": {"customer_validation_evidence": true},
+        "legal_form": "SUARL",
+        "commercial": {"mvp_stage": "Concept"},
+        "intake_complete": true,
+        "answered_questions": ["name", "sector", "declared_stage", "problem_statement", "user_segment", "validation", "legal_form"]
+      }
+    },
+    {
+      "id": "b2b_edtech_tunis",
+      "name": "B2B EdTech Tunis",
+      "sector": "digital-saas",
+      "expected_stage": 4,
+      "params": {
+        "has_problem_statement": true,
+        "user_segment_identified": true,
+        "market": {"customer_validation_evidence": true},
+        "legal_form": "SARL",
+        "has_revenue_model": true,
+        "months_unit_economics": 3,
+        "commercial": {"mvp_stage": "Mockup"},
+        "intake_complete": true,
+        "answered_questions": ["name", "sector", "declared_stage", "problem_statement", "user_segment", "validation", "legal_form", "revenue_model", "unit_economics"]
+      }
+    },
+    {
+      "id": "greentech_solar_sarl",
+      "name": "Greentech Solar Tunis",
+      "sector": "greentech",
+      "expected_stage": 5,
+      "params": {
+        "has_problem_statement": true,
+        "user_segment_identified": true,
+        "market": {"customer_validation_evidence": true},
+        "legal_form": "SARL",
+        "has_revenue_model": true,
+        "months_unit_economics": 3,
+        "commercial": {"mvp_stage": "Prototype"},
+        "intake_complete": true,
+        "answered_questions": ["name", "sector", "declared_stage", "problem_statement", "user_segment", "validation", "legal_form", "revenue_model", "unit_economics", "mvp_stage"]
+      }
+    },
+    {
+      "id": "fintech_payment_gateway",
+      "name": "Fintech Payment Gateway",
+      "sector": "digital-saas",
+      "expected_stage": 6,
+      "params": {
+        "has_problem_statement": true,
+        "user_segment_identified": true,
+        "market": {"customer_validation_evidence": true},
+        "legal_form": "SA",
+        "has_revenue_model": true,
+        "months_unit_economics": 6,
+        "commercial": {"mvp_stage": "Production"},
+        "scalability": {"human_dependency": 3},
+        "repeatable_sales": true,
+        "intake_complete": true,
+        "answered_questions": ["name", "sector", "declared_stage", "problem_statement", "user_segment", "validation", "legal_form", "revenue_model", "unit_economics", "mvp_stage", "human_dependency", "repeatable_sales"]
+      }
+    },
+    {
+      "id": "ehealth_app_concept",
+      "name": "E-Health App Concept",
+      "sector": "health",
+      "expected_stage": 1,
+      "params": {
+        "has_problem_statement": true,
+        "user_segment_identified": true,
+        "market": {"customer_validation_evidence": false},
+        "commercial": {"mvp_stage": "Concept"},
+        "intake_complete": true,
+        "answered_questions": ["name", "sector", "declared_stage", "problem_statement", "user_segment"]
+      }
+    },
+    {
+      "id": "clean_water_filtration",
+      "name": "Clean Water Filtration",
+      "sector": "greentech",
+      "expected_stage": 2,
+      "params": {
+        "has_problem_statement": true,
+        "user_segment_identified": true,
+        "market": {"customer_validation_evidence": true},
+        "commercial": {"mvp_stage": "Mockup"},
+        "intake_complete": true,
+        "answered_questions": ["name", "sector", "declared_stage", "problem_statement", "user_segment", "validation"]
+      }
+    },
+    {
+      "id": "suarl_handicrafts",
+      "name": "Tunisian Handicrafts Platform",
+      "sector": "services",
+      "expected_stage": 3,
+      "params": {
+        "has_problem_statement": true,
+        "user_segment_identified": true,
+        "market": {"customer_validation_evidence": true},
+        "legal_form": "Startup Act Pre-label",
+        "commercial": {"mvp_stage": "Concept"},
+        "intake_complete": true,
+        "answered_questions": ["name", "sector", "declared_stage", "problem_statement", "user_segment", "validation", "legal_form"]
+      }
+    },
+    {
+      "id": "saas_crm_tunis",
+      "name": "SaaS CRM Tunis",
+      "sector": "digital-saas",
+      "expected_stage": 4,
+      "params": {
+        "has_problem_statement": true,
+        "user_segment_identified": true,
+        "market": {"customer_validation_evidence": true},
+        "legal_form": "SARL",
+        "has_revenue_model": true,
+        "months_unit_economics": 4,
+        "commercial": {"mvp_stage": "Mockup"},
+        "intake_complete": true,
+        "answered_questions": ["name", "sector", "declared_stage", "problem_statement", "user_segment", "validation", "legal_form", "revenue_model", "unit_economics"]
+      }
+    },
+    {
+      "id": "iot_soil_sensor",
+      "name": "IoT Soil Sensor",
+      "sector": "agri-food",
+      "expected_stage": 5,
+      "params": {
+        "has_problem_statement": true,
+        "user_segment_identified": true,
+        "market": {"customer_validation_evidence": true},
+        "legal_form": "SARL",
+        "has_revenue_model": true,
+        "months_unit_economics": 3,
+        "commercial": {"mvp_stage": "Prototype"},
+        "intake_complete": true,
+        "answered_questions": ["name", "sector", "declared_stage", "problem_statement", "user_segment", "validation", "legal_form", "revenue_model", "unit_economics", "mvp_stage"]
+      }
+    },
+    {
+      "id": "logistics_delivery",
+      "name": "Logistics Delivery Tunisia",
+      "sector": "services",
+      "expected_stage": 6,
+      "params": {
+        "has_problem_statement": true,
+        "user_segment_identified": true,
+        "market": {"customer_validation_evidence": true},
+        "legal_form": "SARL",
+        "has_revenue_model": true,
+        "months_unit_economics": 6,
+        "commercial": {"mvp_stage": "Production"},
+        "scalability": {"human_dependency": 4},
+        "repeatable_sales": true,
+        "intake_complete": true,
+        "answered_questions": ["name", "sector", "declared_stage", "problem_statement", "user_segment", "validation", "legal_form", "revenue_model", "unit_economics", "mvp_stage", "human_dependency", "repeatable_sales"]
+      }
+    }
+  ],
+  "human_consensus_ratings": {
+    "agritech_olive_press": {"market": 1, "commercial": 2, "innovation": 1, "scalability": 1, "green": 1},
+    "tunisia_ecommerce_box": {"market": 1, "commercial": 2, "innovation": 1, "scalability": 1, "green": 1},
+    "sahel_coworking_suarl": {"market": 1, "commercial": 2, "innovation": 1, "scalability": 1, "green": 1},
+    "b2b_edtech_tunis": {"market": 2, "commercial": 3, "innovation": 1, "scalability": 1, "green": 1},
+    "greentech_solar_sarl": {"market": 2, "commercial": 3, "innovation": 1, "scalability": 1, "green": 2},
+    "fintech_payment_gateway": {"market": 2, "commercial": 4, "innovation": 1, "scalability": 2, "green": 1},
+    "ehealth_app_concept": {"market": 1, "commercial": 1, "innovation": 1, "scalability": 1, "green": 1},
+    "clean_water_filtration": {"market": 1, "commercial": 3, "innovation": 1, "scalability": 1, "green": 2},
+    "suarl_handicrafts": {"market": 1, "commercial": 2, "innovation": 2, "scalability": 1, "green": 1},
+    "saas_crm_tunis": {"market": 2, "commercial": 3, "innovation": 1, "scalability": 1, "green": 1},
+    "iot_soil_sensor": {"market": 3, "commercial": 3, "innovation": 1, "scalability": 1, "green": 1},
+    "logistics_delivery": {"market": 2, "commercial": 4, "innovation": 1, "scalability": 1, "green": 1}
+  }
+}
