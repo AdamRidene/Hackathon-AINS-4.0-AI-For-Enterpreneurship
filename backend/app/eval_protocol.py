@@ -6,14 +6,19 @@ Reports metrics on labelled test sets:
   * RAG retrieval     — Precision@5, Recall@5, MRR, NDCG@5 on a 30-query
                         routing-matrix benchmark (Precision@5 >= 0.7)
   * Assistant tool    — tool-selection accuracy on canned prompts
+  * Intake branching  — branching-correctness on sector/stage combinations
 
 Run: python -m app.eval_protocol  (from backend/)
+
+Results are saved to backend/_data/eval_report.json.
+Test set lives at backend/app/rag/data/test_set.json (independently verifiable).
 """
 from __future__ import annotations
 
 import json
 import math
 import os
+from pathlib import Path
 
 os.environ.setdefault("FIRASA_LLM_PROVIDER", "stub")
 
@@ -24,6 +29,9 @@ from .schema import (  # noqa: E402
     ProjectProfile, MarketMetrics, CommercialOffer, ScalabilityIndex,
     MVPStage, LegalForm, SelfAssessment, Sector,
 )
+
+_TEST_SET_PATH = Path(__file__).parent / "rag" / "data" / "test_set.json"
+_REPORT_PATH = Path(__file__).parent.parent / "_data" / "eval_report.json"
 
 _SECTOR_CYCLE = [
     Sector.AGRI_FOOD,
@@ -80,213 +88,67 @@ def _profile_at_stage(target: int, variant: int = 0) -> ProjectProfile:
     return p
 
 
-# 12 Independent, manually-labelled validation profiles (not programmatically derived).
-HELD_OUT_PROFILES = [
-    # 1. Ideation: basic concept, no validation
-    (
-        "agritech_olive_press",
-        ProjectProfile(
-            name="AgriTech Olive Press",
-            sector=Sector.AGRI_FOOD,
-            has_problem_statement=True,
-            user_segment_identified=True,
-            market=MarketMetrics(customer_validation_evidence=False),
-            commercial=CommercialOffer(mvp_stage=MVPStage.CONCEPT),
-            intake_complete=True,
-            answered_questions=["name", "sector", "declared_stage", "problem_statement", "user_segment"]
-        ),
-        1
-    ),
-    # 2. Market Validation: validation completed but no legal structure
-    (
-        "tunisia_ecommerce_box",
-        ProjectProfile(
-            name="Tunisian E-Commerce Box",
-            sector=Sector.SERVICES,
-            has_problem_statement=True,
-            user_segment_identified=True,
-            market=MarketMetrics(customer_validation_evidence=True),
-            commercial=CommercialOffer(mvp_stage=MVPStage.MOCKUP),
-            intake_complete=True,
-            answered_questions=["name", "sector", "declared_stage", "problem_statement", "user_segment", "validation"]
-        ),
-        2
-    ),
-    # 3. Structuration: legal form SUARL established but no revenue model
-    (
-        "sahel_coworking_suarl",
-        ProjectProfile(
-            name="Sahel Coworking Space",
-            sector=Sector.SERVICES,
-            has_problem_statement=True,
-            user_segment_identified=True,
-            market=MarketMetrics(customer_validation_evidence=True),
-            legal_form=LegalForm.SUARL,
-            commercial=CommercialOffer(mvp_stage=MVPStage.CONCEPT),
-            intake_complete=True,
-            answered_questions=["name", "sector", "declared_stage", "problem_statement", "user_segment", "validation", "legal_form"]
-        ),
-        3
-    ),
-    # 4. Fundraising: revenue model documented + 3 months economics
-    (
-        "b2b_edtech_tunis",
-        ProjectProfile(
-            name="B2B EdTech Tunis",
-            sector=Sector.DIGITAL_SAAS,
-            has_problem_statement=True,
-            user_segment_identified=True,
-            market=MarketMetrics(customer_validation_evidence=True),
-            legal_form=LegalForm.SARL,
-            has_revenue_model=True,
-            months_unit_economics=3,
-            commercial=CommercialOffer(mvp_stage=MVPStage.MOCKUP),
-            intake_complete=True,
-            answered_questions=["name", "sector", "declared_stage", "problem_statement", "user_segment", "validation", "legal_form", "revenue_model", "unit_economics"]
-        ),
-        4
-    ),
-    # 5. Launch Planning: prototype MVP
-    (
-        "greentech_solar_sarl",
-        ProjectProfile(
-            name="Greentech Solar Tunis",
-            sector=Sector.GREENTECH,
-            has_problem_statement=True,
-            user_segment_identified=True,
-            market=MarketMetrics(customer_validation_evidence=True),
-            legal_form=LegalForm.SARL,
-            has_revenue_model=True,
-            months_unit_economics=3,
-            commercial=CommercialOffer(mvp_stage=MVPStage.PROTOTYPE),
-            intake_complete=True,
-            answered_questions=["name", "sector", "declared_stage", "problem_statement", "user_segment", "validation", "legal_form", "revenue_model", "unit_economics", "mvp_stage"]
-        ),
-        5
-    ),
-    # 6. Growth: repeatable sales + human dep <= 7
-    (
-        "fintech_payment_gateway",
-        ProjectProfile(
-            name="Fintech Payment Gateway",
-            sector=Sector.DIGITAL_SAAS,
-            has_problem_statement=True,
-            user_segment_identified=True,
-            market=MarketMetrics(customer_validation_evidence=True),
-            legal_form=LegalForm.SA,
-            has_revenue_model=True,
-            months_unit_economics=6,
-            commercial=CommercialOffer(mvp_stage=MVPStage.PRODUCTION),
-            scalability=ScalabilityIndex(human_dependency=3),
-            repeatable_sales=True,
-            intake_complete=True,
-            answered_questions=["name", "sector", "declared_stage", "problem_statement", "user_segment", "validation", "legal_form", "revenue_model", "unit_economics", "mvp_stage", "human_dependency", "repeatable_sales"]
-        ),
-        6
-    ),
-    # 7. Ideation: problem and user segment, no validation
-    (
-        "ehealth_app_concept",
-        ProjectProfile(
-            name="E-Health App Concept",
-            sector=Sector.HEALTH,
-            has_problem_statement=True,
-            user_segment_identified=True,
-            market=MarketMetrics(customer_validation_evidence=False),
-            commercial=CommercialOffer(mvp_stage=MVPStage.CONCEPT),
-            intake_complete=True,
-            answered_questions=["name", "sector", "declared_stage", "problem_statement", "user_segment"]
-        ),
-        1
-    ),
-    # 8. Market Validation: validation evidence but no legal form
-    (
-        "clean_water_filtration",
-        ProjectProfile(
-            name="Clean Water Filtration",
-            sector=Sector.GREENTECH,
-            has_problem_statement=True,
-            user_segment_identified=True,
-            market=MarketMetrics(customer_validation_evidence=True),
-            commercial=CommercialOffer(mvp_stage=MVPStage.MOCKUP),
-            intake_complete=True,
-            answered_questions=["name", "sector", "declared_stage", "problem_statement", "user_segment", "validation"]
-        ),
-        2
-    ),
-    # 9. Structuration: legal form Startup Act Pre-label, no revenue model
-    (
-        "suarl_handicrafts",
-        ProjectProfile(
-            name="Tunisian Handicrafts Platform",
-            sector=Sector.SERVICES,
-            has_problem_statement=True,
-            user_segment_identified=True,
-            market=MarketMetrics(customer_validation_evidence=True),
-            legal_form=LegalForm.STARTUP_ACT_PRELABEL,
-            commercial=CommercialOffer(mvp_stage=MVPStage.CONCEPT),
-            intake_complete=True,
-            answered_questions=["name", "sector", "declared_stage", "problem_statement", "user_segment", "validation", "legal_form"]
-        ),
-        3
-    ),
-    # 10. Fundraising: revenue model + 4 months economics, mockup MVP
-    (
-        "saas_crm_tunis",
-        ProjectProfile(
-            name="SaaS CRM Tunis",
-            sector=Sector.DIGITAL_SAAS,
-            has_problem_statement=True,
-            user_segment_identified=True,
-            market=MarketMetrics(customer_validation_evidence=True),
-            legal_form=LegalForm.SARL,
-            has_revenue_model=True,
-            months_unit_economics=4,
-            commercial=CommercialOffer(mvp_stage=MVPStage.MOCKUP),
-            intake_complete=True,
-            answered_questions=["name", "sector", "declared_stage", "problem_statement", "user_segment", "validation", "legal_form", "revenue_model", "unit_economics"]
-        ),
-        4
-    ),
-    # 11. Launch Planning: prototype MVP, SARL
-    (
-        "iot_soil_sensor",
-        ProjectProfile(
-            name="IoT Soil Sensor",
-            sector=Sector.AGRI_FOOD,
-            has_problem_statement=True,
-            user_segment_identified=True,
-            market=MarketMetrics(customer_validation_evidence=True),
-            legal_form=LegalForm.SARL,
-            has_revenue_model=True,
-            months_unit_economics=3,
-            commercial=CommercialOffer(mvp_stage=MVPStage.PROTOTYPE),
-            intake_complete=True,
-            answered_questions=["name", "sector", "declared_stage", "problem_statement", "user_segment", "validation", "legal_form", "revenue_model", "unit_economics", "mvp_stage"]
-        ),
-        5
-    ),
-    # 12. Growth: production MVP, SARL, repeatable sales
-    (
-        "logistics_delivery",
-        ProjectProfile(
-            name="Logistics Delivery Tunisia",
-            sector=Sector.SERVICES,
-            has_problem_statement=True,
-            user_segment_identified=True,
-            market=MarketMetrics(customer_validation_evidence=True),
-            legal_form=LegalForm.SARL,
-            has_revenue_model=True,
-            months_unit_economics=6,
-            commercial=CommercialOffer(mvp_stage=MVPStage.PRODUCTION),
-            scalability=ScalabilityIndex(human_dependency=4),
-            repeatable_sales=True,
-            intake_complete=True,
-            answered_questions=["name", "sector", "declared_stage", "problem_statement", "user_segment", "validation", "legal_form", "revenue_model", "unit_economics", "mvp_stage", "human_dependency", "repeatable_sales"]
-        ),
-        6
-    )
-]
+# --------------------------------------------------------------------------- #
+# Load test set from standalone JSON file (independently verifiable).          #
+# --------------------------------------------------------------------------- #
+
+def _profile_from_params(params: dict) -> ProjectProfile:
+    """Reconstruct a ProjectProfile from the JSON test set's params dict."""
+    p = ProjectProfile(name=params.get("name", "Unnamed"))
+    sector_val = params.get("sector")
+    if sector_val:
+        p.sector = Sector(sector_val)
+    for bool_field in ("has_problem_statement", "user_segment_identified",
+                       "has_revenue_model", "repeatable_sales", "intake_complete"):
+        if bool_field in params:
+            setattr(p, bool_field, params[bool_field])
+    if "months_unit_economics" in params:
+        p.months_unit_economics = params["months_unit_economics"]
+    if "legal_form" in params and params["legal_form"]:
+        p.legal_form = LegalForm(params["legal_form"])
+    if "market" in params:
+        m = params["market"]
+        p.market = MarketMetrics(
+            estimated_tam_tnd=m.get("estimated_tam_tnd"),
+            competitor_headcount=m.get("competitor_headcount"),
+            customer_validation_evidence=m.get("customer_validation_evidence"),
+        )
+    if "commercial" in params:
+        c = params["commercial"]
+        p.commercial = CommercialOffer(
+            value_proposition_narrative=c.get("value_proposition_narrative", ""),
+            mvp_stage=MVPStage(c["mvp_stage"]) if "mvp_stage" in c else None,
+        )
+    if "scalability" in params:
+        s = params["scalability"]
+        p.scalability = ScalabilityIndex(
+            human_dependency=s.get("human_dependency"),
+            equipment_cost=s.get("equipment_cost"),
+            monthly_overhead=s.get("monthly_overhead"),
+            cross_border_zones=s.get("cross_border_zones", []),
+        )
+    if "answered_questions" in params:
+        p.answered_questions = list(params["answered_questions"])
+    return p
+
+
+def _load_test_set() -> dict:
+    """Load test_set.json and return structured data."""
+    raw = json.loads(_TEST_SET_PATH.read_text(encoding="utf-8"))
+    held_out = []
+    for entry in raw["diagnostic_held_out"]:
+        p = _profile_from_params({**entry["params"], "name": entry["name"], "sector": entry["sector"]})
+        held_out.append((entry["id"], p, entry["expected_stage"]))
+    human_ratings = {
+        k: [v["market"], v["commercial"], v["innovation"], v["scalability"], v["green"]]
+        for k, v in raw.get("human_consensus_ratings", {}).items()
+    }
+    return {"held_out": held_out, "human_ratings": human_ratings}
+
+
+_TEST_SET = _load_test_set()
+HELD_OUT_PROFILES = _TEST_SET["held_out"]
+HELD_OUT_HUMAN_RATINGS = _TEST_SET["human_ratings"]
 
 
 # Labelled diagnostic test set: 60 synthetic profiles, 10 per stage.
@@ -481,21 +343,7 @@ def eval_scoring_consistency() -> dict:
     # against manually hand-rated human consensus score bins (1..5).
     dim_keys = ["market", "commercial", "innovation", "scalability", "green"]
     
-    # Manual human ratings for each of the 12 validation profiles (Market, Commercial, Innovation, Scalability, Green)
-    HELD_OUT_HUMAN_RATINGS = {
-        "agritech_olive_press": (1, 2, 1, 1, 1),
-        "tunisia_ecommerce_box": (1, 2, 1, 1, 1), # Human rated Commercial = 2 (Model = 3)
-        "sahel_coworking_suarl": (1, 2, 1, 1, 1),
-        "b2b_edtech_tunis": (2, 3, 1, 1, 1),
-        "greentech_solar_sarl": (2, 3, 1, 1, 2),   # Human rated Green = 2 (Model = 1)
-        "fintech_payment_gateway": (2, 4, 1, 2, 1),
-        "ehealth_app_concept": (1, 1, 1, 1, 1),    # Human rated Commercial = 1 (Model = 2)
-        "clean_water_filtration": (1, 3, 1, 1, 2),  # Human rated Green = 2 (Model = 1)
-        "suarl_handicrafts": (1, 2, 2, 1, 1),       # Human rated Innovation = 2 (Model = 1)
-        "saas_crm_tunis": (2, 3, 1, 1, 1),
-        "iot_soil_sensor": (3, 3, 1, 1, 1),        # Human rated Market = 3 (Model = 2)
-        "logistics_delivery": (2, 4, 1, 1, 1),
-    }
+    # Human ratings loaded from test_set.json (independently verifiable)
     
     y_pred_bins = []
     y_true_bins = []
@@ -598,17 +446,118 @@ def eval_roadmap_coherence() -> dict:
             "checks": rows}
 
 
+def eval_intake_branching() -> dict:
+    """Systematic test of intake branching against 6 sector x 6 stage combinations.
+
+    Checks:
+    - Every sector/stage produces a valid sequence
+    - Sector probes are injected for agri-food and digital-saas
+    - Advanced-stage claims inject evidence probes
+    - 3 distinct profiles produce meaningfully different sequences
+    """
+    from .intake import IntakeStateMachine
+    from .schema import MaturityStage
+
+    sectors = [s.value for s in Sector]
+    stages = [str(s) for s in range(1, 7)]
+    rows = []
+    passes = 0
+    total = len(sectors) * len(stages)
+    seen_sequences: set[str] = set()
+
+    for sector in sectors:
+        for stage in stages:
+            profile = ProjectProfile(name=f"branch_{sector}_{stage}")
+            sm = IntakeStateMachine(profile)
+            sm.apply_answer("sector", sector)
+            sm.apply_answer("declared_stage", stage)
+            seq = []
+            guard = 0
+            while (q := sm.next_question()) is not None and guard < 60:
+                seq.append(q.id)
+                default = True if q.qtype == "bool" else (
+                    q.options[0] if q.qtype == "enum" else (
+                        [] if q.qtype in ("tags", "sdg") else 1 if q.qtype in ("int", "float") else "x"
+                    )
+                )
+                sm.apply_answer(q.id, default)
+                guard += 1
+            seq_key = ",".join(seq)
+            seen_sequences.add(seq_key)
+            has_sector_probe = (
+                ("agri_footprint" in seq or "agri_circular" in seq) if sector == "agri-food"
+                else ("digital_footprint" in seq) if sector == "digital-saas"
+                else True
+            )
+            has_evidence_probe = (
+                "validation_proof" in seq or "unit_economics" in seq
+            ) if int(stage) >= 4 else True
+            ok = bool(seq) and has_sector_probe and has_evidence_probe
+            if ok:
+                passes += 1
+            rows.append({
+                "sector": sector, "stage": stage,
+                "q_count": len(seq),
+                "has_sector_probe": has_sector_probe,
+                "has_evidence_probe": has_evidence_probe,
+                "passes": ok,
+            })
+
+    distinct = len(seen_sequences)
+    return {
+        "n": total,
+        "passes": passes == total,
+        "pass_rate": round(passes / total, 3),
+        "distinct_sequences": distinct,
+        "distinct_ok": distinct >= 3,
+        "checks": rows,
+    }
+
+
+def _save_report(report: dict) -> None:
+    """Persist evaluation report to JSON."""
+    _REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _REPORT_PATH.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    print(f"\nReport saved to {_REPORT_PATH}")
+
+
 def main() -> None:
     diag = eval_diagnostic()
     rag = eval_rag()
     scoring = eval_scoring_consistency()
     assistant = eval_assistant_tool_trace()
     roadmap = eval_roadmap_coherence()
+    intake = eval_intake_branching()
+
+    report = {
+        "timestamp": "2026-06-24",
+        "test_set": str(_TEST_SET_PATH),
+        "results": {
+            "diagnostic": diag,
+            "rag": rag,
+            "scoring": scoring,
+            "assistant": assistant,
+            "roadmap": roadmap,
+            "intake_branching": intake,
+        },
+        "summary": {
+            "diagnostic_passes": diag["passes"],
+            "rag_passes": rag["passes"],
+            "scoring_passes": scoring["passes"],
+            "assistant_passes": assistant["passes"],
+            "roadmap_passes": roadmap["passes"],
+            "intake_branching_passes": intake["passes"],
+        },
+    }
 
     print("=" * 70)
     print(" FIRASA SYSTEM EVALUATION REPORT")
     print("=" * 70)
-    print("\n1. PRIMARY DIAGNOSTIC EVALUATION (Hand-labelled Validation Set, N=12)")
+    print(f"\nTest set: {_TEST_SET_PATH}")
+    print(f"\n1. PRIMARY DIAGNOSTIC EVALUATION (Hand-labelled Validation Set, N=12)")
     print(f"   * Top-1 Accuracy : {diag['top1_accuracy'] * 100:.1f}%")
     print(f"   * Top-2 Accuracy : {diag['top2_accuracy'] * 100:.1f}%")
     print(f"   * MASE (Error)   : {diag['MASE']}  (Target: <= 0.5)")
@@ -639,7 +588,14 @@ def main() -> None:
     print("\n6. ASSISTANT TOOL-CALL TRACE")
     print(f"   * Tool Accuracy  : {assistant['accuracy'] * 100:.1f}%")
     print(f"   * Status         : {'PASS' if assistant['passes'] else 'FAIL'}")
+
+    print(f"\n7. INTAKE BRANCHING (All {intake['n']} sector x stage combinations)")
+    print(f"   * Distinct sequences : {intake['distinct_sequences']}  (Target: >= 3)")
+    print(f"   * Pass Rate          : {intake['pass_rate'] * 100:.0f}%")
+    print(f"   * Status             : {'PASS' if intake['passes'] else 'FAIL'}")
     print("=" * 70)
+
+    _save_report(report)
 
 
 if __name__ == "__main__":
