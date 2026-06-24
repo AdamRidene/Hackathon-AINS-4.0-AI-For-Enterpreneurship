@@ -1,6 +1,7 @@
 import { Component, useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
 import { auth } from "./auth.js";
+import { DEMO_SCENARIOS } from "./demoScenarios.js";
 import Landing    from "./components/Landing.jsx";
 import Interview  from "./components/Interview.jsx";
 import Processing from "./components/Processing.jsx";
@@ -271,6 +272,35 @@ export default function App() {
     finally { setBusy(false); }
   }
 
+  /* ── Demo scenarios: create + patch (patch already runs audit) + fetch result ── */
+  async function handleLoadDemo(scenarioId) {
+    const scenario = DEMO_SCENARIOS.find(s => s.id === scenarioId);
+    if (!scenario) return;
+    if (!user) await autoLogin();
+    setBusy(true); setError(null);
+    setPhase("processing");
+    try {
+      const created = await api.createProject(scenario.fields.name, lang);
+      const newPid = created.project_id;
+      setPid(newPid);
+      // updateProject triggers _run_owned_audit internally — no second audit call needed
+      const [res] = await Promise.all([
+        api.updateProject(newPid, scenario.fields),
+        new Promise(r => setTimeout(r, 1000)),
+      ]);
+      saveHistory(newPid, scenario.fields.name, scenario.fields.sector || null);
+      const audit = await api.getLastAudit(newPid);
+      if (audit?.scores?.vector) saveVector(newPid, audit.scores.vector);
+      setAudit(audit);
+      setPhase("audit");
+    } catch (err) {
+      setError(err.message);
+      setPhase("start");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   /* ── Phase: resume existing (Continue intake) ── */
   async function handleResume(existingId) {
     setBusy(true); setError(null);
@@ -521,6 +551,7 @@ export default function App() {
           history={history}
           busy={busy}
           onStart={handleStart}
+          onLoadDemo={handleLoadDemo}
           onViewProject={handleViewProject}
           onViewHistory={openHistory}
         />
@@ -586,7 +617,7 @@ export default function App() {
       )}
 
       {!pendingEmailConfirmation && phase === "processing" && (
-        <Processing lang={lang} />
+        <Processing lang={lang} onCancel={() => { setBusy(false); setPhase("start"); }} />
       )}
 
       {!pendingEmailConfirmation && phase === "audit" && audit && (

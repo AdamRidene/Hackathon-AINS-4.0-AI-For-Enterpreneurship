@@ -359,9 +359,6 @@ async def create_project(body: CreateProjectBody, user: dict = Depends(get_curre
     )
     store.save(profile)
 
-    # Establish initial audit baseline
-    await _run_owned_audit(profile.project_id, user)
-
     sm = IntakeStateMachine(profile)
     q = sm.next_question()
     return {"project_id": profile.project_id,
@@ -532,6 +529,7 @@ class ProfilePatchBody(BaseModel):
     name: Optional[str] = None
     sector: Optional[str] = None
     language: Optional[str] = None
+    demo: Optional[bool] = None  # skip LLM roadmap prose (fast path for demo scenarios)
 
     # Self-assessment
     declared_stage: Optional[int] = None
@@ -599,6 +597,7 @@ async def patch_project(pid: str, body: ProfilePatchBody, user: dict = Depends(g
     """Update project profile fields directly (no state machine)."""
     profile = _require_owned(pid, user)
     updates = body.model_dump(exclude_none=True)
+    fast = bool(updates.pop("demo", False))  # extract before profile field loop
     if not updates:
         raise HTTPException(400, "No fields to update")
 
@@ -625,7 +624,7 @@ async def patch_project(pid: str, body: ProfilePatchBody, user: dict = Depends(g
     store.save(profile)
 
     # Immediately re-run audit pipeline to persist history and update scores
-    await _run_owned_audit(pid, user)
+    await _run_owned_audit(pid, user, fast=fast)
 
     return store.redact(profile, is_owner=True)
 
@@ -633,9 +632,9 @@ async def patch_project(pid: str, body: ProfilePatchBody, user: dict = Depends(g
 # --------------------------------------------------------------------------- #
 # Audit (full pipeline) & assistant                                           #
 # --------------------------------------------------------------------------- #
-async def _run_owned_audit(pid: str, user: dict) -> dict:
+async def _run_owned_audit(pid: str, user: dict, fast: bool = False) -> dict:
     profile = _require_owned(pid, user)
-    result  = await run_audit(profile)
+    result  = await run_audit(profile, fast=fast)
     result_dict = result.to_dict()
 
     # ── Bug fix: honour gap.override_applied — automatically reallocate ────

@@ -673,12 +673,13 @@ export default function ProjectDashboard({
   }
 
   async function refreshProjectState() {
+    const withTimeout = (p, ms = 12000) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]);
     const [proj, lastAudit, nextQRes, qList, provisionalDiag] = await Promise.all([
-      api.getProject(pid),
-      api.getLastAudit(pid).catch(() => null),
-      api.nextQuestion(pid).catch(() => null),
-      api.getQuestions(pid).catch(() => []),
-      api.provisionalDiagnosis(pid).catch(() => null),
+      withTimeout(api.getProject(pid)),
+      withTimeout(api.getLastAudit(pid)).catch(() => null),
+      withTimeout(api.nextQuestion(pid)).catch(() => null),
+      withTimeout(api.getQuestions(pid)).catch(() => []),
+      withTimeout(api.provisionalDiagnosis(pid)).catch(() => null),
     ]);
     setProject(proj);
     setAudit(lastAudit);

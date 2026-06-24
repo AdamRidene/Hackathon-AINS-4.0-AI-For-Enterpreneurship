@@ -89,15 +89,17 @@ class AuditResult:
         return d
 
 
-async def run_audit(profile: ProjectProfile) -> AuditResult:
+async def run_audit(profile: ProjectProfile, fast: bool = False) -> AuditResult:
     """Run the full pipeline over the current shared state. Safe on partial data."""
     # Phase 2a — deterministic classification (rule-based authority).
     diagnostic = classify(profile)
 
-    # Phase 2b — LLM-as-a-Judge value-proposition coherence (secondary layer).
-    # Use cached coherence evaluations if the value proposition narrative hasn't changed.
+    # Phase 2b — LLM-as-a-Judge value-proposition coherence (skip when fast=True).
     narrative = profile.commercial.value_proposition_narrative
-    if (profile.last_pcoh is not None
+    if fast:
+        pcoh = profile.last_pcoh if profile.last_pcoh is not None else 0.5
+        pcoh_rationale = profile.last_pcoh_rationale or ""
+    elif (profile.last_pcoh is not None
             and profile.last_pcoh_narrative == narrative):
         pcoh = profile.last_pcoh
         pcoh_rationale = profile.last_pcoh_rationale
@@ -118,11 +120,12 @@ async def run_audit(profile: ProjectProfile) -> AuditResult:
     # Stage 1: deterministic pre-filter (all 8 rules + compound detection).
     anomalies = detect_anomalies(profile, diagnostic, scores)
 
-    # Stage 2: semantic LLM validation on ambiguous results (async, optional).
-    try:
-        anomalies = await validate_anomalies_semantic(anomalies, profile, scores)
-    except Exception:
-        pass  # semantic validation is optional; deterministic results stand
+    # Stage 2: semantic LLM validation on ambiguous results (skip when fast=True).
+    if not fast:
+        try:
+            anomalies = await validate_anomalies_semantic(anomalies, profile, scores)
+        except Exception:
+            pass  # semantic validation is optional; deterministic results stand
 
     # ── Score confidence annotations from anomalies ────────────────────────
     # Read-only: adds confidence notes without mutating scores (Section 10).
@@ -149,9 +152,9 @@ async def run_audit(profile: ProjectProfile) -> AuditResult:
     # Phase 3 — grounded roadmap + explanations (all independent, run in parallel).
     # Anomalies passed to roadmap builder for priority escalation.
     roadmap, scores_expl, gap_expl = await asyncio.gather(
-        build_roadmap(profile, diagnostic, scores, gap, anomalies=anomalies),
-        explain.explain_all_scores(scores, lang=profile.language),
-        explain.explain_gap(gap, lang=profile.language),
+        build_roadmap(profile, diagnostic, scores, gap, anomalies=anomalies, fast=fast),
+        explain.explain_all_scores(scores, lang=profile.language, fast=fast),
+        explain.explain_gap(gap, lang=profile.language, fast=fast),
     )
     explanations = {
         "scores": scores_expl,
@@ -558,7 +561,6 @@ async def grounded_assistant_reply(profile: ProjectProfile, question: str, lang:
     history.append({"role": "user", "content": question})
     history.append({"role": "assistant", "content": reply})
     _save_conversation(profile.project_id, history)
-
     _logger.info("assistant tool trace project=%s trace=%s", profile.project_id, trace)
     return {
         "reply": reply,
