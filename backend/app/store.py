@@ -13,7 +13,7 @@ import json
 import secrets
 import threading
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -44,6 +44,7 @@ _mem_sessions: dict[str, dict] = {}
 _mem_projects: dict[str, dict] = {}
 _mem_audits: dict[str, dict] = {}
 _mem_docs: dict[str, dict] = {}
+_mem_conversations: dict[str, list[dict]] = {}
 
 
 class _MemCursor:
@@ -271,6 +272,15 @@ def _init_db_conn_pg(conn: _PgConn) -> None:
             uploaded_at    TEXT NOT NULL
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS conversation_memory (
+            id         TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            role       TEXT NOT NULL,
+            content    TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
     # Idempotent column additions — PostgreSQL 9.6+ supports IF NOT EXISTS
     conn.execute("ALTER TABLE audits ADD COLUMN IF NOT EXISTS owner_user_id TEXT")
     for col in ("bio", "phone", "role", "company", "photo", "birth_date", "location"):
@@ -346,6 +356,16 @@ def _init_db_conn_sqlite(conn) -> None:
             storage_path  TEXT NOT NULL,
             extracted_text TEXT,
             uploaded_at   TEXT NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS conversation_memory (
+            id         TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            role       TEXT NOT NULL,
+            content    TEXT NOT NULL,
+            created_at TEXT NOT NULL,
             FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
         )
     """)
@@ -1025,3 +1045,83 @@ def delete_document(doc_id: str) -> None:
                 conn.execute("DELETE FROM project_documents WHERE id = ?", (doc_id,))
         else:
             _mem_docs.pop(doc_id, None)
+
+
+# ── Persistent conversation memory (Phase 3.4) ──────────────────────────────
+
+_CONVERSATION_TTL_SECONDS = 86400  # 24h
+_MAX_CONVERSATION_TURNS = 6
+
+
+def _delete_expired_conversations(project_id: str) -> None:
+    now = datetime.now(timezone.utc)
+    cutoff = now.isoformat()
+    if _DB_ENABLED:
+        with db_session() as conn:
+            conn.execute(
+                """DELETE FROM conversation_memory
+                   WHERE project_id = ? AND created_at < ?""",
+                (project_id, cutoff),
+            )
+
+
+def save_conversation_turn(project_id: str, role: str, content: str) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=_CONVERSATION_TTL_SECONDS)).isoformat()
+    with _lock:
+        if _DB_ENABLED:
+            with db_session() as conn:
+                conn.execute(
+                    "DELETE FROM conversation_memory WHERE project_id = ? AND created_at < ?",
+                    (project_id, cutoff),
+                )
+                conn.execute(
+                    """INSERT INTO conversation_memory (id, project_id, role, content, created_at)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (uuid4().hex[:16], project_id, role, content, now),
+                )
+                rows = conn.execute(
+                    """SELECT id FROM conversation_memory WHERE project_id = ?
+                       ORDER BY created_at ASC""",
+                    (project_id,),
+                ).fetchall()
+                ids = [r["id"] for r in rows]
+                if len(ids) > _MAX_CONVERSATION_TURNS:
+                    for old_id in ids[:-_MAX_CONVERSATION_TURNS]:
+                        conn.execute(
+                            "DELETE FROM conversation_memory WHERE id = ?", (old_id,)
+                        )
+        else:
+            if project_id not in _mem_conversations:
+                _mem_conversations[project_id] = []
+            cutoff_dt = datetime.now(timezone.utc) - timedelta(seconds=_CONVERSATION_TTL_SECONDS)
+            _mem_conversations[project_id] = [
+                m for m in _mem_conversations[project_id]
+                if datetime.fromisoformat(m["created_at"]).replace(tzinfo=timezone.utc) > cutoff_dt
+            ]
+            _mem_conversations[project_id].append({
+                "role": role, "content": content, "created_at": now,
+            })
+            if len(_mem_conversations[project_id]) > _MAX_CONVERSATION_TURNS:
+                _mem_conversations[project_id] = _mem_conversations[project_id][-_MAX_CONVERSATION_TURNS:]
+
+
+def get_conversation_history(project_id: str) -> list[dict]:
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=_CONVERSATION_TTL_SECONDS)).isoformat()
+    if _DB_ENABLED:
+        with db_session() as conn:
+            rows = conn.execute(
+                """SELECT role, content, created_at FROM conversation_memory
+                   WHERE project_id = ? AND created_at >= ?
+                   ORDER BY created_at ASC LIMIT ?""",
+                (project_id, cutoff, _MAX_CONVERSATION_TURNS),
+            ).fetchall()
+        return [{"role": r["role"], "content": r["content"]} for r in rows]
+    else:
+        raw = _mem_conversations.get(project_id, [])
+        cutoff_dt = datetime.now(timezone.utc) - timedelta(seconds=_CONVERSATION_TTL_SECONDS)
+        return [
+            {"role": m["role"], "content": m["content"]}
+            for m in raw
+            if datetime.fromisoformat(m["created_at"]).replace(tzinfo=timezone.utc) > cutoff_dt
+        ][-_MAX_CONVERSATION_TURNS:]

@@ -24,9 +24,7 @@ from typing import Optional
 
 from .schema import ProjectProfile
 
-# In-memory conversation history per project (max 6 turns = last 3 Q&A)
-_conversation_memory: dict[str, list[dict]] = {}
-_MAX_HISTORY_TURNS = 6
+# Conversation history persisted via store.py (24h TTL, max 6 turns)
 from .intake import IntakeStateMachine
 from .diagnostic import classify, detect_gap
 from .diagnostic.classifier import DiagnosticResult
@@ -57,6 +55,7 @@ class AuditResult:
     score_deltas: dict = field(default_factory=dict)
     gap_sources: dict = field(default_factory=dict)
     follow_up_suggested: Optional[dict] = None
+    uncertainty_report: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         # Flatten scores explanations to top level so frontend can access
@@ -86,6 +85,8 @@ class AuditResult:
         }
         if self.follow_up_suggested:
             d["follow_up_suggested"] = self.follow_up_suggested
+        if self.uncertainty_report:
+            d["uncertainty_report"] = self.uncertainty_report
         return d
 
 
@@ -129,6 +130,51 @@ async def run_audit(profile: ProjectProfile, fast: bool = False) -> AuditResult:
 
     # ── Score confidence annotations from anomalies ────────────────────────
     # Read-only: adds confidence notes without mutating scores (Section 10).
+    # ── Uncertainty report (Phase 3.1) ────────────────────────────────────
+    # Per dimension: missing inputs that materially affect score reliability.
+    uncertainty_dimensions = {}
+    if scores:
+        for dim_name, dim_key in [
+            ("market", "market"), ("commercial", "commercial"),
+            ("innovation", "innovation"), ("scalability", "scalability"),
+            ("green", "green"),
+        ]:
+            sr = getattr(scores, dim_key, None)
+            if sr and sr.missing_inputs:
+                uncertainty_dimensions[dim_name] = {
+                    "missing_inputs": list(sr.missing_inputs),
+                    "reliability": "low" if len(sr.missing_inputs) >= 2 else "medium",
+                }
+    # Per gate: unanswered evidence questions that would change classification.
+    uncertainty_gates = []
+    for g in diagnostic.gates:
+        if not g.passed:
+            uncertainty_gates.append({
+                "stage": g.stage,
+                "name": g.name,
+                "missing_evidence": g.evidence,
+            })
+    # Ranked "quickest confidence gain" suggestion.
+    quickest_gain = None
+    if uncertainty_gates:
+        quickest_gain = {
+            "action": f"Answer gate {uncertainty_gates[0]['name']} — {uncertainty_gates[0]['missing_evidence']}",
+            "type": "gate",
+            "stage": uncertainty_gates[0]["stage"],
+        }
+    elif uncertainty_dimensions:
+        dim_name = next(iter(uncertainty_dimensions))
+        quickest_gain = {
+            "action": f"Fill missing inputs in {dim_name}: {', '.join(uncertainty_dimensions[dim_name]['missing_inputs'][:2])}",
+            "type": "dimension",
+            "dimension": dim_name,
+        }
+    uncertainty_report = {
+        "dimensions": uncertainty_dimensions,
+        "gates": uncertainty_gates,
+        "quickest_confidence_gain": quickest_gain,
+    }
+
     anomaly_notes = get_anomaly_dimension_notes(anomalies)
     scores = annotate_scores_with_anomalies(scores, anomaly_notes)
 
@@ -192,6 +238,7 @@ async def run_audit(profile: ProjectProfile, fast: bool = False) -> AuditResult:
         pcoh=pcoh, roadmap=roadmap, explanations=explanations,
         anomalies=anomalies, score_deltas=score_deltas,
         gap_sources=gap_sources, follow_up_suggested=follow_up,
+        uncertainty_report=uncertainty_report,
     )
 
 
@@ -301,28 +348,6 @@ def _format_grounding(stage, gap, vector, roadmap_prose, docs_context,
     return ctx
 
 
-# Keywords that signal the question is about the user's own project/diagnostic
-_CONTEXT_KEYWORDS = {
-    "score", "stade", "financement", "programme", "recommand", "diagnostic",
-    "marché", "market", "innovation", "scalabilit", "green", "roadmap", "feuille",
-    "mon ", "ma ", "mes ", "notre", "votre", "startup", "projet", "problème",
-    "aide", "apii", "bfpme", "flat6", "améliorer", "améliore", "comment",
-    "pourquoi", "quel", "quelle", "quels", "anomalie", "gate", "porte",
-    "مؤشر", "تشخيص", "مشروع", "كيف", "لماذا", "ما هو", "برنامج", "تمويل",
-}
-
-def _needs_grounding(question: str) -> bool:
-    """Return True if the question is about the user's project and needs diagnostic context."""
-    q = question.lower()
-    # Always ground if any project-context keyword present
-    if any(kw in q for kw in _CONTEXT_KEYWORDS):
-        return True
-    # Ground if question is substantive (>6 words) — likely a real question
-    if len(question.split()) > 6:
-        return True
-    return False
-
-
 _SMALL_TALK = {
     "hi", "hello", "hey", "bonjour", "bonsoir", "salut", "merci", "thanks",
     "thank you", "مرحبا", "أهلا", "اهلا", "سلام", "شكرا",
@@ -348,29 +373,156 @@ def _asks_about_docs(question: str) -> bool:
     return any(kw in q for kw in _DOC_KEYWORDS)
 
 
+# ── Embedding-based intent classifier (Phase 3.3) ────────────────────────────
+
+_INTENTS = [
+    "greeting", "classifier", "scores", "gap", "kb", "roadmap", "documents",
+]
+
+_INTENT_TO_TOOLS = {
+    "greeting": [],
+    "classifier": ["run_classifier"],
+    "scores": ["get_scores"],
+    "gap": ["detect_gap"],
+    "kb": ["retrieve_kb"],
+    "roadmap": ["build_roadmap"],
+    "documents": ["retrieve_documents"],
+}
+
+_INTENT_EXAMPLES = {
+    "greeting": [
+        "bonjour", "salut", "hi", "hello", "merci", "thanks", "comment ça va",
+        "مرحبا", "شكرا", "اهلا",
+    ],
+    "classifier": [
+        "quel est mon stade de maturité", "où est-ce que je me situe",
+        "diagnostic de mon projet", "what stage is my project",
+        "تشخيص مشروعي", "ما هي مرحلة نضج مشروعي",
+        "suis-je au stade ideation ou validation",
+        "classifie mon projet",
+    ],
+    "scores": [
+        "quel est mon score marché", "affiche mes scores",
+        "comment se positionne mon projet", "show me my scores",
+        "مؤشرات مشروعي", "ما هي نتائج التقييم",
+        "score innovation", "score scalabilité", "score green",
+        "quels sont mes scores d'évaluation",
+    ],
+    "gap": [
+        "quel est l'écart entre ma perception et la réalité",
+        "suis-je en train de surestimer mon projet",
+        "gap perception réalité", "anomalies détectées",
+        "ecart perception realite", "what gaps exist",
+        "فجوة الإدراك والواقع", "هل هناك تناقضات في مشروعي",
+        "détection d'anomalies",
+    ],
+    "kb": [
+        "quels programmes de financement existent", "aide apii",
+        "quelles ressources pour mon secteur", "bfpme accompagnement",
+        "what support programs are available", "تمويل", "برامج دعم",
+        "base de connaissance", "programme d'accompagnement",
+        "où trouver un financement",
+    ],
+    "roadmap": [
+        "quelle est ma feuille de route", "recommande moi des actions",
+        "prochaine étape pour mon projet", "what should I do next",
+        "خارطة طريقي", "ما هي الخطوات التالية",
+        "plan d'action recommandé", "mon parcours",
+        "quoi faire après le diagnostic",
+    ],
+    "documents": [
+        "quels documents ai-je uploadé", "affiche mes documents",
+        "mon business plan", "what documents did I upload",
+        "مستنداتي", "الوثائق المرفوعة",
+        "pièces jointes", "fichiers uploadés",
+    ],
+}
+
+# Pre-computed embeddings cache for intent examples
+_intent_embeddings: dict[str, list] | None = None
+
+
+def _embed_text(text: str):
+    """Embed a single text using Cohere (preferred) or TF-IDF fallback."""
+    try:
+        kb = Retriever().kb
+        emb = kb.query_embedding(text)
+        if emb is not None:
+            return emb
+    except Exception:
+        pass
+    # TF-IDF fallback
+    from collections import Counter
+    from .rag.knowledge_base import _tokenise, _FR_STOP, _AR_STOP, _STOP
+    vec = Counter()
+    for t, f in Counter(_tokenise(text)).items():
+        vec[t] = f
+    return vec
+
+
+def _cosine_sim(a, b) -> float:
+    import math
+    if hasattr(a, 'shape') and hasattr(b, 'shape'):
+        dot = float((a * b).sum())
+        na = float(math.sqrt((a * a).sum()))
+        nb = float(math.sqrt((b * b).sum()))
+        return dot / (na * nb) if na and nb else 0.0
+    common = set(a) & set(b)
+    if not common:
+        return 0.0
+    dot = sum(a[t] * b[t] for t in common)
+    na = math.sqrt(sum(v * v for v in a.values()))
+    nb = math.sqrt(sum(v * v for v in b.values()))
+    return dot / (na * nb) if na and nb else 0.0
+
+
+def _build_intent_embeddings():
+    """Embed all intent examples lazily (once)."""
+    global _intent_embeddings
+    if _intent_embeddings is not None:
+        return
+    _intent_embeddings = {}
+    for intent, examples in _INTENT_EXAMPLES.items():
+        _intent_embeddings[intent] = [_embed_text(ex) for ex in examples]
+
+
+def _classify_intent(question: str) -> str:
+    """Map a user question to one of the 7 intents using embedding + k-NN."""
+    if _is_small_talk(question):
+        return "greeting"
+    if _asks_about_docs(question):
+        return "documents"
+
+    q_emb = _embed_text(question)
+
+    _build_intent_embeddings()
+
+    best_intent = "classifier"
+    best_score = -1.0
+    for intent, examples in _intent_embeddings.items():
+        for ex_emb in examples:
+            sim = _cosine_sim(q_emb, ex_emb)
+            if sim > best_score:
+                best_score = sim
+                best_intent = intent
+
+    # Low-confidence threshold: fall back to default tool set
+    if best_score < 0.3:
+        return "classifier"
+    return best_intent
+
+
 def _plan_assistant_tools(question: str) -> list[str]:
     """Pick the existing engine wrappers the assistant should call."""
     if _is_small_talk(question):
         return []
+    intent = _classify_intent(question)
+    return list(_INTENT_TO_TOOLS.get(intent, []))
 
-    q = question.lower()
-    tools: list[str] = []
-    if any(k in q for k in ("diagnostic", "stade", "stage", "maturit", "class", "تشخيص")):
-        tools.append("run_classifier")
-    if any(k in q for k in ("score", "marché", "market", "commercial", "innovation", "scalabil", "green", "مؤشر")):
-        tools.append("get_scores")
-    if any(k in q for k in ("écart", "ecart", "gap", "perception", "réalité", "realite", "anomal", "فرق")):
-        tools.append("detect_gap")
-    if any(k in q for k in ("programme", "source", "financement", "kb", "ressource", "apii", "bfpme", "flat6", "تمويل")):
-        tools.append("retrieve_kb")
-    if any(k in q for k in ("roadmap", "feuille", "recommand", "prochaine", "étape", "etape", "action", "parcours", "خطوة")):
-        tools.append("build_roadmap")
-    if _asks_about_docs(question):
-        tools.append("retrieve_documents")
 
-    if not tools and _needs_grounding(question):
-        tools = ["run_classifier", "get_scores", "detect_gap"]
-    return list(dict.fromkeys(tools))
+def _needs_grounding(question: str) -> bool:
+    """Return True if the question is about the user's project and needs diagnostic context."""
+    return not _is_small_talk(question)
 
 
 async def _audit_dict(profile: ProjectProfile) -> dict:
@@ -477,10 +629,11 @@ async def _run_assistant_tool(
 
 
 def _load_conversation(pid: str) -> list[dict]:
-    return _conversation_memory.get(pid, [])
+    return store.get_conversation_history(pid)
 
 def _save_conversation(pid: str, history: list[dict]):
-    _conversation_memory[pid] = history[-_MAX_HISTORY_TURNS:]
+    for msg in history[-2:]:
+        store.save_conversation_turn(pid, msg["role"], msg["content"])
 
 def _format_history(history: list[dict], lang: str) -> str:
     if not history:
