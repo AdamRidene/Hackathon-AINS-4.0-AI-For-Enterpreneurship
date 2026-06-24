@@ -164,6 +164,9 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [resetMode, setResetMode] = useState(false); // forgot-password / reset flow
+  const [resetToken, setResetToken] = useState("");
+  const [resetMsg, setResetMsg] = useState("");
   
   // Checkout State
   const [checkoutPlan, setCheckoutPlan] = useState(null); // null | 'plus' | 'pro'
@@ -316,7 +319,7 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                 )}
               </button>
             )}
-            <button className="modal-close-btn" onClick={onClose} style={{ width: "32px", height: "32px" }}>&times;</button>
+            <button className="modal-close-btn" onClick={onClose} aria-label={ar ? "إغلاق" : "Fermer"} style={{ width: "32px", height: "32px" }}>&times;</button>
           </div>
         </div>
 
@@ -436,6 +439,7 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                           {!isRegister && (
                             <div style={{ textAlign: ar ? "left" : "right", marginTop: "6px" }}>
                               <span
+                                onClick={() => setResetMode(true)}
                                 style={{
                                   fontSize: "0.78rem",
                                   color: "var(--orange)",
@@ -464,6 +468,7 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                             await api.loginWithGoogle();
                           } catch (err) {
                             setAuthError(err.message);
+                          } finally {
                             setAuthBusy(false);
                           }
                         }}>
@@ -477,13 +482,77 @@ export default function ProfileModal({ isOpen, onClose, user, onLogin, onLogout,
                         </button>
                       </form>
 
-                      <div className="auth-toggle-msg">
-                        {isRegister ? (
-                          <p>{t.hasAccount}<span onClick={() => setIsRegister(false)}>{t.login}</span></p>
-                        ) : (
-                          <p>{t.noAccount}<span onClick={() => setIsRegister(true)}>{t.register}</span></p>
-                        )}
-                      </div>
+                      {resetMode ? (
+                        <div style={{ width: "100%", marginTop: 8 }}>
+                          {resetToken ? (
+                            <form className="auth-form" onSubmit={async (e) => {
+                              e.preventDefault();
+                              setAuthBusy(true);
+                              setAuthError(null);
+                              try {
+                                const res = await api.resetPassword({ token: resetToken, new_password: password });
+                                setResetMsg(res.message || (ar ? "تم تحديث كلمة المرور." : "Mot de passe mis à jour."));
+                                setResetToken("");
+                                setPassword("");
+                              } catch (err) {
+                                setAuthError(err.message);
+                              } finally {
+                                setAuthBusy(false);
+                              }
+                            }} style={{ gap: "10px" }}>
+                              <p style={{ fontSize: "0.85rem", color: "var(--text-sub)", textAlign: "center", margin: 0 }}>
+                                {ar ? "أدخل كلمة مرور جديدة" : "Entrez un nouveau mot de passe"}
+                              </p>
+                              <div className="form-group">
+                                <label>{t.password}</label>
+                                <input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} />
+                              </div>
+                              <button type="submit" className="primary" disabled={authBusy}>{authBusy ? t.loadingPay : (ar ? "تحديث" : "Mettre à jour")}</button>
+                              <button type="button" onClick={() => { setResetMode(false); setResetToken(""); setResetMsg(""); setAuthError(null); }} style={{ background: "transparent", borderColor: "var(--border)" }}>
+                                {ar ? "إلغاء" : "Annuler"}
+                              </button>
+                            </form>
+                          ) : (
+                            <>
+                              <p style={{ fontSize: "0.85rem", color: "var(--text-sub)", textAlign: "center", margin: "0 0 12px" }}>
+                                {ar ? "أدخل بريدك الإلكتروني لإعادة تعيين كلمة المرور" : "Entrez votre email pour réinitialiser le mot de passe"}
+                              </p>
+                              <form className="auth-form" onSubmit={async (e) => {
+                                e.preventDefault();
+                                if (!email.trim()) return;
+                                setAuthBusy(true);
+                                setAuthError(null);
+                                try {
+                                  const res = await api.forgotPassword(email.trim());
+                                  setResetToken(res.message?.replace("Reset token: ", "") || "");
+                                  setResetMsg(res.message || "");
+                                } catch (err) {
+                                  setAuthError(err.message);
+                                } finally {
+                                  setAuthBusy(false);
+                                }
+                              }} style={{ gap: "10px" }}>
+                                <div className="form-group">
+                                  <label>{t.email}</label>
+                                  <input type="email" placeholder="entrepreneur@firasa.tn" value={email} onChange={e => setEmail(e.target.value)} required />
+                                </div>
+                                <button type="submit" className="primary" disabled={authBusy}>{authBusy ? t.loadingPay : (ar ? "إرسال" : "Envoyer")}</button>
+                                <button type="button" onClick={() => { setResetMode(false); setAuthError(null); }} style={{ background: "transparent", borderColor: "var(--border)" }}>
+                                  {ar ? "رجوع" : "Retour"}
+                                </button>
+                              </form>
+                            </>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="auth-toggle-msg">
+                          {isRegister ? (
+                            <p>{t.hasAccount}<span onClick={() => setIsRegister(false)}>{t.login}</span></p>
+                          ) : (
+                            <p>{t.noAccount}<span onClick={() => setIsRegister(true)}>{t.register}</span></p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

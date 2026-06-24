@@ -57,6 +57,9 @@ export default function Toast({ toast, onDismiss, lang }) {
         direction: ar ? "rtl" : "ltr",
       }}
       onClick={onDismiss}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onDismiss(); } }}
     >
       <span style={{
         display: "grid", placeItems: "center", width: 24, height: 24,

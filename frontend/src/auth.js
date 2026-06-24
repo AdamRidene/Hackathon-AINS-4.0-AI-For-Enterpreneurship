@@ -185,6 +185,22 @@ export const auth = {
     // The OAuth redirect will reload the page — this never returns
   },
 
+  async forgotPassword(email) {
+    return apiReq("/api/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+      anonymous: true,
+    });
+  },
+
+  async resetPassword({ token, new_password }) {
+    return apiReq("/api/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ token, new_password }),
+      anonymous: true,
+    });
+  },
+
   async register({ email, password, name, birth_date, location, phone, role, company }) {
     if (_mode === "none") {
       setLocalToken("dev-token");

@@ -42,7 +42,7 @@ export default function Topbar({ lang, setLang, theme, setTheme, user, plan, ope
       {/* Left section: controls */}
       <div className="topbar-left-controls">
         {/* Home button */}
-        <button className="topbar-home-btn" onClick={onHome} title={ar ? "الرئيسية" : "Accueil"}>
+        <button type="button" className="topbar-home-btn" onClick={onHome} title={ar ? "الرئيسية" : "Accueil"} aria-label={ar ? "الرئيسية" : "Accueil"}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
             <polyline points="9 22 9 12 15 12 15 22"/>
@@ -51,7 +51,7 @@ export default function Topbar({ lang, setLang, theme, setTheme, user, plan, ope
 
         {/* Profile Dropdown Container — next to language toggle */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px", position: "relative" }}>
-          <button className="profile-btn" onClick={toggleMenu} aria-haspopup="true" aria-expanded={menuOpen}>
+          <button type="button" className="profile-btn" onClick={toggleMenu} aria-haspopup="true" aria-expanded={menuOpen} aria-label={ar ? "القائمة الشخصية" : "Menu profil"}>
             <div className={`profile-avatar ${!user ? "guest" : ""}`}>
               {user && user.photo ? (
                 user.photo.startsWith("http") || user.photo.startsWith("/") ? (
@@ -93,7 +93,7 @@ export default function Topbar({ lang, setLang, theme, setTheme, user, plan, ope
                 <span className="profile-menu-name" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user ? user.name : guestLabel}</span>
               </div>
               {!user ? (
-                <button className="profile-menu-item" onClick={handleLoginClick}>
+                <button type="button" className="profile-menu-item" onClick={handleLoginClick}>
                   <span className="menu-icon" aria-hidden>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
@@ -105,7 +105,7 @@ export default function Topbar({ lang, setLang, theme, setTheme, user, plan, ope
                 </button>
               ) : (
                 <>
-                  <button className="profile-menu-item" onClick={() => { setMenuOpen(false); openProfile(); }}>
+                  <button type="button" className="profile-menu-item" onClick={() => { setMenuOpen(false); openProfile(); }}>
                     <span className="menu-icon" aria-hidden>
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="12" cy="12" r="3"/>
@@ -114,7 +114,7 @@ export default function Topbar({ lang, setLang, theme, setTheme, user, plan, ope
                     </span>
                     <span className="menu-label">{ar ? "الإعدادات" : "Paramètres"}</span>
                   </button>
-                  <button className="profile-menu-item" onClick={() => { setMenuOpen(false); openHistory(); }}>
+                  <button type="button" className="profile-menu-item" onClick={() => { setMenuOpen(false); openHistory(); }}>
                     <span className="menu-icon" aria-hidden>
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="12" cy="12" r="10"/>
@@ -123,7 +123,7 @@ export default function Topbar({ lang, setLang, theme, setTheme, user, plan, ope
                     </span>
                     <span className="menu-label">{ar ? "السجل" : "Historique"}</span>
                   </button>
-                  <button className="profile-menu-item" onClick={handleLogoutClick}>
+                  <button type="button" className="profile-menu-item" onClick={handleLogoutClick}>
                     <span className="menu-icon" aria-hidden>
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -142,7 +142,7 @@ export default function Topbar({ lang, setLang, theme, setTheme, user, plan, ope
         {/* Language toggle */}
         {/* Language dropdown */}
         <div className="lang-dropdown-wrap">
-          <button className="lang-dropdown-btn" onClick={toggleLangMenu} title={ar ? "اللغة" : "Langue"}>
+          <button type="button" className="lang-dropdown-btn" onClick={toggleLangMenu} title={ar ? "اللغة" : "Langue"} aria-label={ar ? "اللغة" : "Langue"}>
             <span className="lang-dropdown-code">{langLabels[lang]?.code || "Fr"}</span>
             <svg className="lang-dropdown-globe" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10"/>
@@ -154,6 +154,7 @@ export default function Topbar({ lang, setLang, theme, setTheme, user, plan, ope
             <div className="lang-dropdown-menu">
               {Object.entries(langLabels).map(([code, { label }]) => (
                 <button
+                  type="button"
                   key={code}
                   className={`lang-dropdown-item${lang === code ? " active" : ""}`}
                   onClick={() => selectLang(code)}
@@ -168,9 +169,11 @@ export default function Topbar({ lang, setLang, theme, setTheme, user, plan, ope
 
         {/* Theme toggle */}
         <button
+          type="button"
           className="theme-toggle-btn"
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
           title={ar ? "تغيير المظهر" : "Changer le thème"}
+          aria-label={ar ? "تغيير المظهر" : "Changer le thème"}
         >
           {theme === "dark" ? (
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -189,7 +192,7 @@ export default function Topbar({ lang, setLang, theme, setTheme, user, plan, ope
 
         {/* Eval report button */}
         {onEvalClick && (
-          <button className="topbar-home-btn" onClick={onEvalClick} title={ar ? "تقرير التقييم" : "Rapport d'évaluation"}>
+          <button type="button" className="topbar-home-btn" onClick={onEvalClick} title={ar ? "تقرير التقييم" : "Rapport d'évaluation"} aria-label={ar ? "تقرير التقييم" : "Rapport d'évaluation"}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
             </svg>

@@ -60,6 +60,14 @@ export const api = {
     return auth.loginWithGoogle();
   },
 
+  forgotPassword: async (email) => {
+    return auth.forgotPassword(email);
+  },
+
+  resetPassword: async ({ token, new_password }) => {
+    return auth.resetPassword({ token, new_password });
+  },
+
   login: async ({ email, password }) => {
     return auth.login({ email, password });
   },
