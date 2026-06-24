@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
-from ..schema import ProjectProfile, IPStatus, Sector
+from ..schema import ProjectProfile, IPStatus, LegalForm, Sector
 from ..llm import get_llm
 from .classifier import DiagnosticResult, STAGE_NAMES, STAGE_NAMES_AR
 
@@ -346,7 +346,7 @@ def _rule_a4_market_claim_no_product(p: ProjectProfile, scores) -> Optional[Anom
     return None
 
 
-# ── NEW RULES (Phase 1: Broaden Detection) ──────────────────────────────────
+# ── NEW RULES — Phase 4: Broaden Detection (Extended edges) ─────────────────
 
 def _rule_a5_tech_sector_mismatch(p: ProjectProfile, scores) -> Optional[Anomaly]:
     """Tech stack doesn't align with declared sector — ambiguous, needs semantic check.
@@ -588,6 +588,137 @@ def _rule_a8_revenue_commercial_mismatch(p: ProjectProfile, scores) -> Optional[
     )
 
 
+# ── Phase 4 — Broaden Detection (new anomaly rules A9–A12) ──────────────────
+
+def _rule_a9_prefunding_no_structure(p: ProjectProfile, scores) -> Optional[Anomaly]:
+    """Claims advanced stage (Fundraising+) but no legal structure."""
+    declared = int(p.self_assessment.declared_stage) if p.self_assessment.declared_stage else None
+    if declared is None or declared < 4:
+        return None
+    if p.legal_form not in (None, LegalForm.NONE):
+        return None
+    return Anomaly(
+        code="prefunding_no_structure",
+        severity="high",
+        title_fr="Stade de levée de fonds sans structure juridique",
+        title_ar="مرحلة جمع تمويل بدون هيكل قانوني",
+        detail_fr=(
+            f"Le projet se déclare au stade '{STAGE_NAMES[declared]}' mais n'a "
+            "aucune forme juridique enregistrée. Une levée de fonds sans "
+            "personnalité morale est une contradiction structurelle majeure."),
+        detail_ar=(
+            f"يعلن المشروع عن مرحلة '{STAGE_NAMES_AR[declared]}' ولكن ليس لديه أي "
+            "شكل قانوني مسجل. جمع التمويل بدون شخصية اعتبارية هو تناقض هيكلي كبير."),
+        signals=[
+            f"Stade déclaré: {STAGE_NAMES[declared]}",
+            "Forme juridique: aucune",
+        ],
+        source=AnomalySource.DETERMINISTIC,
+        confidence=AnomalyConfidence.HIGH,
+        affects_dimensions=["scalability"],
+    )
+    return None
+
+
+def _rule_a10_high_revenue_low_validation(p: ProjectProfile, scores) -> Optional[Anomaly]:
+    """Claims significant monthly revenue but no customer validation evidence."""
+    if not p.monthly_revenue_tnd or p.monthly_revenue_tnd < 1000:
+        return None
+    if p.market.customer_validation_evidence is True:
+        return None
+    return Anomaly(
+        code="high_revenue_low_validation",
+        severity="medium",
+        title_fr="Revenus déclarés sans preuve de validation client",
+        title_ar="إيرادات مصرح بها دون دليل تحقق من العملاء",
+        detail_fr=(
+            f"Un chiffre d'affaires mensuel de {p.monthly_revenue_tnd:,.0f} TND "
+            "est déclaré mais aucune preuve de validation client n'est fournie. "
+            "Des revenus significatifs devraient être corrélés à une validation "
+            "documentée."),
+        detail_ar=(
+            f"تم التصريح بإيرادات شهرية قدرها {p.monthly_revenue_tnd:,.0f} دينار "
+            "تونسي ولكن لم يتم تقديم أي دليل على التحقق من العملاء. يجب أن ترتبط "
+            "الإيرادات الكبيرة بتوثيق للتحقق."),
+        signals=[
+            f"Monthly revenue: {p.monthly_revenue_tnd:,.0f} TND",
+            "Customer validation: absent",
+        ],
+        source=AnomalySource.DETERMINISTIC,
+        confidence=AnomalyConfidence.HIGH,
+        affects_dimensions=["market", "commercial"],
+    )
+    return None
+
+
+def _rule_a11_multi_competitors_no_differentiation(p: ProjectProfile, scores) -> Optional[Anomaly]:
+    """Multiple competitors listed but no differentiation strategy."""
+    competitors = p.market.competitor_headcount
+    if competitors is None or competitors < 2:
+        return None
+    if p.differentiation_narrative and len(p.differentiation_narrative.strip()) > 20:
+        return None
+    return Anomaly(
+        code="multi_competitors_no_differentiation",
+        severity="medium",
+        title_fr="Concurrents multiples sans stratégie de différenciation",
+        title_ar="منافسون متعددون دون استراتيجية تمايز",
+        detail_fr=(
+            f"{competitors} concurrents déclarés mais aucune stratégie de "
+            "différenciation documentée. Un marché concurrentiel exige une "
+            "proposition de valeur distinctive clairement articulée."),
+        detail_ar=(
+            f"تم التصريح بـ {competitors} منافساً ولكن لم يتم توثيق أي "
+            "استراتيجية تمايز. السوق التنافسية تتطلب عرض قيمة مميزاً "
+            "واضحاً."),
+        signals=[
+            f"Competitors: {competitors}",
+            "Differentiation: absente ou insuffisante",
+        ],
+        source=AnomalySource.DETERMINISTIC,
+        confidence=AnomalyConfidence.HIGH,
+        affects_dimensions=["market"],
+    )
+    return None
+
+
+def _rule_a12_high_innovation_self_report_only(p: ProjectProfile, scores) -> Optional[Anomaly]:
+    """High innovation score from self-report only — no IP, no pilots, no technical detail."""
+    innovation_score = scores.innovation
+    if innovation_score.final_score < 65:
+        return None
+    has_ip = p.innovation.ip_status not in (None, IPStatus.NONE)
+    has_tech = bool(p.innovation.tech_stack and len(p.innovation.tech_stack) >= 2)
+    has_pilot = bool(p.commercial.mvp_stage and p.commercial.mvp_stage.value in ("Prototype", "Production"))
+    if has_ip or has_tech or has_pilot:
+        return None
+    return Anomaly(
+        code="high_innovation_self_report_only",
+        severity="high",
+        title_fr="Score Innovation élevé sans preuves tangibles",
+        title_ar="نتيجة ابتكار مرتفعة بدون أدلة ملموسة",
+        detail_fr=(
+            f"Score Innovation ({innovation_score.final_score:.0f}/100) repose "
+            "uniquement sur des déclarations: aucune PI, aucun détail technique, "
+            "aucun prototype/pilote. Le score devrait être étayé par des "
+            "éléments concrets."),
+        detail_ar=(
+            f"نتيجة الابتكار ({innovation_score.final_score:.0f}/100) تعتمد فقط على "
+            "تصريحات ذاتية: لا ملكية فكرية، لا تفاصيل تقنية، لا نموذج أولي/تجريبي. "
+            "يجب دعم النتيجة بأدلة ملموسة."),
+        signals=[
+            f"Innovation score = {innovation_score.final_score:.0f}/100",
+            f"IP status = {p.innovation.ip_status.value if p.innovation.ip_status else 'aucun'}",
+            f"Tech stack = {', '.join(p.innovation.tech_stack) if p.innovation.tech_stack else 'vide'}",
+            f"MVP stage = {p.commercial.mvp_stage.value if p.commercial.mvp_stage else 'aucun'}",
+        ],
+        source=AnomalySource.DETERMINISTIC,
+        confidence=AnomalyConfidence.HIGH,
+        affects_dimensions=["innovation"],
+    )
+    return None
+
+
 # ── Cross-rule compound detection ───────────────────────────────────────────
 
 def _detect_compound_anomalies(anomalies: list[Anomaly], p: ProjectProfile,
@@ -748,7 +879,7 @@ def detect_anomalies(p: ProjectProfile, diag: DiagnosticResult, scores) -> list[
          The anomaly dict includes source/confidence/validated fields so
          downstream consumers know whether to trust, display, or suggest.
     """
-    # Stage 1 — deterministic pre-filter (all 8 rules)
+    # Stage 1 — deterministic pre-filter (all 12 rules)
     rules = [
         _rule_a1_tam_without_validation,
         _rule_a2_cheap_but_labour_bound,
@@ -758,6 +889,10 @@ def detect_anomalies(p: ProjectProfile, diag: DiagnosticResult, scores) -> list[
         _rule_a6_innovation_without_ip,
         _rule_a7_green_without_footprint,
         _rule_a8_revenue_commercial_mismatch,
+        _rule_a9_prefunding_no_structure,
+        _rule_a10_high_revenue_low_validation,
+        _rule_a11_multi_competitors_no_differentiation,
+        _rule_a12_high_innovation_self_report_only,
     ]
 
     anomalies: list[Anomaly] = []

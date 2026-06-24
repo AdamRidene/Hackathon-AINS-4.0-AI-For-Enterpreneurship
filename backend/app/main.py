@@ -748,9 +748,31 @@ async def milestone_complete(
     pid: str, mid: str, body: MilestoneCompleteBody,
     user: dict = Depends(get_current_user),
 ) -> dict:
-    """Mark a milestone done; apply profile mutations and re-score if applicable."""
+    """Mark a milestone done; apply profile mutations, record outcome, and re-score if applicable."""
     profile = _require_owned(pid, user)
     mutations = TRIGGER_MUTATIONS.get(body.trigger, {})
+
+    # ── Record milestone outcome (Phase 4.2b) ──────────────────────────────
+    # Gather associated resource URLs from the current audit's roadmap.
+    resource_urls: list[str] = []
+    try:
+        audit_data = store.get_audit(pid)
+        if audit_data:
+            for m in audit_data.get("roadmap", []):
+                if m.get("id") == mid:
+                    resource_urls = list(dict.fromkeys(
+                        s.get("url", "") for s in m.get("sources", []) if s.get("url")
+                    ))
+                    break
+    except Exception:
+        pass
+    store.record_milestone_completion(
+        project_id=pid, milestone_id=mid,
+        milestone_title=body.trigger,
+        trigger=body.trigger,
+        resource_urls=resource_urls,
+        resolved=bool(mutations),
+    )
 
     if mutations:
         from .schema import LegalForm
@@ -760,7 +782,6 @@ async def milestone_complete(
             for part in parts[:-1]:
                 obj = getattr(obj, part)
             field_name = parts[-1]
-            # Coerce string values to LegalForm enum when needed
             if isinstance(value, str):
                 try:
                     value = LegalForm(value)
@@ -768,11 +789,10 @@ async def milestone_complete(
                     pass
             setattr(obj, field_name, value)
         profile.updated_at = datetime.now(timezone.utc)
-        
-        # Run synchronization to update answered_questions and clean stale dependencies
+
         from .intake.state_machine import sync_profile_state
         sync_profile_state(profile)
-        
+
         store.save(profile)
 
         result = await run_audit(profile)
@@ -797,6 +817,43 @@ async def milestone_complete(
 
     _logger.info("Milestone %s completed for project %s (no mutation for trigger=%s)", mid, pid, body.trigger)
     return {"applied": False, "new_scores": None}
+
+
+# ── Resource click tracking (Phase 4.2a) ────────────────────────────────────
+
+class ClickEventBody(BaseModel):
+    resource_url: str
+    resource_title: str
+    gap_category: str = ""
+
+
+@app.post("/api/project/{pid}/click")
+async def log_resource_click(
+    pid: str, body: ClickEventBody,
+    user: dict = Depends(get_current_user),
+) -> dict:
+    """Log a click on a KB resource link."""
+    _require_owned(pid, user)
+    store.log_resource_click(pid, body.resource_url, body.resource_title, body.gap_category)
+    return {"logged": True}
+
+
+@app.get("/api/click-stats")
+async def get_click_stats(
+    gap_category: str = "",
+    user: dict = Depends(get_current_user),
+) -> list[dict]:
+    """Return resources ranked by click count, optionally filtered by gap_category."""
+    return store.get_click_stats(gap_category)
+
+
+@app.get("/api/resolution-rates")
+async def resolution_rates(
+    min_completions: int = 3,
+    user: dict = Depends(get_current_user),
+) -> list[dict]:
+    """Return resolution rates per resource across all milestone completions."""
+    return store.get_resolution_rates(min_completions)
 
 
 # Convenience: audit an ad-hoc profile without the intake flow (for demos/tests).
