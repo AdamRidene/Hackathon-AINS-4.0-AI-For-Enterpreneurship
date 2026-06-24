@@ -259,6 +259,32 @@ class LLMProvider(ABC):
             f"{context}"
         )
 
+    async def reformulate_search_query(self, gap_label: str, rationale: str, lang: str = "fr") -> str:
+        """Reformulate a diagnostic gap into a natural-language search query.
+        Returns the original query on any error (graceful degradation)."""
+        if lang == "ar":
+            prompt = (
+                "أعد صياغة مشكلة التشخيص التالية لتصبح جملة بحث بالعربية لاسترجاع "
+                "موارد دعم ريادة الأعمال في تونس. أعد فقط جملة البحث، بدون شرح.\n\n"
+                f"الفجوة: {gap_label}\nالسبب: {rationale}\n\nجملة البحث:"
+            )
+        else:
+            prompt = (
+                "Reformule la lacune de diagnostic suivante en une phrase de recherche "
+                "en français pour retrouver des ressources d'accompagnement entrepreneurial "
+                "en Tunisie. Renvoie UNIQUEMENT la phrase de recherche, sans explication.\n\n"
+                f"Lacune: {gap_label}\nRaison: {rationale}\n\nPhrase de recherche:"
+            )
+        prompt = apply_language_directive(prompt, lang)
+        try:
+            raw = await self._complete_with_retry(prompt, max_tokens=120)
+            out = _strip_think(raw).strip().strip('"\'')
+            if out:
+                return out
+        except Exception:
+            pass
+        return f"{gap_label} {rationale}"
+
     async def extract_fields(
         self, doc_text: str, fields_spec: list[dict], lang: str = "fr"
     ) -> list[dict]:

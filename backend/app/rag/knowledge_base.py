@@ -165,7 +165,7 @@ class KnowledgeBase:
                 arr = np.load(str(_EMBED_CACHE), allow_pickle=False)
             else:
                 co = cohere.Client(api_key)
-                texts = [c.content + " " + c.title for c in self.chunks]
+                texts = [f"{c.content} {c.title} {c.content_ar} {c.title_ar}" for c in self.chunks]
                 resp = co.embed(
                     texts=texts,
                     model="embed-multilingual-v3.0",
@@ -195,10 +195,11 @@ class KnowledgeBase:
 
         try:
             model = SentenceTransformer("all-MiniLM-L6-v2")
-            texts = [c.content for c in self.chunks]
+            texts = [f"{c.content} {c.content_ar}" if c.content_ar else c.content
+                     for c in self.chunks]
             self._embeddings = model.encode(texts, show_progress_bar=False)
             self._embedder = model
-            self.meta["embedding_model"] = "all-MiniLM-L6-v2"
+            self.meta["embedding_model"] = "all-MiniLM-L6-v2 (bilingual text)"
             self.meta["embedding_dim"] = int(self._embeddings[0].shape[0])
         except Exception:
             self._embeddings = None
