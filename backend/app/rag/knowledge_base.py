@@ -117,14 +117,17 @@ class KnowledgeBase:
                 horizon=r["horizon"], content=r["content"], vector=vec,
                 title_ar=r.get("title_ar", ""), content_ar=r.get("content_ar", "")))
 
-        # ── Optional embedding-based retrieval (lazy-loaded on first query) ──
+        # ── Optional embedding-based retrieval (pre-loaded eagerly at init) ──
         self._embeddings = None   # list[ndarray] parallel to self.chunks
         self._embedder = None
         self._embeddings_loaded = False  # tri-state: False=unattempted, None=failed
         self._embeddings_lock = threading.Lock()
+        # Pre-load embeddings eagerly so the first query is not penalised by
+        # lazy-load latency (~500ms on Cohere / sentence-transformers).
+        self._ensure_embeddings()
 
     def _ensure_embeddings(self) -> None:
-        """Lazy-load sentence-transformers on first query (avoids ~90MB download at startup)."""
+        """Pre-load embeddings at init time (or skip gracefully if unavailable)."""
         if self._embeddings_loaded:
             return  # already succeeded
         with self._embeddings_lock:

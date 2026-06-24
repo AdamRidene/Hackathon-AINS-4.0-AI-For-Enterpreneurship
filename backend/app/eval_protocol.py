@@ -1,15 +1,18 @@
 """Evaluation protocol runner (concept Section 9).
 
-Reports three metrics on labelled test sets:
+Reports metrics on labelled test sets:
   * Diagnostic engine — Top-1 accuracy, Top-2 accuracy, MASE (threshold <= 0.5)
   * Scoring framework — gate-behaviour consistency on adversarial cases
-  * RAG retrieval     — Precision@5 on a 30-query routing-matrix benchmark (>= 0.7)
+  * RAG retrieval     — Precision@5, Recall@5, MRR, NDCG@5 on a 30-query
+                        routing-matrix benchmark (Precision@5 >= 0.7)
+  * Assistant tool    — tool-selection accuracy on canned prompts
 
 Run: python -m app.eval_protocol  (from backend/)
 """
 from __future__ import annotations
 
 import json
+import math
 import os
 
 os.environ.setdefault("FIRASA_LLM_PROVIDER", "stub")
@@ -406,19 +409,47 @@ def eval_diagnostic() -> dict:
     }
 
 
+def _ndcg_at_k(relevances: list[float], k: int) -> float:
+    """Compute NDCG@k. relevances[i] is the graded relevance of the i-th result."""
+    dcg = sum((2**r - 1) / math.log2(i + 2) for i, r in enumerate(relevances[:k]))
+    ideal = sorted(relevances, reverse=True)
+    idcg = sum((2**r - 1) / math.log2(i + 2) for i, r in enumerate(ideal[:k]))
+    return dcg / idcg if idcg > 0 else 0.0
+
+
 def eval_rag() -> dict:
     r = Retriever()
     precisions = []
+    recalls = []
+    mrrs = []
+    ndcgs = []
     rows = []
     for gap, query, relevant in RAG_QUERIES:
         res = r.retrieve(gap, query, k=5)
         hits = [c.institution in relevant for c in res.chunks]
-        p_at_5 = sum(hits) / max(len(hits), 1)
+        n_hits = sum(hits)
+        k = max(len(hits), 1)
+        p_at_5 = n_hits / k
+        total_relevant = len(relevant)
+        r_at_5 = n_hits / max(total_relevant, 1)
+        ranks = [i + 1 for i, h in enumerate(hits) if h]
+        rr = 1.0 / ranks[0] if ranks else 0.0
+        relevances = [1.0 if h else 0.0 for h in hits]
+        ndcg = _ndcg_at_k(relevances, 5)
         precisions.append(p_at_5)
-        rows.append({"gap": gap, "p@5": round(p_at_5, 2),
+        recalls.append(r_at_5)
+        mrrs.append(rr)
+        ndcgs.append(ndcg)
+        rows.append({"gap": gap, "p@5": round(p_at_5, 2), "r@5": round(r_at_5, 2),
+                     "mrr": round(rr, 3), "ndcg@5": round(ndcg, 3),
                      "retrieved": [c.institution for c in res.chunks]})
     mean_p = sum(precisions) / len(precisions)
+    mean_r = sum(recalls) / len(recalls)
+    mean_mrr = sum(mrrs) / len(mrrs)
+    mean_ndcg = sum(ndcgs) / len(ndcgs)
     return {"queries": len(RAG_QUERIES), "mean_precision_at_5": round(mean_p, 3),
+            "mean_recall_at_5": round(mean_r, 3), "mean_mrr": round(mean_mrr, 3),
+            "mean_ndcg_at_5": round(mean_ndcg, 3),
             "threshold": 0.7, "passes": mean_p >= 0.7, "rows": rows}
 
 
@@ -531,8 +562,11 @@ def main() -> None:
     print(f"   * Reg Accuracy   : {diag['regression_accuracy'] * 100:.1f}%")
     print("   * Note           : This synthetic set checks logic boundaries and rules consistency.")
 
-    print("\n3. RAG RETRIEVAL PRECISION (Tunisian Ecosystem Matrix, N=30)")
+    print("\n3. RAG RETRIEVAL (Tunisian Ecosystem Matrix, N=30)")
     print(f"   * Mean P@5       : {rag['mean_precision_at_5'] * 100:.1f}%  (Target: >= 70.0%)")
+    print(f"   * Mean R@5       : {rag['mean_recall_at_5'] * 100:.1f}%")
+    print(f"   * Mean MRR       : {rag['mean_mrr']:.3f}")
+    print(f"   * Mean NDCG@5    : {rag['mean_ndcg_at_5']:.3f}")
     print(f"   * Status         : {'PASS' if rag['passes'] else 'FAIL'}")
 
     print("\n4. SCORING CONSISTENCY & COHEN'S KAPPA (Adversarial Check)")
