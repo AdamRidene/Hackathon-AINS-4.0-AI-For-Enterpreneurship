@@ -232,6 +232,7 @@ async def build_roadmap(
     gap: Optional[GapReport] = None,
     k_per_gap: int = 2,
     anomalies: Optional[list[dict]] = None,
+    fast: bool = False,
 ) -> list[Milestone]:
     """Build an ordered, grounded action plan from gaps, scores, and anomalies.
 
@@ -335,8 +336,11 @@ async def build_roadmap(
             "chunks": [c.content for c in fresh],
         })
 
-    # Phase 2: Fire ALL LLM prose-generation calls in parallel.
+    # Phase 2: Fire ALL LLM prose-generation calls in parallel (skip when fast=True).
     async def _generate_action(plan: dict) -> str:
+        if fast:
+            raw = plan["chunks"][0] if plan["chunks"] else ""
+            return raw[:300] + ("..." if len(raw) > 300 else "")
         return await llm.generate_roadmap_prose(
             gap=f"{plan['label_fr']}: {plan['rat_fr']} | Timeline: {plan['timeline_fr']}",
             chunks=plan["chunks"],

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { SECTOR_LABELS } from "../constants.js";
+import { DEMO_SCENARIOS } from "../demoScenarios.js";
 
 function ArabicWindBackground({ theme }) {
   const canvasRef = useRef(null);
@@ -161,7 +162,7 @@ function ArabicWindBackground({ theme }) {
   );
 }
 
-export default function Landing({ lang, setLang, theme, setTheme, health, history, busy, onStart, onViewProject, onViewHistory, user, plan, openProfile }) {
+export default function Landing({ lang, setLang, theme, setTheme, health, history, busy, onStart, onLoadDemo, onViewProject, onViewHistory, user, plan, openProfile }) {
 
   const [projectName, setProjectName] = useState("");
   const ar = lang === "ar";
@@ -227,6 +228,60 @@ export default function Landing({ lang, setLang, theme, setTheme, health, histor
             </div>
           </div>
         </form>
+
+        {/* Demo scenarios */}
+        <div style={{ marginTop: "32px", maxWidth: "560px", margin: "32px auto 0" }}>
+          <div style={{ fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.08em", opacity: 0.45, marginBottom: "10px", textAlign: ar ? "right" : "left" }}>
+            {ar ? "سيناريوهات تجريبية" : "Scénarios de démonstration"}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {DEMO_SCENARIOS.map(s => (
+              <button
+                key={s.id}
+                onClick={() => onLoadDemo && onLoadDemo(s.id)}
+                disabled={busy}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "88px 1fr",
+                  alignItems: "center",
+                  gap: "12px",
+                  padding: "12px 16px",
+                  borderRadius: "var(--r-md)",
+                  border: "1px solid var(--border)",
+                  background: "rgba(255,255,255,0.03)",
+                  backdropFilter: "blur(8px)",
+                  color: "var(--text)",
+                  cursor: busy ? "not-allowed" : "pointer",
+                  textAlign: ar ? "right" : "left",
+                  opacity: busy ? 0.5 : 1,
+                  transition: "border-color 0.15s, background 0.15s",
+                  width: "100%",
+                }}
+                onMouseEnter={e => { if (!busy) e.currentTarget.style.borderColor = "var(--accent)"; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
+              >
+                <span style={{
+                  fontSize: "0.65rem",
+                  fontWeight: 600,
+                  letterSpacing: "0.06em",
+                  padding: "2px 7px",
+                  borderRadius: "4px",
+                  background: s.tag === "gap" ? "rgba(239,68,68,0.15)" : "rgba(245,158,11,0.15)",
+                  color: s.tag === "gap" ? "#ef4444" : "#f59e0b",
+                  whiteSpace: "nowrap",
+                  marginTop: "2px",
+                  textAlign: "center",
+                }}>
+                  {s.tag === "gap" ? (ar ? "فجوة" : "ÉCART") : (ar ? "شذوذ" : "ANOMALIE")}
+                </span>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{ar ? s.labelAr : s.label}</div>
+                  <div style={{ fontSize: "0.75rem", opacity: 0.55, marginTop: "2px" }}>{ar ? s.descriptionAr : s.description}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* Recent audits */}
         {history.length > 0 && (

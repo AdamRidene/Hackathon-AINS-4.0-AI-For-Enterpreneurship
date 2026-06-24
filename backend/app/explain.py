@@ -16,7 +16,7 @@ from .diagnostic.gap import GapReport
 from .diagnostic.classifier import STAGE_NAMES_AR
 
 
-async def explain_score(s: ScoreResult, lang: str = "fr") -> dict:
+async def explain_score(s: ScoreResult, lang: str = "fr", fast: bool = False) -> dict:
     if lang == "ar":
         dim_map_ar = {
             "Market": "السوق",
@@ -53,11 +53,11 @@ async def explain_score(s: ScoreResult, lang: str = "fr") -> dict:
         "dimension": s.dimension,
         "final_score": round(s.final_score, 1),
         "structured_trace": context,
-        "natural_language": await get_llm().justify(context, lang=lang),
+        "natural_language": context if fast else await get_llm().justify(context, lang=lang),
     }
 
 
-async def explain_gap(gap: GapReport, lang: str = "fr") -> dict:
+async def explain_gap(gap: GapReport, lang: str = "fr", fast: bool = False) -> dict:
     if lang == "ar":
         if not gap.has_gap:
             return {"has_gap": False, "natural_language": gap.message_ar}
@@ -91,18 +91,18 @@ async def explain_gap(gap: GapReport, lang: str = "fr") -> dict:
         "kind": gap.kind,
         "severity": gap.severity,
         "structured_trace": context,
-        "natural_language": await get_llm().justify(context, lang=lang),
+        "natural_language": context if fast else await get_llm().justify(context, lang=lang),
     }
 
 
-async def explain_all_scores(scores: CompositeScores, lang: str = "fr") -> dict:
+async def explain_all_scores(scores: CompositeScores, lang: str = "fr", fast: bool = False) -> dict:
     # Run all 5 dimension explanations in parallel (independent LLM calls).
     results = await asyncio.gather(
-        explain_score(scores.market, lang=lang),
-        explain_score(scores.commercial, lang=lang),
-        explain_score(scores.innovation, lang=lang),
-        explain_score(scores.scalability, lang=lang),
-        explain_score(scores.green, lang=lang),
+        explain_score(scores.market, lang=lang, fast=fast),
+        explain_score(scores.commercial, lang=lang, fast=fast),
+        explain_score(scores.innovation, lang=lang, fast=fast),
+        explain_score(scores.scalability, lang=lang, fast=fast),
+        explain_score(scores.green, lang=lang, fast=fast),
     )
     return {
         "market": results[0],

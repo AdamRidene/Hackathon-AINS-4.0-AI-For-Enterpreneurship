@@ -48,7 +48,7 @@ const STEPS = {
 };
 
 // stepState: 0 = all pending, 1 = step 0 active, 2 = step 0 done + step 1 active, etc.
-export default function Processing({ lang }) {
+export default function Processing({ lang, onCancel }) {
   const [step, setStep] = useState(0);
   const ar = lang === "ar";
 
@@ -134,6 +134,15 @@ export default function Processing({ lang }) {
           </div>
         ))}
       </div>
+
+      {onCancel && (
+        <button
+          onClick={onCancel}
+          style={{ marginTop: "28px", background: "none", border: "1px solid var(--border)", color: "var(--text)", opacity: 0.5, padding: "8px 20px", borderRadius: "var(--r-md)", cursor: "pointer", fontSize: "0.85rem" }}
+        >
+          {ar ? "إلغاء" : "Annuler"}
+        </button>
+      )}
     </div>
   );
 }
