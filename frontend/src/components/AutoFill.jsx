@@ -9,9 +9,9 @@ import { useState } from "react";
  */
 const T = {
   fr: {
-    upload: "📄 Importer un document",
+    upload: "Importer un document",
     uploading: "Téléversement…",
-    analyzeExisting: "✨ Analyser un document déjà importé",
+    analyzeExisting: "Analyser un document déjà importé",
     hint: "Importez un ou plusieurs documents (pitch deck, business plan, CV…) en PDF, MD ou TXT. L'IA pré-remplit le formulaire — vous validez avant d'appliquer.",
     analyzing: "Analyse du document…",
     title: "Champs extraits — vérifiez avant d'appliquer",
@@ -25,9 +25,9 @@ const T = {
     yes: "Oui", no: "Non",
   },
   ar: {
-    upload: "📄 تحميل وثيقة",
+    upload: "تحميل وثيقة",
     uploading: "جارٍ الرفع…",
-    analyzeExisting: "✨ تحليل وثيقة محمّلة مسبقاً",
+    analyzeExisting: "تحليل وثيقة محمّلة مسبقاً",
     hint: "حمّل وثيقة أو أكثر (عرض تقديمي، خطة عمل، CV…) بصيغة PDF أو MD أو TXT. يملأ الذكاء الاصطناعي النموذج — وتؤكّد قبل التطبيق.",
     analyzing: "تحليل الوثيقة…",
     title: "الحقول المستخرجة — تحقق قبل التطبيق",
@@ -154,7 +154,7 @@ export default function AutoFill({ pid, api, lang, onApplied }) {
 
   return (
     <div dir={ar ? "rtl" : "ltr"} style={{ marginBottom: 16, padding: "12px", width: "100%", boxSizing: "border-box", textAlign: "start", background: "rgba(124,109,245,0.05)", border: "1px solid rgba(124,109,245,0.25)", borderRadius: "var(--r-sm)" }}>
-      <div style={{ fontWeight: 700, fontSize: "0.8rem", color: "#9b8cff", marginBottom: 8 }}>🤖 {t.title}</div>
+      <div style={{ fontWeight: 700, fontSize: "0.8rem", color: "#9b8cff", marginBottom: 8 }}>{t.title}</div>
       {proposals.length === 0 ? (
         <div style={{ fontSize: "0.78rem", color: "var(--text-sub)" }}>{t.none}</div>
       ) : (

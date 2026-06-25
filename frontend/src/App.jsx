@@ -827,8 +827,13 @@ export default function App() {
             className="float-assistant-btn"
             onClick={() => setAssistantOpen(o => !o)}
             title={lang === "ar" ? "المستشار" : "Assistant"}
+            style={{ 
+              padding: 0, 
+              background: assistantOpen ? "var(--primary)" : "transparent", 
+              boxShadow: assistantOpen ? "0 4px 18px var(--primary-glow)" : "none" 
+            }}
           >
-            {assistantOpen ? "✕" : "💬"}
+            {assistantOpen ? "✕" : <img src="/ai assistant logo.png" alt="AI Assistant" style={{ width: "100%", height: "100%", objectFit: "contain" }} />}
           </button>
           {assistantOpen && (
             <div className="float-assistant-panel" dir={lang === "ar" ? "rtl" : "ltr"}>

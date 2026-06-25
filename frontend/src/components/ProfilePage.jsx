@@ -526,7 +526,7 @@ export default function ProfilePage({ user, plan, history, lang, api, onBack, on
 
                   {plan === "pro" && (
                     <div style={{ padding: "8px 0", fontSize: "0.85rem", color: "var(--green)", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
-                      <span>✨</span> {ar ? "أنت تستخدم الباقة الأعلى حالياً. شكراً لك!" : "Vous bénéficiez de notre forfait Pro maximal. Merci !"}
+                      {ar ? "أنت تستخدم الباقة الأعلى حالياً. شكراً لك!" : "Vous bénéficiez de notre forfait Pro maximal. Merci !"}
                     </div>
                   )}
                 </div>

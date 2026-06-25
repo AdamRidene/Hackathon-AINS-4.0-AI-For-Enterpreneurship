@@ -254,7 +254,7 @@ export default function Interview({ lang, question, progress, busy, onSubmit, on
           return (
             <div className={`interview-probe-badge${isAi ? " ai-probe" : ""}`} style={{ display: "inline-flex", flexDirection: "column", gap: 4, padding: "8px 12px", background: isAi ? "rgba(124, 109, 245, 0.10)" : "var(--orange-soft)", border: `1px solid ${isAi ? "rgba(124, 109, 245, 0.45)" : "var(--orange-border)"}`, borderRadius: "var(--r-sm)", marginBottom: 16 }}>
               <span style={{ color: isAi ? "#9b8cff" : "var(--orange)", fontWeight: 700, fontSize: "0.76rem" }}>
-                {isAi ? `🤖 ${T.aiProbe}` : `⚡ ${T.probe}`}
+                {isAi ? T.aiProbe : T.probe}
               </span>
               <span style={{ color: "var(--text-sub)", fontSize: "0.72rem" }}>
                 {getTriggeredExplanation(question.triggered_by, lang)}

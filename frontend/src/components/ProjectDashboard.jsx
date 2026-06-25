@@ -1045,7 +1045,7 @@ export default function ProjectDashboard({
                   </button>
                 )}
                 <button className="ghost" onClick={() => onMonParcours(pid)} style={{ width:"100%", borderColor:"var(--orange-border)", color:"var(--orange)" }}>
-                  🗺 {t.monParcours}
+                  {t.monParcours}
                 </button>
                 <button className="danger-btn" onClick={() => setShowDelete(true)} disabled={deleting} style={{ width:"100%" }}>
                   {deleting ? <span className="spinner" /> : t.deleteProject}
@@ -1077,10 +1077,10 @@ export default function ProjectDashboard({
                 <div className="adaptive-header">
                   {nextQ.triggered_by === "ai_probe" ? (
                     <span className="adaptive-badge ai-probe" style={{ background: "rgba(124, 109, 245, 0.10)", border: "1px solid rgba(124, 109, 245, 0.45)", color: "#9b8cff" }}>
-                      🤖 {ar ? "متابعة بالذكاء الاصطناعي" : "Suivi IA"}
+                      {ar ? "متابعة بالذكاء الاصطناعي" : "Suivi IA"}
                     </span>
                   ) : (
-                    <span className="adaptive-badge">⚡ {ar ? "سؤال تكيفي مقترح" : "Question adaptative recommandée"}</span>
+                    <span className="adaptive-badge">{ar ? "سؤال تكيفي مقترح" : "Question adaptative recommandée"}</span>
                   )}
                   {progress && (
                     <span style={{ fontSize: "0.8rem", color: "var(--text-sub)" }}>
