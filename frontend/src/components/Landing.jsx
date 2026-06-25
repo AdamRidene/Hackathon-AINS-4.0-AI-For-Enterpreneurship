@@ -169,6 +169,8 @@ export default function Landing({ lang, setLang, theme, setTheme, health, histor
   const [news, setNews] = useState([]);
   const [loadingNews, setLoadingNews] = useState(false);
 
+  const [selectedCategory, setSelectedCategory] = useState("all");
+
   const ar = lang === "ar";
   const t  = TEXTS[lang] || TEXTS.fr;
   const canStart = !busy && health?.status !== "down";
@@ -190,7 +192,68 @@ export default function Landing({ lang, setLang, theme, setTheme, health, histor
     return () => { active = false; };
   }, [lang]);
 
-  const displayedNews = news.slice(0, visibleCount);
+  const categories = ar
+    ? [
+        { id: "all", label: "الكل" },
+        { id: "Tunisie", label: "تونس" },
+        { id: "MENA", label: "الشرق الأوسط وشمال إفريقيا" },
+        { id: "Entrepreneur", label: "ريادة أعمال" },
+        { id: "Écosystème", label: "المنظومة" },
+        { id: "Innovation", label: "ابتكار" },
+        { id: "Outils", label: "أدوات" },
+        { id: "Conseils", label: "نصائح" },
+        { id: "Financement", label: "تمويل" },
+        { id: "Opportunités", label: "فرص" }
+      ]
+    : [
+        { id: "all", label: "Tout" },
+        { id: "Tunisie", label: "Tunisie" },
+        { id: "MENA", label: "MENA" },
+        { id: "Entrepreneur", label: "Entrepreneur" },
+        { id: "Écosystème", label: "Écosystème" },
+        { id: "Innovation", label: "Innovation" },
+        { id: "Outils", label: "Outils" },
+        { id: "Conseils", label: "Conseils" },
+        { id: "Financement", label: "Financement" },
+        { id: "Opportunités", label: "Opportunités" }
+      ];
+
+  const filteredNews = news.filter(item => {
+    if (selectedCategory === "all") return true;
+    const catLower = item.category?.toLowerCase() || "";
+    const selLower = selectedCategory.toLowerCase();
+
+    if (selLower === "tunisie") {
+      return catLower === "tunisie" || catLower === "تونس";
+    }
+    if (selLower === "mena") {
+      return catLower === "mena" || catLower === "الشرق الأوسط وشمال إفريقيا" || catLower === "الشرق الأوسط وشمال إافريقيا";
+    }
+    if (selLower === "entrepreneur") {
+      return catLower === "entrepreneur" || catLower === "ريادة أعمال";
+    }
+    if (selLower === "écosystème") {
+      return catLower === "écosystème" || catLower === "المنظومة";
+    }
+    if (selLower === "innovation") {
+      return catLower === "innovation" || catLower === "ابتكار";
+    }
+    if (selLower === "outils") {
+      return catLower === "outils" || catLower === "أدوات";
+    }
+    if (selLower === "conseils") {
+      return catLower === "conseils" || catLower === "نصائح";
+    }
+    if (selLower === "financement") {
+      return catLower === "financement" || catLower === "تمويل";
+    }
+    if (selLower === "opportunités") {
+      return catLower === "opportunités" || catLower === "فرص";
+    }
+    return catLower === selLower;
+  });
+
+  const displayedNews = filteredNews.slice(0, visibleCount);
 
   return (
     <div className="landing-wrap" dir={ar ? "rtl" : "ltr"}>
@@ -266,6 +329,61 @@ export default function Landing({ lang, setLang, theme, setTheme, health, histor
         {/* ── News Section ── */}
         <section className="news-section">
           <h2 className="news-heading">{t.newsTitle}</h2>
+
+          {/* Category Filter Bar */}
+          <div className="news-filters" style={{
+            display: "flex",
+            justifyContent: "center",
+            gap: "10px",
+            flexWrap: "wrap",
+            marginBottom: "35px"
+          }}>
+            {categories.map((cat) => (
+              <button
+                key={cat.id}
+                type="button"
+                className={`news-filter-chip ${selectedCategory === cat.id ? "active" : ""}`}
+                style={{
+                  padding: "8px 18px",
+                  borderRadius: "30px",
+                  border: "1px solid",
+                  borderColor: selectedCategory === cat.id ? "var(--primary-light)" : "var(--border)",
+                  fontSize: "0.85rem",
+                  fontFamily: ar ? "var(--f-arabic)" : "inherit",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                  background: selectedCategory === cat.id 
+                    ? "linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%)" 
+                    : "rgba(255, 255, 255, 0.02)",
+                  color: selectedCategory === cat.id ? "#fff" : "var(--text-sub)",
+                  boxShadow: selectedCategory === cat.id ? "0 0 15px rgba(74, 123, 247, 0.3)" : "none",
+                  transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+                  outline: "none",
+                }}
+                onClick={() => {
+                  setSelectedCategory(cat.id);
+                  setVisibleCount(3);
+                }}
+                onMouseEnter={(e) => {
+                  if (selectedCategory !== cat.id) {
+                    e.currentTarget.style.borderColor = "var(--primary-border)";
+                    e.currentTarget.style.color = "var(--text)";
+                    e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (selectedCategory !== cat.id) {
+                    e.currentTarget.style.borderColor = "var(--border)";
+                    e.currentTarget.style.color = "var(--text-sub)";
+                    e.currentTarget.style.background = "rgba(255, 255, 255, 0.02)";
+                  }
+                }}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
+
           <div className="news-grid">
             {loadingNews ? (
               Array.from({ length: 3 }).map((_, i) => (
@@ -299,7 +417,7 @@ export default function Landing({ lang, setLang, theme, setTheme, health, histor
               ))
             )}
           </div>
-          {!loadingNews && visibleCount < news.length && (
+          {!loadingNews && visibleCount < filteredNews.length && (
             <div className="news-more-wrap">
               <button
                 type="button"

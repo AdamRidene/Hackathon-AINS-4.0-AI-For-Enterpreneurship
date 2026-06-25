@@ -249,14 +249,20 @@ class LLMProvider(ABC):
         # Skip when context is empty (small-talk / no-grounding path).
         if not context:
             return "Bonjour !" if lang != "ar" else "مرحباً !"
+
+        clean_ctx = context
+        for sep in ("---", "Conversation précédente:", "Lorsque tu mentionnes", "عند ذكر برنامج"):
+            if sep in clean_ctx:
+                clean_ctx = clean_ctx.split(sep)[0].strip()
+
         if lang == "ar":
             return (
                 "وفقًا لتشخيصك، إليك العناصر المهيكلة ذات الصلة — "
-                f"{context}"
+                f"{clean_ctx}"
             )
         return (
             "D'après votre diagnostic, voici les éléments structurés pertinents — "
-            f"{context}"
+            f"{clean_ctx}"
         )
 
     async def reformulate_search_query(self, gap_label: str, rationale: str, lang: str = "fr") -> str:

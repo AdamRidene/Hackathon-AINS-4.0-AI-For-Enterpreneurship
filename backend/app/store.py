@@ -44,6 +44,7 @@ _mem_sessions: dict[str, dict] = {}
 _mem_projects: dict[str, dict] = {}
 _mem_audits: dict[str, dict] = {}
 _mem_docs: dict[str, dict] = {}
+_mem_conversations: dict[str, list[dict]] = {}
 
 
 class _MemCursor:
@@ -1055,3 +1056,17 @@ def delete_document(doc_id: str) -> None:
                 conn.execute("DELETE FROM project_documents WHERE id = ?", (doc_id,))
         else:
             _mem_docs.pop(doc_id, None)
+
+
+def get_conversation_history(pid: str) -> list[dict]:
+    with _lock:
+        return list(_mem_conversations.get(pid, []))
+
+
+def save_conversation_turn(pid: str, role: str, content: str) -> None:
+    with _lock:
+        if pid not in _mem_conversations:
+            _mem_conversations[pid] = []
+        _mem_conversations[pid].append({"role": role, "content": content})
+        if len(_mem_conversations[pid]) > 12:
+            _mem_conversations[pid] = _mem_conversations[pid][-12:]

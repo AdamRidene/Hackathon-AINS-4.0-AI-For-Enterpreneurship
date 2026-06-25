@@ -1539,7 +1539,7 @@ _FALLBACK_NEWS = {
             "id": 1,
             "title": "Startup Act Tunisie : Guide complet et éligibilité",
             "desc": "Tout savoir sur les démarches d'octroi du label Startup, les avantages fiscaux et l'accompagnement Smart Capital.",
-            "category": "Écosystème",
+            "category": "Tunisie",
             "image": "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=600&q=80",
             "url": "https://startup.smartcapital.tn/"
         },
@@ -1555,7 +1555,7 @@ _FALLBACK_NEWS = {
             "id": 3,
             "title": "ANETI : Programmes d'incitation à l'emploi et entrepreneuriat",
             "desc": "Découvrez les mécanismes de soutien à l'auto-emploi, le SIVP et les fonds d'aide aux jeunes promoteurs tunisiens.",
-            "category": "Outils",
+            "category": "Entrepreneur",
             "image": "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=600&q=80",
             "url": "https://www.aneti.tn/"
         },
@@ -1579,7 +1579,7 @@ _FALLBACK_NEWS = {
             "id": 6,
             "title": "Flat6Labs Tunis : Accélération et financement d'amorçage",
             "desc": "Postulez au programme d'accélération leader en Tunisie pour obtenir un ticket d'investissement et du mentorat.",
-            "category": "Opportunités",
+            "category": "MENA",
             "image": "https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?auto=format&fit=crop&w=600&q=80",
             "url": "https://flat6labs.com/program/tunis-seed-program/"
         }
@@ -1589,7 +1589,7 @@ _FALLBACK_NEWS = {
             "id": 1,
             "title": "بوابة المؤسسات الناشئة بتونس (Smart Capital)",
             "desc": "كل ما تحتاجه لمعرفة شروط الحصول على علامة 'مؤسسة ناشئة' والامتيازات الجبائية والمالية المرافقة.",
-            "category": "المنظومة",
+            "category": "تونس",
             "image": "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=600&q=80",
             "url": "https://startup.smartcapital.tn/"
         },
@@ -1605,7 +1605,7 @@ _FALLBACK_NEWS = {
             "id": 3,
             "title": "الوكالة الوطنية للتشغيل والعمل المستقل (ANETI)",
             "desc": "آليات التشغيل الذكي، برامج دعم الباعثين الشبان، وخطوات تمويل المشاريع الصغرى.",
-            "category": "أدوات",
+            "category": "ريادة أعمال",
             "image": "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=600&q=80",
             "url": "https://www.aneti.tn/"
         },
@@ -1629,7 +1629,7 @@ _FALLBACK_NEWS = {
             "id": 6,
             "title": "برنامج تسريع نمو الشركات الناشئة Flat6Labs بتونس",
             "desc": "التقديم لبرنامج التمويل الأولي والتدريب والإحاطة الشاملة للشركات الواعدة بتونس.",
-            "category": "فرص",
+            "category": "الشرق الأوسط وشمال إافريقيا",
             "image": "https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?auto=format&fit=crop&w=600&q=80",
             "url": "https://flat6labs.com/program/tunis-seed-program/"
         }
@@ -1653,7 +1653,6 @@ async def get_news(lang: str = "fr") -> list[dict]:
     fallback_list = _FALLBACK_NEWS[lang]
 
     if not newsapi_key:
-        # Cache the fallback too to avoid unnecessary checks
         _NEWS_CACHE[lang] = {"data": fallback_list, "expiry": now + 600}
         return fallback_list
 
@@ -1672,7 +1671,7 @@ async def get_news(lang: str = "fr") -> list[dict]:
                     "q": q_query,
                     "language": lang,
                     "sortBy": "publishedAt",
-                    "pageSize": 12,
+                    "pageSize": 24,
                     "apiKey": newsapi_key,
                 }
             )
@@ -1691,9 +1690,17 @@ async def get_news(lang: str = "fr") -> list[dict]:
                     if not title or not url or "[Removed]" in title:
                         continue
 
-                    # Assign category based on simple keyword analysis
                     title_lower = title.lower()
-                    if "ia" in title_lower or "artificial" in title_lower or "intelligence" in title_lower or "ذكاء" in title_lower:
+                    desc_lower = (desc or "").lower()
+
+                    # Assign category based on simple keyword analysis
+                    if "tunis" in title_lower or "tunis" in desc_lower or "تونس" in title_lower or "تونس" in desc_lower or "tunisienne" in title_lower or "tunisien" in title_lower or "تونسي" in title_lower:
+                        cat = "Tunisie" if lang == "fr" else "تونس"
+                    elif "mena" in title_lower or "mena" in desc_lower or "middle east" in title_lower or "middle east" in desc_lower or "الشرق الأوسط" in title_lower or "الشرق الأوسط" in desc_lower or "شمال إفريقيا" in title_lower or "شمال إفريقيا" in desc_lower:
+                        cat = "MENA" if lang == "fr" else "الشرق الأوسط وشمال إفريقيا"
+                    elif "entrepreneur" in title_lower or "entrepreneur" in desc_lower or "ريادة" in title_lower or "ريادة" in desc_lower or "رواد" in title_lower or "رواد" in desc_lower or "مبادر" in title_lower or "مبادر" in desc_lower:
+                        cat = "Entrepreneur" if lang == "fr" else "ريادة أعمال"
+                    elif "ia" in title_lower or "artificial" in title_lower or "intelligence" in title_lower or "ذكاء" in title_lower:
                         cat = "IA / Innovation" if lang == "fr" else "ذكاء اصطناعي"
                     elif "outil" in title_lower or "tool" in title_lower or "techno" in title_lower or "أداة" in title_lower:
                         cat = "Outils" if lang == "fr" else "أدوات"

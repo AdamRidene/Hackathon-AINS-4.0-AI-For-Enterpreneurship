@@ -40,10 +40,10 @@ function ScoreGrid({ vector, lang }) {
         const color = val >= 66 ? "var(--green)" : val >= 40 ? "var(--amber)" : "var(--red)";
         return (
           <div key={i} className="dash-score-cell" title={names[i]}>
-            <div className="dash-score-bar-track">
-              <div className="dash-score-bar-fill" style={{ width: `${Math.round(val)}%`, background: color }} />
-            </div>
             <div className="dash-score-num" style={{ color }}>{Math.round(val)}</div>
+            <div className="dash-score-bar-track">
+              <div className="dash-score-bar-fill" style={{ height: `${Math.round(val)}%`, background: color }} />
+            </div>
             <div className="dash-score-dim">{DIM_LABELS[i]}</div>
           </div>
         );
@@ -322,17 +322,15 @@ function DocumentsManager({ pid, lang, api }) {
             <svg className="doc-dropzone-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: "var(--primary)", marginBottom: 8 }}>
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
             </svg>
-            <div>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
               <label htmlFor={`file-upload-${pid}`} className="doc-upload-label-btn" style={{
-                background: "var(--orange-soft)",
-                color: "var(--orange)",
-                border: "1px solid var(--orange-border)",
-                padding: "4px 10px",
-                borderRadius: "var(--r-sm)",
-                fontSize: "0.8rem",
                 cursor: "pointer",
-                display: "inline-block",
-                marginRight: 6
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                height: "34px",
+                padding: "0 14px",
+                boxSizing: "border-box"
               }}>
                 {t.uploadBtn}
               </label>
@@ -948,7 +946,7 @@ export default function ProjectDashboard({
 
         {/* ── Header ── */}
         <div className="dash-header">
-          <button className={"back-btn" + (ar ? " rtl" : "")} onClick={onBack} style={{ marginBottom: 16 }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>{t.back}</button>
+          <button className={"back-btn" + (ar ? " rtl" : "")} onClick={onBack} style={{ marginBottom: 16, alignSelf: "flex-start" }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>{t.back}</button>
 
           <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
             {editing ? (
@@ -1120,10 +1118,10 @@ export default function ProjectDashboard({
                 )}
 
                 {effectiveDiagnostic && !intakeComplete && (
-                  <div style={{ margin: "10px 0 16px", padding: 14, borderRadius: 12, border: "1px solid var(--orange-border)", background: "rgba(245, 158, 11, 0.08)" }}>
+                  <div style={{ margin: "10px 0 16px", padding: 14, borderRadius: 12, border: "1px solid rgba(74, 123, 247, 0.25)", background: "rgba(74, 123, 247, 0.08)" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
                       <div>
-                        <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--orange)" }}>{t.provisionalStage}</div>
+                        <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--primary)" }}>{t.provisionalStage}</div>
                         <div style={{ fontSize: "0.78rem", color: "var(--text-sub)", marginTop: 4 }}>{t.provisionalSub}</div>
                       </div>
                       <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text)" }}>{classifiedName} · {confidencePct}%</div>

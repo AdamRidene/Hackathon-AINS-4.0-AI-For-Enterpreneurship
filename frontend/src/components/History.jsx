@@ -9,17 +9,20 @@ function MiniScoreBar({ vector }) {
   if (!vector || vector.length < 5) return null;
   return (
     <div className="hist-vector">
-      {vector.map((val, i) => (
-        <div key={i} className="hist-vec-col">
-          <div className="hist-vec-track">
-            <div
-              className="hist-vec-fill"
-              style={{ height: `${Math.round(val * 100)}%` }}
-            />
+      {vector.map((val, i) => {
+        const color = val >= 66 ? "var(--green)" : val >= 40 ? "var(--amber)" : "var(--red)";
+        return (
+          <div key={i} className="hist-vec-col">
+            <div className="hist-vec-track">
+              <div
+                className="hist-vec-fill"
+                style={{ height: `${Math.round(val)}%`, background: color }}
+              />
+            </div>
+            <div className="hist-vec-label">{DIM_LABELS[i]}</div>
           </div>
-          <div className="hist-vec-label">{DIM_LABELS[i]}</div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

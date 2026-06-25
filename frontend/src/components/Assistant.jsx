@@ -41,13 +41,17 @@ function formatGrounding(text, lang) {
   try {
     if (!text || typeof text !== "string") throw new Error("empty");
 
-    const stadeMatch = text.match(/(?:Stade objectif|المرحلة الموضوعية)\s*:\s*([^.]+)\./);
+    const cleanText = text
+      .replace(/^D'après votre diagnostic, voici les éléments structurés pertinents\s*—\s*/gi, "")
+      .replace(/^وفقًا لتشخيصك، إليك العناصر المهيكلة ذات الصلة\s*—\s*/g, "");
+
+    const stadeMatch = cleanText.match(/(?:Stade objectif|المرحلة الموضوعية)\s*:\s*([^.]+)\./);
     const stade = stadeMatch ? stadeMatch[1].trim() : null;
 
-    const ecartMatch = text.match(/(?:[Éé]cart perception[- ]r[ée]alit[ée]|فجوة الإدراك والواقع)\s*:\s*([^.]+\.)/);
-    const ecart = ecartMatch ? ecartMatch[1].replace(/\.\s*$/, "").trim() : null;
+    const ecartMatch = cleanText.match(/(?:[Éé]cart perception[- ]r[ée]alit[ée]|فjوة الإدراك والواقع|فجوة الإدراك والواقع|Écart perception-réalité)\s*:\s*([^.]+)\./);
+    const ecart = ecartMatch ? ecartMatch[1].trim() : null;
 
-    const scoresMatch = text.match(/(?:Scores|المؤشرات)\s*\(M,C,I,S,G\)\s*:\s*\[([^\]]+)\]/);
+    const scoresMatch = cleanText.match(/(?:Scores|المؤشرات)\s*\(M,C,I,S,G\)\s*:\s*\[([^\]]+)\]/);
     let scoreChips = null;
     if (scoresMatch) {
       const vals = scoresMatch[1].split(",").map((s) => parseFloat(s.trim()));
@@ -213,13 +217,66 @@ function cleanAssistantText(text) {
   return cleaned;
 }
 
-function BotMessage({ text, grounding, sourcesUsed, trace, lang }) {
+function Typewriter({ text, speed = 8 }) {
+  const [displayText, setDisplayText] = useState("");
+  const [isTyping, setIsTyping] = useState(true);
+
+  useEffect(() => {
+    let index = 0;
+    let timer;
+    const type = () => {
+      if (index < text.length) {
+        setDisplayText((prev) => prev + text.charAt(index));
+        index++;
+        timer = setTimeout(type, speed);
+      } else {
+        setIsTyping(false);
+      }
+    };
+    type();
+    return () => clearTimeout(timer);
+  }, [text, speed]);
+
+  return (
+    <div style={{ whiteSpace: "pre-line" }}>
+      {displayText}
+      {isTyping && (
+        <span 
+          className="typing-cursor" 
+          style={{
+            display: "inline-block",
+            width: "6px",
+            height: "14px",
+            background: "var(--primary-light)",
+            marginLeft: "4px",
+            animation: "cursor-blink 0.8s infinite",
+            verticalAlign: "middle"
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function BotMessage({ text, grounding, sourcesUsed, trace, lang, animate }) {
   const [showGrounding, setShowGrounding] = useState(false);
   const ar = lang === "ar";
   const hasSources = Array.isArray(sourcesUsed) && sourcesUsed.length > 0;
+  
+  const isFallback = typeof text === "string" && (
+    text.startsWith("D'après votre diagnostic, voici les éléments structurés pertinents") ||
+    text.startsWith("وفقًا لتشخيصك، إليك العناصر المهيكلة ذات الصلة")
+  );
+
   return (
     <div className="chat-msg bot">
-      <div style={{ whiteSpace: "pre-line" }}>{text}</div>
+      {isFallback ? (
+        <div>{formatGrounding(text, lang)}</div>
+      ) : animate ? (
+        <Typewriter text={text} />
+      ) : (
+        <div style={{ whiteSpace: "pre-line" }}>{text}</div>
+      )}
       <GraphMap trace={trace} lang={lang} />
       {grounding && hasSources && (
         <>
@@ -315,10 +372,10 @@ export default function Assistant({ pid, lang = "fr" }) {
       const res = await api.assistant(pid, question, lang);
       setLog((l) => [
         ...l,
-        { role: "bot", text: cleanAssistantText(res.reply), grounding: res.grounding, sourcesUsed: res.sources_used, trace: res.trace },
+        { role: "bot", text: cleanAssistantText(res.reply), grounding: res.grounding, sourcesUsed: res.sources_used, trace: res.trace, isNew: true },
       ]);
     } catch (err) {
-      setLog((l) => [...l, { role: "bot", text: ar ? `خطأ: ${err.message}` : `Erreur : ${err.message}` }]);
+      setLog((l) => [...l, { role: "bot", text: ar ? `خطأ: ${err.message}` : `Erreur : ${err.message}`, isNew: true }]);
     } finally {
       setBusy(false);
     }
@@ -333,11 +390,11 @@ export default function Assistant({ pid, lang = "fr" }) {
       .then((res) => {
         setLog((l) => [
           ...l,
-          { role: "bot", text: cleanAssistantText(res.reply), grounding: res.grounding, sourcesUsed: res.sources_used, trace: res.trace },
+          { role: "bot", text: cleanAssistantText(res.reply), grounding: res.grounding, sourcesUsed: res.sources_used, trace: res.trace, isNew: true },
         ]);
       })
       .catch((err) => {
-        setLog((l) => [...l, { role: "bot", text: ar ? `خطأ: ${err.message}` : `Erreur : ${err.message}` }]);
+        setLog((l) => [...l, { role: "bot", text: ar ? `خطأ: ${err.message}` : `Erreur : ${err.message}`, isNew: true }]);
       })
       .finally(() => {
         setBusy(false);
@@ -429,6 +486,7 @@ export default function Assistant({ pid, lang = "fr" }) {
                 sourcesUsed={m.sourcesUsed}
                 trace={m.trace}
                 lang={lang} 
+                animate={m.isNew}
               />
             );
           }

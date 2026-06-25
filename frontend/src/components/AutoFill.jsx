@@ -122,11 +122,29 @@ export default function AutoFill({ pid, api, lang, onApplied }) {
   if (phase === "idle" || phase === "loading" || phase === "uploading") {
     const busy = phase !== "idle";
     const inputId = `autofill-upload-${pid}`;
-    const btn = { fontSize: "0.82rem", padding: "8px 14px", border: "1px solid rgba(124,109,245,0.45)", color: "#9b8cff", borderRadius: "var(--r-sm)", background: "rgba(124,109,245,0.06)", cursor: busy ? "default" : "pointer", display: "inline-block" };
+    const btn = { 
+      fontSize: "0.82rem", 
+      height: "38px", 
+      padding: "0 16px", 
+      border: "1px solid rgba(124,109,245,0.45)", 
+      color: "#9b8cff", 
+      borderRadius: "var(--r-sm)", 
+      background: "rgba(124,109,245,0.06)", 
+      cursor: busy ? "default" : "pointer", 
+      display: "inline-flex", 
+      alignItems: "center", 
+      justifyContent: "center", 
+      boxSizing: "border-box", 
+      verticalAlign: "middle", 
+      fontWeight: 700,
+      flex: 1,
+      minWidth: "220px",
+      textTransform: "uppercase"
+    };
     return (
       <div style={{ marginBottom: 14, width: "100%", boxSizing: "border-box" }} dir={ar ? "rtl" : "ltr"}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <label htmlFor={inputId} style={{ ...btn, fontWeight: 700, opacity: busy ? 0.6 : 1 }}>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center", alignItems: "center" }}>
+          <label htmlFor={inputId} style={{ ...btn, opacity: busy ? 0.6 : 1 }}>
             {phase === "uploading" ? t.uploading : (phase === "loading" ? t.analyzing : t.upload)}
           </label>
           <input id={inputId} type="file" multiple style={{ display: "none" }} disabled={busy}
