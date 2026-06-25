@@ -265,17 +265,6 @@ export const auth = {
     }
   },
 
-  async loginWithGoogle() {
-    if (_mode !== "supabase") throw new Error("Google login requires Supabase mode");
-    const sb = getSupabase();
-    if (!sb) throw new Error("Supabase client not initialised");
-    const { error } = await sb.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: window.location.origin },
-    });
-    if (error) throw new Error(error.message);
-  },
-
   onAuthStateChange(callback) {
     if (_mode !== "supabase") return () => {};
     const sb = getSupabase();

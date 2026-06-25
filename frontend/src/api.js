@@ -72,10 +72,6 @@ export const api = {
     return auth.login({ email, password });
   },
 
-  loginWithGoogle: async () => {
-    return auth.loginWithGoogle();
-  },
-
   register: async ({ email, password, name, birth_date, location, phone, role, company }) => {
     return auth.register({ email, password, name, birth_date, location, phone, role, company });
   },
@@ -86,13 +82,6 @@ export const api = {
 
   me: async () => {
     return auth.me();
-  },
-
-  forgotPassword: async (email) => {
-    return req("/api/auth/forgot-password", {
-      method: "POST",
-      body: JSON.stringify({ email }),
-    });
   },
 
   verifyForgotOtp: async (email, code) => {
