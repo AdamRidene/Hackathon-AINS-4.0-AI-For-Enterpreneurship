@@ -1,5 +1,5 @@
 <p align="center">
-  <img alt="Firasa" src="frontend/assets/logo_first.svg" height="60">
+  <img alt="Firasa" src="frontend/assets/logo_first.svg" height="120">
 </p>
 
 # Firasa · فِراسة
